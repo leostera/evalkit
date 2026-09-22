@@ -28,10 +28,10 @@ import {
   type TrialScoring,
   type TrajectoryEvent,
 } from '@evalkit/core';
-import { snapshotCandidateWorkspace } from './snapshot';
-import { createTrialWorkspace, type TrialWorkspace } from './workspace';
+import { snapshotCandidateWorkspace } from './snapshot.js';
+import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
 
-export { localReportStore } from './local-report-store';
+export { localReportStore } from './local-report-store.js';
 
 export type RunEvalOptions = {
   report: ReportStore;
