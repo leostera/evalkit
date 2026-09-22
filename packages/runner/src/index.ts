@@ -343,7 +343,11 @@ async function runTrial(
       definition.fixtures,
       options.workspaceRoot,
     );
-    context = { ...fixtureContext, workspace: workspace.artifacts.candidate };
+    context = {
+      ...fixtureContext,
+      workspace: workspace.artifacts.candidate,
+      evaluatorWorkspace: workspace.artifacts.evaluator,
+    };
     session = await definition.agent.start({
       context,
       ...(runtime ? { runtime } : {}),

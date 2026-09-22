@@ -109,11 +109,13 @@ export type AutContext = {
   trialIndex: number;
   metadata: JsonObject;
   runtime?: AgentRuntimeName;
-  /** Contains only resources visible to the AUT. */
+  /** Contains only resources visible to the AUT/model. */
   workspace: CandidateWorkspace;
+  /** Private evaluator capability for trusted AUT adapters; never expose this to the model. */
+  evaluatorWorkspace: EvaluatorWorkspace;
 };
 
-export type FixtureContext = Omit<AutContext, 'workspace'>;
+export type FixtureContext = Omit<AutContext, 'workspace' | 'evaluatorWorkspace'>;
 
 export type AutAdapter<TMessage = string> = {
   readonly identity?: AutIdentity;
