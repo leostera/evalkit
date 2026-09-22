@@ -85,6 +85,16 @@ function canonicalId<K extends 'run' | 'trial'>(kind: K, id: string) {
   return resourceUri(kind, id as Uuid);
 }
 
+function assertUuid(value: string, label: string): void {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  ) {
+    throw new Error(`${label} must be a UUID`);
+  }
+}
+
 function normalizeScore(
   value: ScoreValue,
 ): Omit<ScoreResult, 'name' | 'kind' | 'durationMs'> {
@@ -142,6 +152,8 @@ async function executeRun(
   definition: EvalDefinition,
   options: RunEvalOptions,
 ): Promise<RunResult> {
+  if (options.runId) assertUuid(options.runId, 'runId');
+  if (options.trialId) assertUuid(options.trialId, 'trialId');
   const requestedTrials = options.trials ?? definition.policy?.trials ?? 1;
   if (!Number.isInteger(requestedTrials) || requestedTrials < 1) {
     throw new Error(

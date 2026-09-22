@@ -22,10 +22,10 @@ test('runs the starter eval and writes an inspectable report', async () => {
   const result = await Effect.runPromise(
     runEval(evaluation, {
       report: localReportStore(reportRoot),
-      runId: 'starter-run',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3c',
       trials: 1,
       runtime: 'local',
-      trialId: 'starter-trial',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3d',
     }),
   );
 
@@ -35,9 +35,9 @@ test('runs the starter eval and writes an inspectable report', async () => {
     await readFile(
       join(
         reportRoot,
-        'starter-run',
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b3c',
         'trials',
-        'starter-trial',
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b3d',
         'summary.json',
       ),
       'utf8',

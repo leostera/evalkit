@@ -95,8 +95,8 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'run-test',
-      trialId: 'trial-test',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
     });
 
     expect(result.status).toBe('completed');
@@ -104,7 +104,13 @@ describe('runEval', () => {
     expect(result.scoring?.passed).toBe(true);
 
     const trajectory = await readFile(
-      path.join(root, 'run-test', 'trials', 'trial-test', 'trajectory.jsonl'),
+      path.join(
+        root,
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
+        'trials',
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
+        'trajectory.jsonl',
+      ),
       'utf8',
     );
     expect(trajectory).toContain('"role":"assistant"');
@@ -112,7 +118,13 @@ describe('runEval', () => {
 
     const scoring = JSON.parse(
       await readFile(
-        path.join(root, 'run-test', 'trials', 'trial-test', 'scoring.json'),
+        path.join(
+          root,
+          '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
+          'trials',
+          '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
+          'scoring.json',
+        ),
         'utf8',
       ),
     );
@@ -135,10 +147,10 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'aggregate-run',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
     });
 
-    expect(result.runId).toBe('aggregate-run');
+    expect(result.runId).toBe('0197f17c-4d89-7f81-9d42-6c497e6f6b32');
     expect(result.trialCount).toBe(3);
     expect(result.passed).toBe(3);
     expect(result.trials?.map((trial) => trial.trialId)).toHaveLength(3);
@@ -149,7 +161,7 @@ describe('runEval', () => {
       await access(
         path.join(
           root,
-          'aggregate-run',
+          '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
           'trials',
           trial.trialId,
           'summary.json',
@@ -157,7 +169,10 @@ describe('runEval', () => {
       );
     }
     const summary = JSON.parse(
-      await readFile(path.join(root, 'aggregate-run', 'summary.json'), 'utf8'),
+      await readFile(
+        path.join(root, '0197f17c-4d89-7f81-9d42-6c497e6f6b32', 'summary.json'),
+        'utf8',
+      ),
     );
     expect(summary).toMatchObject({ trialCount: 3, passed: 3, failed: 0 });
   });
@@ -190,8 +205,8 @@ describe('runEval', () => {
     const result = await execute(evaluation, {
       report: localReportStore(root),
       runtime: 'local',
-      runId: 'run-runtime',
-      trialId: 'trial-runtime',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b33',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3e',
     });
 
     expect(result.status).toBe('completed');
@@ -308,8 +323,8 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'run-fixtures',
-      trialId: 'trial-fixtures',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b34',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
     });
 
     expect(result.status).toBe('completed');
@@ -319,9 +334,9 @@ describe('runEval', () => {
 
     const snapshotRoot = path.join(
       root,
-      'run-fixtures',
+      '0197f17c-4d89-7f81-9d42-6c497e6f6b34',
       'trials',
-      'trial-fixtures',
+      '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
       'artifacts',
     );
     expect(
@@ -354,8 +369,8 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'run-invalid-fixture',
-      trialId: 'trial-invalid-fixture',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b36',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b37',
     });
 
     expect(result.status).toBe('failed');
@@ -387,8 +402,8 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'run-duplicate-fixture',
-      trialId: 'trial-duplicate-fixture',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b38',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b39',
     });
 
     expect(result.status).toBe('failed');
@@ -410,17 +425,17 @@ describe('runEval', () => {
 
     const result = await execute(evaluation, {
       report: localReportStore(root),
-      runId: 'run-failure',
-      trialId: 'trial-failure',
+      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3a',
+      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3b',
     });
 
     expect(result.status).toBe('failed');
     const trajectory = await readFile(
       path.join(
         root,
-        'run-failure',
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b3a',
         'trials',
-        'trial-failure',
+        '0197f17c-4d89-7f81-9d42-6c497e6f6b3b',
         'trajectory.jsonl',
       ),
       'utf8',

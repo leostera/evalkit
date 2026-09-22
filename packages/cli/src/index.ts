@@ -13,6 +13,13 @@ import type {
 } from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function assertUuid(value: string, label: string): void {
+  if (!UUID_PATTERN.test(value)) throw new Error(`Invalid ${label}`);
+}
+
 type LocalRun = {
   id: string;
   evalId: string;
@@ -307,7 +314,7 @@ async function listLocalRuns(): Promise<LocalRun[]> {
 }
 
 async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId)) throw new Error('Invalid run ID');
+  assertUuid(runId, 'run ID');
   const trialsRoot = resolve(reportRoot, runId, 'trials');
   let trialIds: string[];
   try {
@@ -349,8 +356,8 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
 }
 
 async function readTrialDetail(runId: string, trialId: string) {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
-    throw new Error('Invalid report ID');
+  assertUuid(runId, 'run ID');
+  assertUuid(trialId, 'trial ID');
   const root = resolve(reportRoot, runId, 'trials', trialId);
   return {
     manifest: await readJson(resolve(root, 'manifest.json')),
@@ -359,8 +366,8 @@ async function readTrialDetail(runId: string, trialId: string) {
 }
 
 async function listTrialArtifacts(runId: string, trialId: string) {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
-    throw new Error('Invalid report ID');
+  assertUuid(runId, 'run ID');
+  assertUuid(trialId, 'trial ID');
   const root = resolve(reportRoot, runId, 'trials', trialId, 'artifacts');
   const result: Array<{
     path: string;
@@ -388,8 +395,8 @@ async function listTrialArtifacts(runId: string, trialId: string) {
 }
 
 async function listCandidateWorkspace(runId: string, trialId: string) {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
-    throw new Error('Invalid report ID');
+  assertUuid(runId, 'run ID');
+  assertUuid(trialId, 'trial ID');
   const root = resolve(
     reportRoot,
     runId,
@@ -431,8 +438,8 @@ async function readCandidateWorkspaceFile(
   trialId: string,
   relativePath: string,
 ): Promise<Response> {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
-    throw new Error('Invalid report ID');
+  assertUuid(runId, 'run ID');
+  assertUuid(trialId, 'trial ID');
   const root = resolve(
     reportRoot,
     runId,
@@ -455,8 +462,8 @@ async function readTrajectory(
   runId: string,
   trialId: string,
 ): Promise<unknown[]> {
-  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
-    throw new Error('Invalid report ID');
+  assertUuid(runId, 'run ID');
+  assertUuid(trialId, 'trial ID');
   const contents = await readFile(
     resolve(reportRoot, runId, 'trials', trialId, 'trajectory.jsonl'),
     'utf8',
