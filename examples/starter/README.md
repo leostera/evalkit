@@ -10,4 +10,4 @@ bun run evals
 bun run dashboard
 ```
 
-`bun run evals` delegates to `evalkit run-evals`: it loads the explicit `src/registry.ts` and writes local reports under `evalkit-results/`. This ordinary report directory can be further processed, such as by a static-site generator. `bun run dashboard` delegates to `evalkit serve-dashboard`, then prints the local dashboard URL. Report state is ignored by Git.
+`bun run evals` delegates to `evalkit run-evals`: it loads the explicit `src/registry.ts`, writes local reports under `_evalkit-results/`, and preserves trial workspaces under `_evalkit-sandbox/<eval-id>/` for inspection. These ordinary local directories can be deleted when no longer needed. `bun run dashboard` delegates to `evalkit serve-dashboard`, then prints the local dashboard URL. Report and sandbox state are ignored by Git.

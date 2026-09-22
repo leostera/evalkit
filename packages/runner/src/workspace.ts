@@ -82,11 +82,24 @@ function assertUniqueDestinations(
 }
 
 /** Creates isolated candidate and evaluator directories and materializes fixtures into each. */
+function evalDirectoryName(evalId: string): string {
+  const value = evalId.split(':').at(-1) ?? evalId;
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
 export async function createTrialWorkspace(
   context: FixtureContext,
   fixtures: readonly Fixture[] = [],
+  persistentRoot?: string,
 ): Promise<TrialWorkspace> {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
+  const root = persistentRoot
+    ? path.join(
+        path.resolve(persistentRoot),
+        evalDirectoryName(context.evalId),
+        `${context.runId}-${context.trialId}`,
+      )
+    : await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
+  const persistent = persistentRoot !== undefined;
   const artifacts: ArtifactView = {
     candidate: { root: path.join(root, 'candidate') },
     evaluator: { root: path.join(root, 'evaluator') },
@@ -123,7 +136,8 @@ export async function createTrialWorkspace(
 
     return {
       artifacts,
-      cleanup: () => rm(root, { recursive: true, force: true }),
+      // Persistent local workspaces are intentionally retained for debugging.
+      cleanup: persistent ? async () => {} : () => rm(root, { recursive: true, force: true }),
     };
   } catch (error) {
     await rm(root, { recursive: true, force: true });

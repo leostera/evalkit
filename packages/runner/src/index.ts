@@ -46,6 +46,8 @@ export type RunEvalOptions = {
   concurrency?: number;
   /** Optional shared limiter for coordinating trials across aggregate runs. */
   semaphore?: Effect.Semaphore;
+  /** Base directory for persistent local trial workspaces. Omit for an ephemeral OS temp workspace. */
+  workspaceRoot?: string;
   now?: () => Date;
 };
 
@@ -336,7 +338,11 @@ async function runTrial(
 
   try {
     await emitRunner({ kind: 'trial-started', timestamp: now().toISOString() });
-    workspace = await createTrialWorkspace(fixtureContext, definition.fixtures);
+    workspace = await createTrialWorkspace(
+      fixtureContext,
+      definition.fixtures,
+      options.workspaceRoot,
+    );
     context = { ...fixtureContext, workspace: workspace.artifacts.candidate };
     session = await definition.agent.start({
       context,

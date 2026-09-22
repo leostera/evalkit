@@ -86,7 +86,8 @@ type TrajectoryMeasurements = {
 };
 
 const projectRoot = process.cwd();
-const reportRoot = resolve(projectRoot, 'evalkit-results');
+const reportRoot = resolve(projectRoot, '_evalkit-results');
+const sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
 
 function dashboardRunStatus(summary: {
   status: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -282,6 +283,7 @@ async function runEvals(options: {
             runEval(evaluation, {
               report: localReportStore(reportRoot),
               ...(suiteId ? { suiteId } : {}),
+              workspaceRoot: sandboxRoot,
               ...(runtimeFor(evaluation) ? { runtime: runtimeFor(evaluation) } : {}),
               concurrency: options.concurrency,
               semaphore,

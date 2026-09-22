@@ -19,7 +19,7 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 The implemented first slice runs a single trial against an AUT defined by the eval author, streams normalized events into an append-only `trajectory.jsonl`, runs deterministic predicates, and writes a local report tree:
 
 ```text
-evalkit-results/<run-id>/
+_evalkit-results/<run-id>/
 ├── manifest.json
 ├── summary.json
 └── trials/<trial-id>/
@@ -29,7 +29,7 @@ evalkit-results/<run-id>/
     └── summary.json
 ```
 
-Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers an explicit project registry with `evalkit run-evals` and writes reports to `evalkit-results/` by default.
+Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers an explicit project registry with `evalkit run-evals`, writes reports to `_evalkit-results/`, and preserves candidate/evaluator workspaces under `_evalkit-sandbox/<eval-id>/` for local inspection.
 
 ## Development
 
