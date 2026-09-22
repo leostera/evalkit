@@ -83,7 +83,7 @@ export interface DashboardApi {
   listSuites(): Promise<SuiteSummary[]>;
   listRuns(): Promise<RunSummary[]>;
   listTrials(runId: string): Promise<TrialSummary[]>;
-  getTrajectory(runId: string, trialId: string): Promise<TrajectoryEvent[]>;
+  getTrialEvents(runId: string, trialId: string): Promise<TrajectoryEvent[]>;
   getTrial(
     runId: string,
     trialId: string,
@@ -167,10 +167,10 @@ export function createHttpDashboardApi(options: {
         throw new Error(`Dashboard request failed: ${response.status}`);
       return response;
     },
-    async getTrajectory(runId, trialId) {
+    async getTrialEvents(runId, trialId) {
       return (
         await request<{ events: TrajectoryEvent[] }>(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/trajectory`,
+          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/events`,
         )
       ).events;
     },

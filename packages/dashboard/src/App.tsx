@@ -466,7 +466,7 @@ function TrialDetail({
   useEffect(() => {
     if (!selected) return;
     void Promise.all([
-      api.getTrajectory(selected.run.id, selected.trial.id),
+      api.getTrialEvents(selected.run.id, selected.trial.id),
       api.getTrial(selected.run.id, selected.trial.id),
       api.listArtifacts(selected.run.id, selected.trial.id),
     ]).then(([nextEvents, nextDetail, nextArtifacts]) => {

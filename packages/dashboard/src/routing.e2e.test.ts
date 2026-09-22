@@ -39,7 +39,7 @@ afterAll(async () => {
 });
 
 describe('dashboard URL routing', () => {
-  test('navigates from suites to runs and trajectory URLs', async () => {
+  test('navigates from suites to runs and trial URLs', async () => {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
     page.on('request', (request) => {
@@ -115,7 +115,7 @@ describe('dashboard URL routing', () => {
             ],
           }),
         });
-      } else if (url.pathname.includes('/trajectory')) {
+      } else if (url.pathname.includes('/events')) {
         void request.respond({
           status: 200,
           contentType: 'application/json',

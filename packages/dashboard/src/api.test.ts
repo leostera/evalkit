@@ -44,13 +44,13 @@ describe('dashboard HTTP API', () => {
       baseUrl: 'https://evalkit.example',
       fetch: async (input) => {
         expect(input.toString()).toBe(
-          'https://evalkit.example/v1/runs/run-1/trials/a%2Fb/trajectory',
+          'https://evalkit.example/v1/runs/run-1/trials/a%2Fb/events',
         );
         return new Response('', { status: 404 });
       },
     });
 
-    await expect(api.getTrajectory('run-1', 'a/b')).rejects.toThrow(
+    await expect(api.getTrialEvents('run-1', 'a/b')).rejects.toThrow(
       'Dashboard request failed: 404',
     );
   });

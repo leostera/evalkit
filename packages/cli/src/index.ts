@@ -611,7 +611,7 @@ async function serveDashboard(): Promise<void> {
       );
     }
   });
-  app.get('/v1/runs/:runId/trials/:trialId/trajectory', async (context) => {
+  app.get('/v1/runs/:runId/trials/:trialId/events', async (context) => {
     try {
       return context.json({
         events: await readTrajectory(
