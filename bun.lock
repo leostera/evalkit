@@ -51,6 +51,10 @@
         "@evalkit/core": "*",
         "@evalkit/runner": "*",
       },
+      "optionalPeers": [
+        "@evalkit/core",
+        "@evalkit/runner",
+      ],
     },
     "packages/cloudflare": {
       "name": "@evalkit/cloudflare",
@@ -97,6 +101,9 @@
       "peerDependencies": {
         "@evalkit/core": "*",
       },
+      "optionalPeers": [
+        "@evalkit/core",
+      ],
     },
   },
   "packages": {

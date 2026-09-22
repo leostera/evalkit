@@ -11,6 +11,9 @@
   "peerDependencies": {
     "@evalkit/core": "*"
   },
+  "peerDependenciesMeta": {
+    "@evalkit/core": { "optional": true }
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "check": "tsc --noEmit"
