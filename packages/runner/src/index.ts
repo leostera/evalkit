@@ -42,6 +42,10 @@ export type RunEvalOptions = {
   trials?: number;
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
   runtime?: AgentRuntimeName;
+  /** Maximum number of trials from this aggregate run executing concurrently. */
+  concurrency?: number;
+  /** Optional shared limiter for coordinating trials across aggregate runs. */
+  semaphore?: Effect.Semaphore;
   now?: () => Date;
 };
 
@@ -184,17 +188,30 @@ async function executeRun(
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt: aggregateStartedAt.toISOString(),
   });
-  const trials = await Promise.all(
-    Array.from({ length: requestedTrials }, (_, trialIndex) =>
-      runTrial(definition, {
-        ...options,
-        runId,
-        trialId: createId('trial'),
-        trials: 1,
-        runWriter,
-        trialIndex,
-      }),
-    ),
+  const trialEffects = Array.from(
+    { length: requestedTrials },
+    (_, trialIndex) => {
+      const trial = Effect.tryPromise({
+        try: () =>
+          runTrial(definition, {
+            ...options,
+            runId,
+            trialId: createId('trial'),
+            trials: 1,
+            runWriter,
+            trialIndex,
+          }),
+        catch: (error) => error,
+      });
+      return options.semaphore
+        ? options.semaphore.withPermits(1)(trial)
+        : trial;
+    },
+  );
+  const trials = await Effect.runPromise(
+    Effect.all(trialEffects, {
+      concurrency: options.concurrency ?? 32,
+    }),
   );
   const failed = trials.filter(
     (trial) => trial.status !== 'completed' || !trial.scoring?.passed,

@@ -210,6 +210,7 @@ async function runEvals(options: {
   json: boolean;
   suiteId?: string;
   suiteName?: string;
+  concurrency: number;
 }): Promise<void> {
   const registry = await loadRegistry();
   const evaluations = options.evalIds
@@ -228,50 +229,73 @@ async function runEvals(options: {
   const suiteIdByEvalId = new Map(
     registry.metadata().map((metadata) => [metadata.uri, metadata.suiteUri]),
   );
-  let failed = false;
-  for (const evaluation of evaluations) {
-    if (!evaluation) continue;
-    const suiteId = options.suiteId ?? suiteIdByEvalId.get(evaluation.uri);
-    const trialCount = evaluation.policy?.trials ?? 1;
-    if (!options.json) {
-      printEvalStart(evaluation);
-      console.log(`  trials   ${trialCount}`);
-    }
-    const startedAt = performance.now();
-    const aggregate = await Effect.runPromise(
-      runEval(evaluation, {
-        report: localReportStore(reportRoot),
-        ...(suiteId ? { suiteId } : {}),
-        runtime: 'local',
+  const semaphore = Effect.unsafeMakeSemaphore(options.concurrency);
+  const jobs = evaluations
+    .filter(
+      (evaluation): evaluation is EvalDefinition => evaluation !== undefined,
+    )
+    .map((evaluation) =>
+      Effect.tryPromise({
+        try: async () => {
+          const suiteId =
+            options.suiteId ?? suiteIdByEvalId.get(evaluation.uri);
+          const trialCount = evaluation.policy?.trials ?? 1;
+          if (!options.json) {
+            printEvalStart(evaluation);
+            console.log(`  trials   ${trialCount}`);
+          }
+          const startedAt = performance.now();
+          const aggregate = await Effect.runPromise(
+            runEval(evaluation, {
+              report: localReportStore(reportRoot),
+              ...(suiteId ? { suiteId } : {}),
+              runtime: 'local',
+              concurrency: options.concurrency,
+              semaphore,
+            }),
+          );
+          const trialResults = aggregate.trials ?? [aggregate];
+          let failed = false;
+          for (const [index, result] of trialResults.entries()) {
+            if (!options.json && trialCount > 1)
+              console.log(
+                `\n  ${paint.yellow(`Trial ${index + 1}/${trialCount}`)}`,
+              );
+            const measurements = await measureTrajectory(
+              result.runId,
+              result.trialId,
+            );
+            if (options.json)
+              console.log(
+                JSON.stringify({
+                  ...result,
+                  trial: index + 1,
+                  trialCount,
+                  measurements,
+                }),
+              );
+            else
+              printResult(
+                evaluation,
+                result,
+                result.durationMs ?? 0,
+                measurements,
+              );
+            failed ||= result.status !== 'completed';
+          }
+          if (!options.json && trialCount > 1)
+            console.log(
+              `\n  ${paint.cyan('run')}     ${paint.dim(aggregate.runId)} (${Math.round(performance.now() - startedAt)}ms aggregate)`,
+            );
+          return failed;
+        },
+        catch: (error) => error,
       }),
     );
-    const trialResults = aggregate.trials ?? [aggregate];
-    for (const [index, result] of trialResults.entries()) {
-      if (!options.json && trialCount > 1)
-        console.log(`\n  ${paint.yellow(`Trial ${index + 1}/${trialCount}`)}`);
-      const measurements = await measureTrajectory(
-        result.runId,
-        result.trialId,
-      );
-      if (options.json)
-        console.log(
-          JSON.stringify({
-            ...result,
-            trial: index + 1,
-            trialCount,
-            measurements,
-          }),
-        );
-      else
-        printResult(evaluation, result, result.durationMs ?? 0, measurements);
-      failed ||= result.status !== 'completed';
-    }
-    if (!options.json && trialCount > 1)
-      console.log(
-        `\n  ${paint.cyan('run')}     ${paint.dim(aggregate.runId)} (${Math.round(performance.now() - startedAt)}ms aggregate)`,
-      );
-  }
-  if (failed) process.exitCode = 1;
+  const failed = await Effect.runPromise(
+    Effect.all(jobs, { concurrency: options.concurrency }),
+  );
+  if (failed.some(Boolean)) process.exitCode = 1;
 }
 
 async function listLocalRuns(): Promise<LocalRun[]> {
@@ -545,6 +569,7 @@ async function serveDashboard(): Promise<void> {
       evalIds: [evaluation.uri],
       suiteId,
       suiteName: registeredSuite?.name,
+      concurrency: 32,
     });
     return context.json({ accepted: true }, 202);
   });
@@ -556,6 +581,7 @@ async function serveDashboard(): Promise<void> {
       evalIds: suite.evals.map((evaluation) => evaluation.uri),
       suiteId: suite.uri,
       suiteName: suite.name,
+      concurrency: 32,
     });
     return context.json({ accepted: true }, 202);
   });
@@ -696,10 +722,23 @@ const flags = new Set(
   arguments_.filter((argument) => argument.startsWith('--')),
 );
 const evalId = arguments_.find((argument) => !argument.startsWith('--'));
+const concurrencyArgument = arguments_.find((argument) =>
+  argument.startsWith('--concurrency='),
+);
+const concurrency = Number(
+  concurrencyArgument?.split('=', 2)[1] ??
+    process.env.EVALKIT_CONCURRENCY ??
+    32,
+);
+if (!Number.isInteger(concurrency) || concurrency < 1)
+  throw new Error(
+    `Concurrency must be a positive integer; received ${concurrency}`,
+  );
 if (command === 'run-evals')
   await runEvals({
     evalIds: evalId ? [evalId] : undefined,
     json: flags.has('--json'),
+    concurrency,
   });
 else if (command === 'run-suite') {
   if (!evalId) throw new Error('run-suite requires a suite ID');
@@ -710,6 +749,7 @@ else if (command === 'run-suite') {
     json: flags.has('--json'),
     suiteId: suite.uri,
     suiteName: suite.name,
+    concurrency,
   });
 } else if (command === 'serve-dashboard') await serveDashboard();
 else if (command === 'help' || command === '--help')
