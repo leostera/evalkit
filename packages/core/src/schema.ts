@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema';
+import { resourceUriSchema } from './identity.js';
 
 /** Runtime schemas for serialized Evalkit report and API boundaries. */
 export const RunStatusSchema = Schema.Literal(
@@ -23,11 +24,11 @@ export const AutIdentitySchema = Schema.Struct({
 export const RunMetadataSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
-  runUri: Schema.String,
+  runUri: resourceUriSchema('run'),
   evalId: Schema.String,
-  evalUri: Schema.String,
+  evalUri: resourceUriSchema('eval'),
   suiteId: Schema.optional(Schema.String),
-  suiteUri: Schema.optional(Schema.String),
+  suiteUri: Schema.optional(resourceUriSchema('suite')),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });
@@ -35,12 +36,12 @@ export const RunMetadataSchema = Schema.Struct({
 export const TrialMetadataSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
-  runUri: Schema.String,
+  runUri: resourceUriSchema('run'),
   trialId: Schema.String,
-  trialUri: Schema.String,
+  trialUri: resourceUriSchema('trial'),
   trialIndex: Schema.Number,
   evalId: Schema.String,
-  evalUri: Schema.String,
+  evalUri: resourceUriSchema('eval'),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });

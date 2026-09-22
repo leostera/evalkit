@@ -20,6 +20,7 @@ import {
   type RunnerEvent,
   type RunResult,
   type RunStatus,
+  type ResourceKind,
   type RunWriter,
   type ScoreResult,
   type Uuid,
@@ -81,7 +82,7 @@ function createId(_kind: 'run' | 'trial'): string {
   return crypto.randomUUID();
 }
 
-function canonicalId<K extends 'run' | 'trial'>(kind: K, id: string) {
+function canonicalId<K extends ResourceKind>(kind: K, id: string) {
   return resourceUri(kind, id as Uuid);
 }
 
@@ -174,10 +175,7 @@ async function executeRun(
     ...(options.suiteId
       ? {
           suiteId: options.suiteId,
-          suiteUri: canonicalId('run', options.suiteId).replace(
-            'evalkit:run:',
-            'evalkit:suite:',
-          ) as `evalkit:suite:${string}`,
+          suiteUri: canonicalId('suite', options.suiteId),
         }
       : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
@@ -275,10 +273,7 @@ async function runTrial(
       ...(options.suiteId
         ? {
             suiteId: options.suiteId,
-            suiteUri: canonicalId('run', options.suiteId).replace(
-              'evalkit:run:',
-              'evalkit:suite:',
-            ) as `evalkit:suite:${string}`,
+            suiteUri: canonicalId('suite', options.suiteId),
           }
         : {}),
       ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),

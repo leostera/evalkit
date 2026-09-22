@@ -22,6 +22,23 @@ export type Uuid = typeof UuidSchema.Type;
 export type ResourceUri<TKind extends ResourceKind = ResourceKind> =
   `evalkit:${TKind}:${string}`;
 
+export const ResourceUriSchema = Schema.String.pipe(
+  Schema.pattern(
+    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact):[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  ),
+);
+
+export function resourceUriSchema<TKind extends ResourceKind>(kind: TKind) {
+  return Schema.String.pipe(
+    Schema.pattern(
+      new RegExp(
+        `^evalkit:${kind}:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+        'i',
+      ),
+    ),
+  );
+}
+
 export function resourceUri<TKind extends ResourceKind>(
   kind: TKind,
   uuid: Uuid,
