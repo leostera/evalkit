@@ -146,13 +146,11 @@ async function measureTrajectory(
   );
 }
 
-function printEvalStart(evaluation: EvalDefinition, suiteId?: string): void {
+function printEvalStart(evaluation: EvalDefinition): void {
   console.log(
     `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? evaluation.uri)}`,
   );
-  console.log(
-    `  ${paint.blue('eval')}     ${paint.dim(suiteId ? `${suiteId}#${evaluation.uri}` : evaluation.uri)}`,
-  );
+  console.log(`  ${paint.blue('eval')}     ${paint.dim(evaluation.uri)}`);
   console.log(
     `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
   );
@@ -236,7 +234,7 @@ async function runEvals(options: {
     const suiteId = options.suiteId ?? suiteIdByEvalId.get(evaluation.uri);
     const trialCount = evaluation.policy?.trials ?? 1;
     if (!options.json) {
-      printEvalStart(evaluation, suiteId);
+      printEvalStart(evaluation);
       console.log(`  trials   ${trialCount}`);
     }
     const startedAt = performance.now();
