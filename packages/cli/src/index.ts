@@ -4,12 +4,15 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
+import * as Schema from 'effect/Schema';
 import { Hono } from 'hono';
-import type {
-  EvalDefinition,
-  EvalRegistry,
-  TrajectoryEvent,
-  TrialResult,
+import {
+  RunMetadataSchema,
+  RunSummarySchema,
+  type EvalDefinition,
+  type EvalRegistry,
+  type TrajectoryEvent,
+  type TrialResult,
 } from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
 
@@ -25,7 +28,7 @@ type LocalRun = {
   evalId: string;
   suiteId?: string;
   agent?: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt?: string;
   completedTrials: number;
@@ -251,18 +254,8 @@ async function listLocalRuns(): Promise<LocalRun[]> {
       const directory = resolve(reportRoot, id);
       try {
         const [manifest, summary] = await Promise.all([
-          readJson<{
-            evalId: string;
-            suiteId?: string;
-            aut?: { kind: string; id?: string; version?: string };
-            startedAt: string;
-          }>(`${directory}/manifest.json`),
-          readJson<{
-            status: LocalRun['status'];
-            endedAt: string;
-            durationMs?: number;
-            trialCount: number;
-          }>(`${directory}/summary.json`),
+          readSchema(`${directory}/manifest.json`, RunMetadataSchema),
+          readSchema(`${directory}/summary.json`, RunSummarySchema),
         ]);
         const trialIds = await readdir(`${directory}/trials`);
         const trials = await Promise.all(
@@ -283,7 +276,7 @@ async function listLocalRuns(): Promise<LocalRun[]> {
             ? {
                 agent: [
                   manifest.aut.kind,
-                  manifest.aut.id,
+                  manifest.aut.uri,
                   manifest.aut.version,
                 ]
                   .filter(Boolean)
@@ -476,6 +469,15 @@ async function readTrajectory(
 
 async function readJson<T>(file: string): Promise<T> {
   return JSON.parse(await readFile(file, 'utf8')) as T;
+}
+
+async function readSchema<A, I>(
+  file: string,
+  schema: Schema.Schema<A, I>,
+): Promise<A> {
+  return Schema.decodeUnknownSync(schema)(
+    JSON.parse(await readFile(file, 'utf8')),
+  );
 }
 function contentType(file: string): string {
   return (
