@@ -47,7 +47,10 @@ export function RunTable({
           suites.find((suite) => suite.uri === run.suiteId)?.name ??
           run.suiteId,
         eval: evaluation?.name ?? evaluation?.slug ?? run.evalId,
-        agent: evaluation?.agent.uri ?? evaluation?.agent.kind,
+        agent:
+          evaluation?.agent.name ??
+          evaluation?.agent.kind ??
+          evaluation?.agent.uri,
         status: run.status,
         trials: run.completedTrials,
         score: run.score,
@@ -161,7 +164,7 @@ export function RunTable({
                     {evaluation?.name ?? evaluation?.slug ?? 'Unnamed eval'}
                   </td>
                   <td>
-                    {evaluation?.agent.uri ?? evaluation?.agent.kind ?? '—'}
+                    {evaluation?.agent.name ?? evaluation?.agent.kind ?? '—'}
                   </td>
                   <td>
                     <span className={`status ${run.status}`}>{run.status}</span>

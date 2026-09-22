@@ -6,6 +6,8 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue };
 
 export type AutIdentity = {
+  /** Human-readable logical agent name shown in catalogs and dashboards. */
+  name?: string;
   kind: string;
   uri: ResourceUri<'agent'>;
   version?: string;
@@ -402,6 +404,7 @@ export type EvalCatalogEntry = {
   name?: string;
   suiteUri?: ResourceUri<'suite'>;
   agent: {
+    name?: string;
     kind: string;
     uri?: ResourceUri<'agent'>;
     version?: string;
@@ -487,6 +490,7 @@ export function registerEvals<
           ...(evaluation.name ? { name: evaluation.name } : {}),
           ...(suiteUri ? { suiteUri } : {}),
           agent: {
+            ...(identity?.name ? { name: identity.name } : {}),
             kind: identity?.kind ?? 'adapter',
             ...(identity?.uri ? { uri: identity.uri } : {}),
             ...(identity?.version ? { version: identity.version } : {}),

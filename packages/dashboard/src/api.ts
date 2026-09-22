@@ -9,6 +9,7 @@ export type CatalogEval = EvalSummary & {
   path: string;
   trialCount: number;
   agent: {
+    name?: string;
     kind: string;
     uri?: string;
     version?: string;

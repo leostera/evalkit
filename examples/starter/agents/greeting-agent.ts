@@ -3,6 +3,7 @@ import { defineAgent } from '@evalkit/core';
 /** A deliberately tiny AUT owned by this example project. */
 export const greetingAgent = defineAgent({
   identity: {
+    name: 'Greeting Agent',
     kind: 'example',
     uri: 'evalkit:agent:0197f17c-4d89-7f81-9d42-6c497e6f6b11',
     version: '1',
