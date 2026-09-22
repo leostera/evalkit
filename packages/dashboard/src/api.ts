@@ -1,6 +1,7 @@
 export type EvalSummary = {
   uri: string;
   uuid: string;
+  slug?: string;
   name?: string;
   suiteUri?: string;
 };

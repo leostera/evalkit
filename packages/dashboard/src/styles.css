@@ -137,6 +137,86 @@ th {
 .nested {
   background: #fafafa;
 }
+.table-sort {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  text-transform: inherit;
+}
+.data-table th,
+.data-table td {
+  vertical-align: middle;
+}
+.data-table button:not(.table-sort) {
+  border: 1px solid #111;
+  background: #fff;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+.trial-inspector {
+  display: grid;
+  grid-template-columns: minmax(18rem, 25rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.trial-overview {
+  background: #f7f7f7;
+  border: 1px solid #111;
+  padding: 0.75rem;
+  width: auto;
+}
+.trial-overview h2,
+.trial-overview h3 {
+  border-bottom: 1px solid #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  padding-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+.metadata-list {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  margin: 0.75rem 0;
+}
+.metadata-list dt,
+.metadata-list dd {
+  border-bottom: 1px solid #ddd;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.3rem 0;
+}
+.metadata-list dt {
+  color: #666;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+.metadata-list dd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+.compact-table {
+  font-size: 0.78rem;
+}
+.compact-table th,
+.compact-table td {
+  white-space: normal;
+}
+.timeline-heading {
+  align-items: baseline;
+  border-bottom: 2px solid #111;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.timeline-heading h2 {
+  font-size: 1rem;
+}
+
 tr {
   cursor: pointer;
 }
@@ -244,6 +324,9 @@ pre {
   white-space: pre-wrap;
 }
 @media (max-width: 650px) {
+  .trial-inspector {
+    grid-template-columns: 1fr;
+  }
   .trial-summary {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -160,8 +160,8 @@ describe('dashboard URL routing', () => {
     await page.waitForSelector('.table-wrap > table > tbody > tr');
     await page.click('.table-wrap > table > tbody > tr');
     expect(new URL(page.url()).pathname).toBe('/run/run-123');
-    await page.waitForSelector('.nested tbody tr');
-    await page.click('.nested tbody tr');
+    await page.waitForSelector('.nested tbody tr button');
+    await page.click('.nested tbody tr button');
     expect(new URL(page.url()).pathname).toBe(
       '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
