@@ -83,7 +83,10 @@ function createId(_kind: 'run' | 'trial'): string {
 }
 
 function canonicalId<K extends ResourceKind>(kind: K, id: string) {
-  return resourceUri(kind, id as Uuid);
+  const prefix = `evalkit:${kind}:`;
+  return (
+    id.startsWith(prefix) ? id : resourceUri(kind, id as Uuid)
+  ) as `evalkit:${K}:${string}`;
 }
 
 function assertUuid(value: string, label: string): void {
