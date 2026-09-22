@@ -262,7 +262,8 @@ async function runEvals(options: {
             measurements,
           }),
         );
-      else printResult(evaluation, result, 0, measurements);
+      else
+        printResult(evaluation, result, result.durationMs ?? 0, measurements);
       failed ||= result.status !== 'completed';
     }
     if (!options.json && trialCount > 1)
