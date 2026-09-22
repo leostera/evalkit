@@ -72,21 +72,21 @@ Routes:
 
 ```text
 /suites
-/suite/:suiteUuid
+/suites/:suiteUuid
 /eval/:evalUuid
 /agents
 /agent/:agentUuid
 /fixtures
 /fixture/:fixtureUuid
 /runs
-/run/:runUuid
-/trial/:trialUuid
-/workspace/:trialUuid
+/runs/:runUuid
+/trials/:trialUuid
+/workspaces/:trialUuid
 ```
 
 - [x] Remove the Trajectories navigation item and `trajectory` screen.
 - [x] Rename trajectory inspector to trial detail.
-- [x] Use `/trial/:trialUuid` for explicit trial actions and refresh restoration.
+- [x] Use `/trials/:trialUuid` for explicit trial actions and refresh restoration.
 - [x] Keep event timeline as the right column inside trial detail.
 - [x] Add workspace/artifact route from trial detail.
 - [ ] Replace all display of legacy IDs with canonical URI/short UUID presentation.

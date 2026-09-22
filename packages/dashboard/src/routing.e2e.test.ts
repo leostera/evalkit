@@ -136,7 +136,7 @@ describe('dashboard URL routing', () => {
     await page.waitForSelector('tbody tr button');
     await page.click('tbody tr button');
     expect(new URL(page.url()).pathname).toBe(
-      '/suite/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+      '/suites/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
     );
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
@@ -145,7 +145,7 @@ describe('dashboard URL routing', () => {
     );
     await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe(
-      '/suite/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+      '/suites/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
     );
 
     await page.evaluate(() => {
@@ -159,21 +159,21 @@ describe('dashboard URL routing', () => {
     expect(new URL(page.url()).pathname).toBe('/runs');
     await page.waitForSelector('.table-wrap > table > tbody > tr');
     await page.click('.table-wrap > table > tbody > tr');
-    expect(new URL(page.url()).pathname).toBe('/run/run-123');
+    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
     await page.waitForSelector('.nested tbody tr button');
     await page.click('.nested tbody tr button');
     expect(new URL(page.url()).pathname).toBe(
-      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
     await page.reload({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe(
-      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/run/run-123');
+    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
     await page.goForward({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe(
-      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
   }, 30_000);
 });

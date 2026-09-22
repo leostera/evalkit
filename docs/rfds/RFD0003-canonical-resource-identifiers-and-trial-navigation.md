@@ -10,7 +10,7 @@
 
 ## Summary
 
-This RFD proposes that Evalkit identify durable resources with canonical URI-shaped identifiers such as `evalkit:trial:<uuid>`, while browser routes and local report-directory segments use the UUID portion alone. It replaces path-like suite IDs, short eval IDs, and per-run trial labels as primary identity with globally unique, typed identifiers. It also makes a trial—not a trajectory—the inspectable resource in the dashboard: a trial page at `/trial/:trialUuid` contains the trial’s scores, workspace snapshot, artifacts, and event timeline. This is a hard cutover with no legacy identifier parsing or fallback URL support.
+This RFD proposes that Evalkit identify durable resources with canonical URI-shaped identifiers such as `evalkit:trial:<uuid>`, while browser routes and local report-directory segments use the UUID portion alone. It replaces path-like suite IDs, short eval IDs, and per-run trial labels as primary identity with globally unique, typed identifiers. It also makes a trial—not a trajectory—the inspectable resource in the dashboard: a trial page at `/trials/:trialUuid` contains the trial’s scores, workspace snapshot, artifacts, and event timeline. This is a hard cutover with no legacy identifier parsing or fallback URL support.
 
 ## Motivation
 
@@ -32,7 +32,7 @@ An eval author, evaluator, or dashboard user should be able to copy a canonical 
 - Separate immutable identity from human-readable names and slugs.
 - Use UUID route keys for clean browser URLs and local report paths.
 - Make trials globally addressable without their parent run in a route.
-- Make `/trial/:trialUuid` the canonical dashboard inspection page for scores, artifacts, workspace, and events.
+- Make `/trials/:trialUuid` the canonical dashboard inspection page for scores, artifacts, workspace, and events.
 - Preserve the provider-neutral core model defined by RFD0001.
 - Give local and hosted runners the same report and API identity contract.
 - Make identifier kind validation explicit at Schema, API, and report boundaries.
@@ -93,13 +93,13 @@ evalkit-results/
 The dashboard uses the trial UUID directly:
 
 ```text
-/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b6d
+/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b6d
 ```
 
 That page is the complete trial inspector. Its left column contains stable trial facts and scores; its right column contains the ordered event timeline. The workspace link is scoped to the same trial:
 
 ```text
-/workspace/0197f17c-4d89-7f81-9d42-6c497e6f6b6d
+/workspaces/0197f17c-4d89-7f81-9d42-6c497e6f6b6d
 ```
 
 ### Resource relationships
@@ -175,7 +175,7 @@ The dashboard removes the standalone Trajectories navigation item. It provides a
 View trial →
 ```
 
-The target is `/trial/:trialUuid`. The trial page includes:
+The target is `/trials/:trialUuid`. The trial page includes:
 
 - run, suite, eval, and agent references;
 - trial index, status, duration, and event/turn counts;
@@ -250,7 +250,7 @@ Treating the timeline as part of a trial aligns navigation with the report tree 
 
 ### Simpler or narrower approach
 
-Keep current IDs and change only the browser route to `/trial/:runId/:trialId`. This would address route ambiguity, but it leaves reports, APIs, and future hosted projections with mixed identity conventions. It also keeps trial identity contextual rather than globally addressable.
+Keep current IDs and change only the browser route to `/trials/:runId/:trialId`. This would address route ambiguity, but it leaves reports, APIs, and future hosted projections with mixed identity conventions. It also keeps trial identity contextual rather than globally addressable.
 
 ### Other alternatives considered
 

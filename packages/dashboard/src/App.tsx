@@ -11,12 +11,12 @@ import type {
 } from './api.js';
 
 function screenTitle(pathname: string): string {
-  if (pathname.startsWith('/trial/')) return 'Trial detail';
-  if (pathname.startsWith('/workspace/')) return 'Candidate workspace';
+  if (pathname.startsWith('/trials/')) return 'Trial detail';
+  if (pathname.startsWith('/workspaces/')) return 'Candidate workspace';
   if (pathname.startsWith('/evals/')) return 'Eval detail';
   if (pathname.startsWith('/agents')) return 'Agents';
   if (pathname.startsWith('/fixtures')) return 'Fixtures';
-  if (pathname.startsWith('/runs') || pathname.startsWith('/run/'))
+  if (pathname.startsWith('/runs') || pathname.startsWith('/runs/'))
     return 'Runs';
   return 'Suites & evals';
 }

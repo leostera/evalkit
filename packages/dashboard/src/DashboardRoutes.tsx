@@ -46,7 +46,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
-            onOpenSuite={(id) => navigate(`/suite/${encodeURIComponent(id)}`)}
+            onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
               navigate(`/evals/${encodeURIComponent(entry.path)}`)
             }
@@ -54,7 +54,7 @@ export function DashboardRoutes({
         }
       />
       <Route
-        path="/suite/:suiteUuid"
+        path="/suites/:suiteUuid"
         element={<SuiteRoute api={api} suites={suites} catalog={catalog} />}
       />
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
@@ -73,7 +73,7 @@ export function DashboardRoutes({
         }
       />
       <Route
-        path="/run/:runUuid"
+        path="/runs/:runUuid"
         element={
           <RunTableRoute
             api={api}
@@ -85,13 +85,13 @@ export function DashboardRoutes({
         }
       />
       <Route
-        path="/trial/:trialUuid"
+        path="/trials/:trialUuid"
         element={
           <TrialDetailRoute api={api} catalog={catalog} selected={selected} />
         }
       />
       <Route
-        path="/workspace/:trialUuid"
+        path="/workspaces/:trialUuid"
         element={<WorkspaceDetail api={api} selected={selected} />}
       />
       <Route
@@ -101,7 +101,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
-            onOpenSuite={(id) => navigate(`/suite/${encodeURIComponent(id)}`)}
+            onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
               navigate(`/evals/${encodeURIComponent(entry.path)}`)
             }
@@ -154,9 +154,9 @@ function RunTableRoute(props: {
       selectedRunId={runUuid}
       onTrial={(run, trial) => {
         props.onTrial(run, trial);
-        navigate(`/trial/${encodeURIComponent(trial.id)}`);
+        navigate(`/trials/${encodeURIComponent(trial.id)}`);
       }}
-      onOpenRun={(run) => navigate(`/run/${encodeURIComponent(run.id)}`)}
+      onOpenRun={(run) => navigate(`/runs/${encodeURIComponent(run.id)}`)}
     />
   );
 }
@@ -180,7 +180,7 @@ function TrialDetailRoute({
       selected={selected}
       onWorkspace={() =>
         selected &&
-        navigate(`/workspace/${encodeURIComponent(selected.trial.id)}`)
+        navigate(`/workspaces/${encodeURIComponent(selected.trial.id)}`)
       }
     />
   );
