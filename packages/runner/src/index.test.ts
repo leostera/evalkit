@@ -38,7 +38,10 @@ async function reportDirectory(): Promise<string> {
 
 function testAgent(response: string | (() => Promise<string>)) {
   return defineAgent({
-    identity: { kind: 'test-agent' },
+    identity: {
+      kind: 'test-agent',
+      uri: 'evalkit:agent:0197f17c-4d89-7f81-9d42-6c497e6f6b18',
+    },
     async start({ onEvent }) {
       await onEvent({ kind: 'started', timestamp: new Date().toISOString() });
       return {
@@ -73,7 +76,7 @@ describe('runEval', () => {
   test('streams a trajectory, scores it, and writes a hierarchical report', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'greeting',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
       agent: testAgent('Hello back!'),
       transcript: [user('Hello')],
       scoring: [
@@ -123,7 +126,7 @@ describe('runEval', () => {
   test('groups requested independent trials beneath one aggregate run', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'many-trials',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b07',
       agent: testAgent('Aye!'),
       transcript: [user('Hello')],
       scoring: [predicate('responded', () => 1)],
@@ -138,11 +141,10 @@ describe('runEval', () => {
     expect(result.runId).toBe('aggregate-run');
     expect(result.trialCount).toBe(3);
     expect(result.passed).toBe(3);
-    expect(result.trials?.map((trial) => trial.trialId)).toEqual([
-      'trial-0001',
-      'trial-0002',
-      'trial-0003',
-    ]);
+    expect(result.trials?.map((trial) => trial.trialId)).toHaveLength(3);
+    expect(
+      result.trials?.every((trial) => /^[0-9a-f-]{36}$/.test(trial.trialId)),
+    ).toBe(true);
     for (const trial of result.trials ?? []) {
       await access(
         path.join(
@@ -164,7 +166,7 @@ describe('runEval', () => {
     const root = await reportDirectory();
     let selectedRuntime: string | undefined;
     const evaluation = defineEval({
-      id: 'runtime-selection',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b08',
       agent: defineAgent({
         runtimes: {
           local: {
@@ -199,7 +201,7 @@ describe('runEval', () => {
   test('rejects an undeclared AUT runtime', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'missing-runtime',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b09',
       agent: testAgent('unused'),
       transcript: [],
       scoring: [],
@@ -220,7 +222,7 @@ describe('runEval', () => {
     let candidateRoot = '';
     await writeFile(path.join(source, 'starter.txt'), 'candidate fixture');
     const evaluation = defineEval({
-      id: 'fixtures',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0a',
       agent: defineAgent({
         async start({ context, onEvent }) {
           return {
@@ -252,14 +254,32 @@ describe('runEval', () => {
         },
       }),
       fixtures: [
-        directory(source, { dst: 'project', visibility: 'candidate' }),
-        file(path.join(source, 'starter.txt'), {
-          dst: 'copied.txt',
-          visibility: 'evaluator',
-        }),
-        inlineFile('hidden.txt', 'evaluator fixture', 'evaluator'),
-        dynamic(() =>
-          inlineFile('generated.txt', 'dynamic fixture', 'candidate'),
+        directory(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b19',
+          source,
+          { dst: 'project', visibility: 'candidate' },
+        ),
+        file(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1a',
+          path.join(source, 'starter.txt'),
+          {
+            dst: 'copied.txt',
+            visibility: 'evaluator',
+          },
+        ),
+        inlineFile(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1b',
+          'hidden.txt',
+          'evaluator fixture',
+          'evaluator',
+        ),
+        dynamic('evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1c', () =>
+          inlineFile(
+            'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1d',
+            'generated.txt',
+            'dynamic fixture',
+            'candidate',
+          ),
         ),
       ],
       transcript: [user('Create the output')],
@@ -318,9 +338,16 @@ describe('runEval', () => {
   test('fails safely when fixture destinations escape the workspace', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'invalid-fixture',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0b',
       agent: testAgent('unused'),
-      fixtures: [inlineFile('../outside.txt', 'nope', 'candidate')],
+      fixtures: [
+        inlineFile(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1e',
+          '../outside.txt',
+          'nope',
+          'candidate',
+        ),
+      ],
       transcript: [],
       scoring: [],
     });
@@ -338,11 +365,21 @@ describe('runEval', () => {
   test('fails safely for duplicate fixture destinations', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'duplicate-fixture',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0c',
       agent: testAgent('unused'),
       fixtures: [
-        inlineFile('same.txt', 'first', 'candidate'),
-        inlineFile('same.txt', 'second', 'candidate'),
+        inlineFile(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1f',
+          'same.txt',
+          'first',
+          'candidate',
+        ),
+        inlineFile(
+          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b20',
+          'same.txt',
+          'second',
+          'candidate',
+        ),
       ],
       transcript: [],
       scoring: [],
@@ -363,7 +400,7 @@ describe('runEval', () => {
   test('persists a partial trajectory when the AUT fails', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      id: 'failure',
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0d',
       agent: testAgent(async () => {
         throw new Error('boom');
       }),

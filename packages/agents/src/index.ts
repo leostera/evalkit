@@ -22,7 +22,10 @@ export type PiAutOptions = {
 export function piAgent(options: PiAutOptions = {}): AutAdapter {
   const command = options.command ?? 'pi';
   return defineAgent({
-    identity: { kind: 'process', id: 'pi' },
+    identity: {
+      kind: 'process',
+      uri: 'evalkit:agent:0197f17c-4d89-7f81-9d42-6c497e6f6b12',
+    },
     runtimes: { local: { kind: 'process', configuration: { command } } },
     async start({ context, onEvent }) {
       await onEvent({ kind: 'started', timestamp: new Date().toISOString() });

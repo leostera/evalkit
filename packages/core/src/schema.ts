@@ -16,7 +16,7 @@ export const RecordedErrorSchema = Schema.Struct({
 
 export const AutIdentitySchema = Schema.Struct({
   kind: Schema.String,
-  id: Schema.optional(Schema.String),
+  uri: Schema.String,
   version: Schema.optional(Schema.String),
 });
 

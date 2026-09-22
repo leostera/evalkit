@@ -48,7 +48,7 @@ describe('dashboard URL routing', () => {
         '/v1/catalog': {
           evals: [
             {
-              id: 'greeting',
+              uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
               path: 'examples.starter#greeting',
               name: 'Greeting',
               trialCount: 2,
@@ -60,12 +60,22 @@ describe('dashboard URL routing', () => {
         },
         '/v1/evals': {
           evals: [
-            { id: 'greeting', name: 'Greeting', suiteId: 'examples.starter' },
+            {
+              uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
+              uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b01',
+              name: 'Greeting',
+              suiteUri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+            },
           ],
         },
         '/v1/suites': {
           suites: [
-            { id: 'examples.starter', name: 'Starter', evalIds: ['greeting'] },
+            {
+              uri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+              uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+              name: 'Starter',
+              evalUris: ['evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01'],
+            },
           ],
         },
         '/v1/runs': {
@@ -96,7 +106,7 @@ describe('dashboard URL routing', () => {
           body: JSON.stringify({
             trials: [
               {
-                id: 'trial-1',
+                id: '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
                 index: 0,
                 status: 'completed',
                 startedAt: new Date().toISOString(),
@@ -125,14 +135,18 @@ describe('dashboard URL routing', () => {
     await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
     await page.waitForSelector('tbody tr button');
     await page.click('tbody tr button');
-    expect(new URL(page.url()).pathname).toBe('/suites/examples.starter');
+    expect(new URL(page.url()).pathname).toBe(
+      '/suite/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+    );
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
     expect(new URL(page.url()).pathname).toBe(
       '/evals/examples.starter%23greeting',
     );
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/suites/examples.starter');
+    expect(new URL(page.url()).pathname).toBe(
+      '/suite/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+    );
 
     await page.evaluate(() => {
       const button = [...document.querySelectorAll('nav button')].find(
@@ -145,15 +159,21 @@ describe('dashboard URL routing', () => {
     expect(new URL(page.url()).pathname).toBe('/runs');
     await page.waitForSelector('.table-wrap > table > tbody > tr');
     await page.click('.table-wrap > table > tbody > tr');
-    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
+    expect(new URL(page.url()).pathname).toBe('/run/run-123');
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
-    expect(new URL(page.url()).pathname).toBe('/trajectory/trial-1');
+    expect(new URL(page.url()).pathname).toBe(
+      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+    );
     await page.reload({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/trajectory/trial-1');
+    expect(new URL(page.url()).pathname).toBe(
+      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+    );
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
+    expect(new URL(page.url()).pathname).toBe('/run/run-123');
     await page.goForward({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/trajectory/trial-1');
+    expect(new URL(page.url()).pathname).toBe(
+      '/trial/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+    );
   }, 30_000);
 });

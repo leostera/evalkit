@@ -16,6 +16,8 @@ import { localReportStore, runEval } from '@evalkit/runner';
 type LocalRun = {
   id: string;
   evalId: string;
+  suiteId?: string;
+  agent?: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt?: string;
@@ -25,6 +27,13 @@ type LocalRun = {
   durationMs?: number;
 };
 
+type LocalScore = {
+  name: string;
+  value?: number;
+  passed: boolean;
+  explanation?: string;
+  durationMs: number;
+};
 type LocalTrial = {
   id: string;
   index: number;
@@ -33,6 +42,7 @@ type LocalTrial = {
   startedAt: string;
   completedAt?: string;
   durationMs?: number;
+  scores: LocalScore[];
 };
 
 type TrajectoryMeasurements = {
@@ -63,7 +73,7 @@ function agentLabel(evaluation: EvalDefinition): string {
   if (!identity) return 'unidentified agent';
   return [
     identity.kind,
-    identity.id,
+    identity.uri,
     identity.version && `v${identity.version}`,
   ]
     .filter(Boolean)
@@ -109,9 +119,9 @@ async function measureTrajectory(
 }
 
 function printEvalStart(evaluation: EvalDefinition, suiteId?: string): void {
-  console.log(`\n◆ ${evaluation.name ?? evaluation.id}`);
+  console.log(`\n◆ ${evaluation.name ?? evaluation.uri}`);
   console.log(
-    `  eval     ${suiteId ? `${suiteId}#${evaluation.id}` : evaluation.id}`,
+    `  eval     ${suiteId ? `${suiteId}#${evaluation.uri}` : evaluation.uri}`,
   );
   console.log(`  agent    ${agentLabel(evaluation)}`);
   console.log(
@@ -174,12 +184,12 @@ async function runEvals(options: {
   }
 
   const suiteIdByEvalId = new Map(
-    registry.metadata().map((metadata) => [metadata.id, metadata.suiteId]),
+    registry.metadata().map((metadata) => [metadata.uri, metadata.suiteUri]),
   );
   let failed = false;
   for (const evaluation of evaluations) {
     if (!evaluation) continue;
-    const suiteId = options.suiteId ?? suiteIdByEvalId.get(evaluation.id);
+    const suiteId = options.suiteId ?? suiteIdByEvalId.get(evaluation.uri);
     const trialCount = evaluation.policy?.trials ?? 1;
     if (!options.json) {
       printEvalStart(evaluation, suiteId);
@@ -234,9 +244,12 @@ async function listLocalRuns(): Promise<LocalRun[]> {
       const directory = resolve(reportRoot, id);
       try {
         const [manifest, summary] = await Promise.all([
-          readJson<{ evalId: string; startedAt: string }>(
-            `${directory}/manifest.json`,
-          ),
+          readJson<{
+            evalId: string;
+            suiteId?: string;
+            aut?: { kind: string; id?: string; version?: string };
+            startedAt: string;
+          }>(`${directory}/manifest.json`),
           readJson<{
             status: LocalRun['status'];
             endedAt: string;
@@ -258,6 +271,18 @@ async function listLocalRuns(): Promise<LocalRun[]> {
         return {
           id,
           evalId: manifest.evalId,
+          ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
+          ...(manifest.aut
+            ? {
+                agent: [
+                  manifest.aut.kind,
+                  manifest.aut.id,
+                  manifest.aut.version,
+                ]
+                  .filter(Boolean)
+                  .join(' / '),
+              }
+            : {}),
           status: summary.status,
           startedAt: manifest.startedAt,
           ...(summary.endedAt ? { completedAt: summary.endedAt } : {}),
@@ -301,7 +326,7 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
           status: LocalRun['status'];
           endedAt?: string;
           durationMs?: number;
-          scoring?: { overall?: number };
+          scoring?: { overall?: number; results: LocalScore[] };
         }>(resolve(trialsRoot, id, 'summary.json')),
       ]);
       return {
@@ -316,6 +341,7 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
         ...(summary.scoring?.overall === undefined
           ? {}
           : { score: summary.scoring.overall }),
+        scores: summary.scoring?.results ?? [],
       };
     }),
   );
@@ -410,7 +436,7 @@ async function serveDashboard(): Promise<void> {
       return context.text('Unknown eval', 404);
     void runEvals({
       json: false,
-      evalIds: [evaluation.id],
+      evalIds: [evaluation.uri],
       suiteId,
       suiteName: registeredSuite?.name,
     });
@@ -421,8 +447,8 @@ async function serveDashboard(): Promise<void> {
     if (!suite) return context.text('Unknown suite', 404);
     void runEvals({
       json: false,
-      evalIds: suite.evals.map((evaluation) => evaluation.id),
-      suiteId: suite.id,
+      evalIds: suite.evals.map((evaluation) => evaluation.uri),
+      suiteId: suite.uri,
       suiteName: suite.name,
     });
     return context.json({ accepted: true }, 202);
@@ -529,9 +555,9 @@ else if (command === 'run-suite') {
   const suite = (await loadRegistry()).getSuite(evalId);
   if (!suite) throw new Error(`Unknown suite: ${evalId}`);
   await runEvals({
-    evalIds: suite.evals.map((evaluation) => evaluation.id),
+    evalIds: suite.evals.map((evaluation) => evaluation.uri),
     json: flags.has('--json'),
-    suiteId: suite.id,
+    suiteId: suite.uri,
     suiteName: suite.name,
   });
 } else if (command === 'serve-dashboard') await serveDashboard();

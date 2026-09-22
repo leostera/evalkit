@@ -14,7 +14,9 @@ process.chdir(
 
 test('runs the starter eval and writes an inspectable report', async () => {
   const reportRoot = await mkdtemp(join(tmpdir(), 'evalkit-starter-'));
-  const evaluation = registry.get('starter-greeting');
+  const evaluation = registry.get(
+    'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
+  );
   if (!evaluation) throw new Error('Starter eval is not registered');
 
   const result = await Effect.runPromise(

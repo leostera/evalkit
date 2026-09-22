@@ -11,14 +11,26 @@ describe('dashboard HTTP API', () => {
         requests.push(new Request(input));
         return Response.json(
           new URL(input.toString()).pathname === '/v1/evals'
-            ? { evals: [{ id: 'support', name: 'Support' }] }
+            ? {
+                evals: [
+                  {
+                    uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+                    uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+                    name: 'Support',
+                  },
+                ],
+              }
             : { runs: [] },
         );
       },
     });
 
     await expect(api.listEvals()).resolves.toEqual([
-      { id: 'support', name: 'Support' },
+      {
+        uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+        uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+        name: 'Support',
+      },
     ]);
     await expect(api.listRuns()).resolves.toEqual([]);
     expect(requests.map((request) => request.url)).toEqual([

@@ -9,8 +9,7 @@ import type {
   TrialSummary,
 } from './api.js';
 
-type Screen =
-  'catalog' | 'eval' | 'agents' | 'fixtures' | 'runs' | 'trajectory';
+type Screen = 'catalog' | 'eval' | 'agents' | 'fixtures' | 'runs' | 'trial';
 
 type SelectedTrial = { run: RunSummary; trial: TrialSummary };
 
@@ -19,9 +18,9 @@ function currentPath(): string {
 }
 
 function routeScreen(path: string): Screen {
-  if (path.startsWith('/runs')) return 'runs';
+  if (path.startsWith('/runs') || path.startsWith('/run/')) return 'runs';
   if (path.startsWith('/evals/')) return 'eval';
-  if (path.startsWith('/trajectory/')) return 'trajectory';
+  if (path.startsWith('/trial/')) return 'trial';
   if (path.startsWith('/agents')) return 'agents';
   if (path.startsWith('/fixtures')) return 'fixtures';
   return 'catalog';
@@ -60,10 +59,11 @@ export function App({ api }: { api: DashboardApi }) {
   }, [api]);
 
   useEffect(() => {
-    const trialId = path.startsWith('/trajectory/')
-      ? decodeURIComponent(path.slice('/trajectory/'.length))
+    const trialId = path.startsWith('/trial/')
+      ? decodeURIComponent(path.slice('/trial/'.length).split('/')[0] ?? '')
       : undefined;
-    if (!trialId || selected || !runs.length) return;
+    if (!trialId || !runs.length) return;
+    if (selected?.trial.id === trialId) return;
     void Promise.all(
       runs.map(async (run) => ({ run, trials: await api.listTrials(run.id) })),
     ).then((matches) => {
@@ -81,14 +81,14 @@ export function App({ api }: { api: DashboardApi }) {
 
   const openTrial = (run: RunSummary, trial: TrialSummary) => {
     setSelected({ run, trial });
-    navigate(`/trajectory/${encodeURIComponent(trial.id)}`);
+    navigate(`/trial/${encodeURIComponent(trial.id)}`);
   };
   const headings: Record<Screen, string> = {
     catalog: 'Suites & evals',
     agents: 'Agents',
     fixtures: 'Fixtures',
     runs: 'Runs',
-    trajectory: 'Trajectory',
+    trial: 'Trial detail',
     eval: 'Eval detail',
   };
 
@@ -106,9 +106,7 @@ export function App({ api }: { api: DashboardApi }) {
           evalkit
         </a>
         <nav aria-label="Dashboard">
-          {(
-            ['catalog', 'agents', 'fixtures', 'runs', 'trajectory'] as const
-          ).map((id) => (
+          {(['catalog', 'agents', 'fixtures', 'runs'] as const).map((id) => (
             <button
               className={screen === id ? 'active' : ''}
               key={id}
@@ -130,11 +128,11 @@ export function App({ api }: { api: DashboardApi }) {
             suites={suites}
             catalog={catalog}
             selectedSuiteId={
-              path.startsWith('/suites/')
-                ? decodeURIComponent(path.slice('/suites/'.length))
+              path.startsWith('/suite/')
+                ? decodeURIComponent(path.slice('/suite/'.length))
                 : undefined
             }
-            onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
+            onOpenSuite={(id) => navigate(`/suite/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
               navigate(`/evals/${encodeURIComponent(entry.path)}`)
             }
@@ -153,16 +151,16 @@ export function App({ api }: { api: DashboardApi }) {
             api={api}
             runs={runs}
             onTrial={openTrial}
-            onOpenRun={(run) => navigate(`/runs/${encodeURIComponent(run.id)}`)}
+            onOpenRun={(run) => navigate(`/run/${encodeURIComponent(run.id)}`)}
             selectedRunId={
-              path.startsWith('/runs/')
+              path.startsWith('/run/')
                 ? decodeURIComponent(path.split('/')[2] ?? '')
                 : undefined
             }
           />
         ) : null}
-        {screen === 'trajectory' ? (
-          <Trajectory api={api} selected={selected} />
+        {screen === 'trial' ? (
+          <TrialDetail api={api} selected={selected} />
         ) : null}
       </section>
     </main>
@@ -203,17 +201,17 @@ function SuiteTable({
             <>
               <SuiteRow
                 suite={suite}
-                expanded={expandedSuite === suite.id}
+                expanded={expandedSuite === suite.uuid}
                 onToggle={() => {
                   setExpanded(
-                    expandedSuite === suite.id ? undefined : suite.id,
+                    expandedSuite === suite.uuid ? undefined : suite.uuid,
                   );
-                  onOpenSuite(suite.id);
+                  onOpenSuite(suite.uuid);
                 }}
-                onRun={() => void api.runSuite(suite.id)}
+                onRun={() => void api.runSuite(suite.uri)}
               />
-              {expandedSuite === suite.id ? (
-                <tr key={`${suite.id}-evals`}>
+              {expandedSuite === suite.uuid ? (
+                <tr key={`${suite.uuid}-evals`}>
                   <td colSpan={3}>
                     <table className="nested">
                       <thead>
@@ -226,9 +224,9 @@ function SuiteTable({
                         </tr>
                       </thead>
                       <tbody>
-                        {suite.evalIds.map((id) => {
+                        {suite.evalUris.map((id) => {
                           const evaluation = catalog.find(
-                            (entry) => entry.id === id,
+                            (entry) => entry.uri === id,
                           );
                           return (
                             <EvalRow
@@ -426,7 +424,7 @@ function RunTable({
   );
 }
 
-function Trajectory({
+function TrialDetail({
   api,
   selected,
 }: {
@@ -454,9 +452,7 @@ function Trajectory({
     });
   }, [api, selected]);
   if (!selected)
-    return (
-      <Empty message="Select a trial from a run to inspect its trajectory." />
-    );
+    return <Empty message="Select a trial from a run to inspect it." />;
   return (
     <section className="timeline">
       <p className="mono">
@@ -535,10 +531,10 @@ function SuiteRow({
   return (
     <tr onClick={onToggle}>
       <td>
-        <button className="mono">{suite.name ?? suite.id}</button>
-        <small>{suite.id}</small>
+        <button className="mono">{suite.name ?? suite.uri}</button>
+        <small>{suite.uri}</small>
       </td>
-      <td>{suite.evalIds.length}</td>
+      <td>{suite.evalUris.length}</td>
       <td>{expanded ? 'expanded' : 'configured'}</td>
       <td>
         <button
@@ -594,7 +590,7 @@ function EvalDetail({
   return (
     <section className="card">
       <p className="mono">{evaluation.path}</p>
-      <h2>{evaluation.name ?? evaluation.id}</h2>
+      <h2>{evaluation.name ?? evaluation.uri}</h2>
       <table className="event-fields">
         <tbody>
           <tr>
@@ -750,7 +746,7 @@ function EventCard({
 }
 
 function agentName(evaluation?: CatalogEval) {
-  return evaluation?.agent.id ?? evaluation?.agent.kind ?? 'adapter';
+  return evaluation?.agent.uri ?? evaluation?.agent.kind ?? 'adapter';
 }
 function Empty({ message }: { message: string }) {
   return (

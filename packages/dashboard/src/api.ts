@@ -1,10 +1,15 @@
-export type EvalSummary = { id: string; name?: string; suiteId?: string };
+export type EvalSummary = {
+  uri: string;
+  uuid: string;
+  name?: string;
+  suiteUri?: string;
+};
 export type CatalogEval = EvalSummary & {
   path: string;
   trialCount: number;
   agent: {
     kind: string;
-    id?: string;
+    uri?: string;
     version?: string;
     runtimes: Array<{ name: string; kind: string }>;
   };
@@ -16,11 +21,18 @@ export type CatalogEval = EvalSummary & {
   }>;
   scorers: Array<{ name: string; kind: string }>;
 };
-export type SuiteSummary = { id: string; name?: string; evalIds: string[] };
+export type SuiteSummary = {
+  uri: string;
+  uuid: string;
+  name?: string;
+  evalUris: string[];
+};
 
 export type RunSummary = {
   id: string;
   evalId: string;
+  suiteId?: string;
+  agent?: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt?: string;
@@ -38,6 +50,13 @@ export type TrialSummary = {
   completedAt?: string;
   durationMs?: number;
   score?: number;
+  scores: Array<{
+    name: string;
+    value?: number;
+    passed: boolean;
+    explanation?: string;
+    durationMs: number;
+  }>;
 };
 
 export type TrajectoryEvent = {

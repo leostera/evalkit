@@ -55,7 +55,7 @@ export function runEval(
   return Effect.gen(function* () {
     yield* Effect.logInfo('eval run started').pipe(
       Effect.annotateLogs({
-        evalId: definition.id,
+        evalId: definition.uri,
         ...(options.runId ? { runId: options.runId } : {}),
         ...(options.suiteId ? { suiteId: options.suiteId } : {}),
       }),
@@ -66,7 +66,7 @@ export function runEval(
     });
     yield* Effect.logInfo('eval run finished').pipe(
       Effect.annotateLogs({
-        evalId: definition.id,
+        evalId: definition.uri,
         runId: result.runId,
         status: result.status,
       }),
@@ -75,8 +75,8 @@ export function runEval(
   });
 }
 
-function createId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+function createId(_kind: 'run' | 'trial'): string {
+  return crypto.randomUUID();
 }
 
 function normalizeScore(
@@ -150,7 +150,7 @@ async function executeRun(
   const runWriter = await options.report.startRun({
     schemaVersion: 1,
     runId,
-    evalId: definition.id,
+    evalId: definition.uri,
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt: aggregateStartedAt.toISOString(),
@@ -160,7 +160,7 @@ async function executeRun(
       runTrial(definition, {
         ...options,
         runId,
-        trialId: `trial-${String(trialIndex + 1).padStart(4, '0')}`,
+        trialId: createId('trial'),
         trials: 1,
         runWriter,
         trialIndex,
@@ -188,7 +188,7 @@ async function executeRun(
   return {
     ...trials[0]!,
     runId,
-    evalId: definition.id,
+    evalId: definition.uri,
     status,
     trialCount: trials.length,
     passed: trials.length - failed,
@@ -229,7 +229,7 @@ async function runTrial(
 
   const fixtureContext = {
     runId,
-    evalId: definition.id,
+    evalId: definition.uri,
     trialId,
     trialIndex: options.trialIndex ?? 0,
     metadata: definition.metadata ?? {},
@@ -241,7 +241,7 @@ async function runTrial(
     (await options.report.startRun({
       schemaVersion: 1,
       runId,
-      evalId: definition.id,
+      evalId: definition.uri,
       ...(options.suiteId ? { suiteId: options.suiteId } : {}),
       ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
       startedAt,
@@ -251,7 +251,7 @@ async function runTrial(
     runId,
     trialId,
     trialIndex: options.trialIndex ?? 0,
-    evalId: definition.id,
+    evalId: definition.uri,
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt,
   });
@@ -443,7 +443,7 @@ async function runTrial(
     runId,
     trialId,
     trialIndex: options.trialIndex ?? 0,
-    evalId: definition.id,
+    evalId: definition.uri,
     status,
     reportLocation: runWriter.location,
     durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
