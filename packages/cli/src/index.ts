@@ -690,10 +690,17 @@ async function serveDashboard(): Promise<void> {
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
     const file = resolve(dashboardRoot, `.${pathname}`);
     if (!file.startsWith(dashboardRoot)) return context.text('Not found', 404);
-    const content = Bun.file(file);
-    if (!(await content.exists())) return context.text('Not found', 404);
+    let content = Bun.file(file);
+    let servedFile = file;
+    if (!(await content.exists())) {
+      // React Router owns browser routes, so refreshes must receive the SPA
+      // entry point instead of being treated as missing static files.
+      if (extname(pathname)) return context.text('Not found', 404);
+      servedFile = resolve(dashboardRoot, 'index.html');
+      content = Bun.file(servedFile);
+    }
     return new Response(content, {
-      headers: { 'content-type': contentType(file) },
+      headers: { 'content-type': contentType(servedFile) },
     });
   });
   const server = Bun.serve({
