@@ -11,6 +11,7 @@ import {
   RunSummarySchema,
   type EvalDefinition,
   type EvalRegistry,
+  type JsonObject,
   type AgentRuntimeName,
   type TrajectoryEvent,
   type TrialResult,
@@ -245,6 +246,7 @@ async function runEvals(options: {
   suiteId?: string;
   suiteName?: string;
   concurrency: number;
+  parameters?: JsonObject;
 }): Promise<void> {
   const registry = await loadRegistry();
   const evaluations = options.evalIds
@@ -287,6 +289,7 @@ async function runEvals(options: {
               ...(runtimeFor(evaluation) ? { runtime: runtimeFor(evaluation) } : {}),
               concurrency: options.concurrency,
               semaphore,
+              ...(options.parameters ? { parameters: options.parameters } : {}),
             }),
           );
           const trialResults = aggregate.trials ?? [aggregate];
@@ -763,24 +766,48 @@ const [command = 'help', ...arguments_] = process.argv.slice(2);
 const flags = new Set(
   arguments_.filter((argument) => argument.startsWith('--')),
 );
-const evalId = arguments_.find((argument) => !argument.startsWith('--'));
-const concurrencyArgument = arguments_.find((argument) =>
-  argument.startsWith('--concurrency='),
-);
-const concurrency = Number(
-  concurrencyArgument?.split('=', 2)[1] ??
-    process.env.EVALKIT_CONCURRENCY ??
-    32,
-);
+const valueOptions = new Set(['--model', '--max-tokens', '--chat-timeout-ms', '--turn-budget', '--concurrency']);
+const positionalArguments: string[] = [];
+for (let index = 0; index < arguments_.length; index += 1) {
+  const argument = arguments_[index]!;
+  if (argument.startsWith('--')) {
+    if (!argument.includes('=') && valueOptions.has(argument)) index += 1;
+    continue;
+  }
+  positionalArguments.push(argument);
+}
+const evalId = positionalArguments[0];
+function argumentValue(name: string): string | undefined {
+  const inline = arguments_.find((argument) => argument.startsWith(`${name}=`));
+  if (inline) return inline.slice(name.length + 1);
+  const index = arguments_.indexOf(name);
+  return index >= 0 ? arguments_[index + 1] : undefined;
+}
+function numericArgument(name: string): number | undefined {
+  const value = argumentValue(name);
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`${name} must be numeric; received ${value}`);
+  return parsed;
+}
+const concurrency = Number(argumentValue('--concurrency') ?? process.env.EVALKIT_CONCURRENCY ?? 32);
 if (!Number.isInteger(concurrency) || concurrency < 1)
   throw new Error(
     `Concurrency must be a positive integer; received ${concurrency}`,
   );
+const parameters: JsonObject = {
+  ...(argumentValue('--model') ? { model: argumentValue('--model')! } : {}),
+  ...(numericArgument('--max-tokens') !== undefined ? { maxTokens: numericArgument('--max-tokens')! } : {}),
+  ...(numericArgument('--chat-timeout-ms') !== undefined ? { chatTimeoutMs: numericArgument('--chat-timeout-ms')! } : {}),
+  ...(numericArgument('--turn-budget') !== undefined ? { turnBudget: numericArgument('--turn-budget')! } : {}),
+};
+const runParameters = Object.keys(parameters).length > 0 ? parameters : undefined;
 if (command === 'run-evals')
   await runEvals({
     evalIds: evalId ? [evalId] : undefined,
     json: flags.has('--json'),
     concurrency,
+    parameters: runParameters,
   });
 else if (command === 'run-suite') {
   if (!evalId) throw new Error('run-suite requires a suite ID');
@@ -792,11 +819,12 @@ else if (command === 'run-suite') {
     suiteId: suite.uri,
     suiteName: suite.name,
     concurrency,
+    parameters: runParameters,
   });
 } else if (command === 'serve-dashboard') await serveDashboard();
 else if (command === 'help' || command === '--help')
   console.log(
-    'evalkit\n\nCommands:\n  run-evals [eval-id] [--local] [--json]\n  run-suite <suite-id> [--local] [--json]\n  serve-dashboard\n',
+    'evalkit\n\nCommands:\n  run-evals [eval-id] [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-suite <suite-id> [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  serve-dashboard\n',
   );
 else {
   console.error(`Unknown command: ${command}`);

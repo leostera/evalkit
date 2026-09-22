@@ -108,6 +108,8 @@ export type AutContext = {
   trialId: string;
   trialIndex: number;
   metadata: JsonObject;
+  /** Run-time parameters supplied by the eval definition or CLI invocation. */
+  parameters?: JsonObject;
   runtime?: AgentRuntimeName;
   /** Contains only resources visible to the AUT/model. */
   workspace: CandidateWorkspace;

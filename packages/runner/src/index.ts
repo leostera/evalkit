@@ -10,6 +10,7 @@ import {
   recordError,
   resourceUri,
   type AgentRuntimeName,
+  type JsonObject,
   type ArtifactEntry,
   type AutContext,
   type AutEvent,
@@ -40,6 +41,8 @@ export type RunEvalOptions = {
   suiteId?: string;
   /** Overrides the eval policy's requested number of independent trials. */
   trials?: number;
+  /** Parameters made available to the AUT for this invocation. */
+  parameters?: JsonObject;
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
   runtime?: AgentRuntimeName;
   /** Maximum number of trials from this aggregate run executing concurrently. */
@@ -285,6 +288,7 @@ async function runTrial(
       ...(definition.metadata ?? {}),
       randomSeed,
     },
+    ...(options.parameters ? { parameters: options.parameters } : {}),
     ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
   const events: TrajectoryEvent[] = [];
