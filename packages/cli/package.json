@@ -6,10 +6,12 @@
     "evalkit": "./src/index.ts"
   },
   "dependencies": {
-    "@evalkit/core": "file:../core",
-    "@evalkit/runner": "file:../runner",
     "effect": "^3.19.0",
     "hono": "^4.11.6"
+  },
+  "peerDependencies": {
+    "@evalkit/core": "*",
+    "@evalkit/runner": "*"
   },
   "scripts": {
     "build": "tsc --noEmit",

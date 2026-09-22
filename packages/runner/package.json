@@ -6,8 +6,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@evalkit/core": "file:../core",
     "effect": "^3.19.0"
+  },
+  "peerDependencies": {
+    "@evalkit/core": "*"
   },
   "scripts": {
     "build": "tsc --noEmit",
