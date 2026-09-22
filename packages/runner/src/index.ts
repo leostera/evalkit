@@ -273,12 +273,16 @@ async function runTrial(
     );
   }
 
+  const randomSeed = crypto.getRandomValues(new Uint32Array(1))[0]!;
   const fixtureContext = {
     runId,
     evalId: definition.uri,
     trialId,
     trialIndex: options.trialIndex ?? 0,
-    metadata: definition.metadata ?? {},
+    metadata: {
+      ...(definition.metadata ?? {}),
+      randomSeed,
+    },
     ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
   const events: TrajectoryEvent[] = [];
@@ -353,7 +357,9 @@ async function runTrial(
           `Transcript step kind "${step.kind}" is not executable yet`,
         );
       }
-      await session.send(step.message);
+      await session.send(
+        step.message.replaceAll('{{randomSeed}}', String(randomSeed)),
+      );
       await emitRunner({
         kind: 'transcript-step-completed',
         step: index,
