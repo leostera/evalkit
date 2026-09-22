@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@evalkit/core": "workspace:*",
+    "@evalkit/core": "file:../core",
     "effect": "^3.19.0"
   },
   "scripts": {
