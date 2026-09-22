@@ -1,0 +1,24 @@
+{
+  "name": "@evalkit/dashboard",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "dev": "vite",
+    "test:e2e": "bun test src/routing.e2e.test.ts"
+  },
+  "dependencies": {
+    "@evalkit/core": "workspace:*",
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "puppeteer": "^25.11.0"
+  }
+}

@@ -1,3 +1,4 @@
+import { Hono } from 'hono';
 import type { EvalRegistry } from '@evalkit/core';
 
 import { hasBearerToken } from './auth.js';
@@ -11,30 +12,42 @@ export type ControlApiOptions = {
 };
 
 /**
- * The project-owned HTTP control plane. Route implementations are added in
- * phases; this boundary consistently authenticates every API route first.
+ * Creates the project-owned Hono control API. The same route factory can be
+ * mounted by a Worker or exercised directly in tests.
  */
 export function createControlApi(options: ControlApiOptions) {
+  const app = new Hono<{ Bindings: ControlApiEnv }>();
+
+  app.use('/v1/*', async (context, next) => {
+    if (
+      !(await hasBearerToken(context.req.raw, context.env.EVALKIT_API_TOKEN))
+    ) {
+      return context.json({ error: { code: 'unauthorized' } }, 401);
+    }
+    await next();
+  });
+
+  app.get('/v1/catalog', (context) =>
+    context.json({ evals: options.registry.catalog() }),
+  );
+  app.get('/v1/evals', (context) =>
+    context.json({ evals: options.registry.metadata() }),
+  );
+  app.get('/v1/suites', (context) =>
+    context.json({ suites: options.registry.suiteMetadata() }),
+  );
+
+  // The coordinator/D1 projection will replace this empty initial source.
+  // Keeping the envelope stable lets the dashboard ship before scheduling.
+  app.get('/v1/runs', (context) => context.json({ runs: [] }));
+
+  app.all('/v1/*', (context) =>
+    context.json({ error: { code: 'not_implemented' } }, 501),
+  );
+
   return {
-    async fetch(request: Request, env: ControlApiEnv): Promise<Response> {
-      const url = new URL(request.url);
-      if (!url.pathname.startsWith('/v1/')) {
-        return json({ error: { code: 'not_found' } }, 404);
-      }
-
-      if (!(await hasBearerToken(request, env.EVALKIT_API_TOKEN))) {
-        return json({ error: { code: 'unauthorized' } }, 401);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/v1/evals') {
-        return json({ evals: options.registry.metadata() });
-      }
-
-      return json({ error: { code: 'not_implemented' } }, 501);
+    fetch(request: Request, env: ControlApiEnv): Promise<Response> {
+      return Promise.resolve(app.fetch(request, env));
     },
   };
-}
-
-function json(value: unknown, status = 200): Response {
-  return Response.json(value, { status });
 }

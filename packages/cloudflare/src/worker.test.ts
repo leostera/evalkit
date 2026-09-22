@@ -44,9 +44,18 @@ describe('control API', () => {
     });
   });
 
+  test('returns a stable empty run-list envelope before scheduling is enabled', async () => {
+    const response = await fetchApi('/v1/runs', {
+      headers: { authorization: 'Bearer project-token' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ runs: [] });
+  });
+
   test('authenticates unknown API routes before reporting route handling', async () => {
     const unauthorized = await fetchApi('/v1/runs', { method: 'POST' });
-    const authenticated = await fetchApi('/v1/runs', {
+    const authenticated = await fetchApi('/v1/runs/unknown', {
       method: 'POST',
       headers: { authorization: 'Bearer project-token' },
     });

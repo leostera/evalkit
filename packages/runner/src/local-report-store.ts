@@ -1,5 +1,11 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import * as Schema from 'effect/Schema';
+import {
+  RunMetadataSchema,
+  RunSummarySchema,
+  TrialMetadataSchema,
+} from '@evalkit/core';
 import type {
   ReportStore,
   RunMetadata,
@@ -82,14 +88,17 @@ class LocalRunWriter implements RunWriter {
     const directory = path.join(this.directory, 'trials', metadata.trialId);
     await mkdir(directory, { recursive: true });
     await writeJson(path.join(directory, MANIFEST_FILE), {
-      ...metadata,
+      ...Schema.encodeSync(TrialMetadataSchema)(metadata),
       status: 'running',
     });
     return new LocalTrialWriter(directory);
   }
 
   finalize(summary: RunSummary): Promise<void> {
-    return writeJson(path.join(this.directory, 'summary.json'), summary);
+    return writeJson(
+      path.join(this.directory, 'summary.json'),
+      Schema.encodeSync(RunSummarySchema)(summary),
+    );
   }
 }
 
@@ -101,7 +110,7 @@ export function localReportStore(rootDirectory: string): ReportStore {
       const directory = path.resolve(rootDirectory, metadata.runId);
       await mkdir(directory, { recursive: true });
       await writeJson(path.join(directory, MANIFEST_FILE), {
-        ...metadata,
+        ...Schema.encodeSync(RunMetadataSchema)(metadata),
         status: 'running',
       });
       return new LocalRunWriter(

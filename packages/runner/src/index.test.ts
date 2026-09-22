@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -13,6 +14,11 @@ import {
   user,
 } from '@evalkit/core';
 import { localReportStore, runEval } from './index';
+
+const execute = (
+  definition: Parameters<typeof runEval>[0],
+  options: Parameters<typeof runEval>[1],
+) => Effect.runPromise(runEval(definition, options));
 
 const temporaryDirectories: string[] = [];
 
@@ -84,7 +90,7 @@ describe('runEval', () => {
       ],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: 'run-test',
       trialId: 'trial-test',
@@ -114,6 +120,46 @@ describe('runEval', () => {
     });
   });
 
+  test('groups requested independent trials beneath one aggregate run', async () => {
+    const root = await reportDirectory();
+    const evaluation = defineEval({
+      id: 'many-trials',
+      agent: testAgent('Aye!'),
+      transcript: [user('Hello')],
+      scoring: [predicate('responded', () => 1)],
+      policy: { trials: 3 },
+    });
+
+    const result = await execute(evaluation, {
+      report: localReportStore(root),
+      runId: 'aggregate-run',
+    });
+
+    expect(result.runId).toBe('aggregate-run');
+    expect(result.trialCount).toBe(3);
+    expect(result.passed).toBe(3);
+    expect(result.trials?.map((trial) => trial.trialId)).toEqual([
+      'trial-0001',
+      'trial-0002',
+      'trial-0003',
+    ]);
+    for (const trial of result.trials ?? []) {
+      await access(
+        path.join(
+          root,
+          'aggregate-run',
+          'trials',
+          trial.trialId,
+          'summary.json',
+        ),
+      );
+    }
+    const summary = JSON.parse(
+      await readFile(path.join(root, 'aggregate-run', 'summary.json'), 'utf8'),
+    );
+    expect(summary).toMatchObject({ trialCount: 3, passed: 3, failed: 0 });
+  });
+
   test('selects a declared AUT runtime', async () => {
     const root = await reportDirectory();
     let selectedRuntime: string | undefined;
@@ -139,7 +185,7 @@ describe('runEval', () => {
       scoring: [],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runtime: 'local',
       runId: 'run-runtime',
@@ -160,7 +206,7 @@ describe('runEval', () => {
     });
 
     await expect(
-      runEval(evaluation, {
+      execute(evaluation, {
         report: localReportStore(root),
         runtime: 'sandbox',
       }),
@@ -240,7 +286,7 @@ describe('runEval', () => {
       ],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: 'run-fixtures',
       trialId: 'trial-fixtures',
@@ -279,7 +325,7 @@ describe('runEval', () => {
       scoring: [],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: 'run-invalid-fixture',
       trialId: 'trial-invalid-fixture',
@@ -302,7 +348,7 @@ describe('runEval', () => {
       scoring: [],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: 'run-duplicate-fixture',
       trialId: 'trial-duplicate-fixture',
@@ -325,7 +371,7 @@ describe('runEval', () => {
       scoring: [],
     });
 
-    const result = await runEval(evaluation, {
+    const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: 'run-failure',
       trialId: 'trial-failure',

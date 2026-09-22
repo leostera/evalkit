@@ -51,7 +51,8 @@ The local workspace boundary is capability-oriented, not a security sandbox agai
 - [x] Write snapshot metadata into the trial summary.
 - [x] Reject symbolic links and unsupported filesystem entries during snapshotting.
 - [ ] Define whether empty directories must be materialized in the report tree, rather than represented only in summary metadata.
-- [ ] Add explicit abort/failure finalization semantics for run and trial writers.
+- [ ] Refactor local execution so one eval invocation owns one aggregate run and all requested isolated trials.
+- [ ] Add explicit abort/failure finalization semantics for aggregate run and trial writers.
 - [ ] Add report-store failure and artifact-path escape tests.
 
 ### 3. Complete runner lifecycle controls

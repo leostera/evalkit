@@ -169,11 +169,29 @@ export type DynamicFixture = {
 export type Fixture =
   DirectoryFixture | FileFixture | InlineFixture | DynamicFixture;
 
+function defaultFixtureDestination(src: string): string {
+  const normalized = src.replace(/\\/g, '/').replace(/\/+$/, '');
+  const destination = normalized.slice(normalized.lastIndexOf('/') + 1);
+  if (!destination || destination === '.' || destination === '..') {
+    throw new Error(`Fixture source needs a basename: ${src}`);
+  }
+  return destination;
+}
+
+/**
+ * Declares a directory relative to the invoking project's working directory.
+ * The short form is candidate-visible and copies beneath the source basename.
+ */
 export function directory(
   src: string,
-  options: Omit<DirectoryFixture, 'kind' | 'src'>,
+  options: Partial<Omit<DirectoryFixture, 'kind' | 'src'>> = {},
 ): DirectoryFixture {
-  return { kind: 'directory', src, ...options };
+  return {
+    kind: 'directory',
+    src,
+    dst: options.dst ?? defaultFixtureDestination(src),
+    visibility: options.visibility ?? 'candidate',
+  };
 }
 
 export function file(
@@ -288,6 +306,8 @@ export function judgeScorer(
 
 export type EvalPolicy = {
   timeoutMs?: number;
+  /** Number of independent trials requested by local and hosted runners. */
+  trials?: number;
 };
 
 export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
@@ -305,46 +325,177 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
   return definition;
 }
 
-export type EvalRegistry<
+export type EvalSuite<
   TEvals extends readonly EvalDefinition[] = readonly EvalDefinition[],
 > = {
+  id: string;
+  name?: string;
   evals: TEvals;
-  get(id: string): TEvals[number] | undefined;
+};
+
+export function defineSuite<const TSuite extends EvalSuite>(
+  suite: TSuite,
+): TSuite {
+  return suite;
+}
+
+export type EvalRegistration = EvalDefinition | EvalSuite;
+
+function isEvalSuite(
+  registration: EvalRegistration,
+): registration is EvalSuite {
+  return 'evals' in registration;
+}
+
+export type EvalRegistry = {
+  /** All registered evals, flattened from standalone entries and suites. */
+  evals: readonly EvalDefinition[];
+  suites: readonly EvalSuite[];
+  get(id: string): EvalDefinition | undefined;
+  getSuite(id: string): EvalSuite | undefined;
   metadata(): EvalRegistryMetadata[];
+  suiteMetadata(): EvalSuiteMetadata[];
+  catalog(): EvalCatalogEntry[];
 };
 
 export type EvalRegistryMetadata = {
   id: string;
   name?: string;
+  suiteId?: string;
+};
+
+export type EvalSuiteMetadata = {
+  id: string;
+  name?: string;
+  evalIds: string[];
+};
+
+export type EvalCatalogFixture = {
+  kind: Fixture['kind'];
+  source: string;
+  destination?: string;
+  visibility?: FixtureVisibility;
+};
+
+export type EvalCatalogEntry = {
+  id: string;
+  path: string;
+  name?: string;
+  suiteId?: string;
+  agent: {
+    kind: string;
+    id?: string;
+    version?: string;
+    runtimes: Array<{ name: AgentRuntimeName; kind: string }>;
+  };
+  fixtures: EvalCatalogFixture[];
+  trialCount: number;
+  scorers: Array<{ name: string; kind: ScoringRule['kind'] }>;
 };
 
 /**
- * Creates an explicit, statically imported eval registry.
- * Registry construction rejects duplicate and empty IDs before a deployment can
- * accept a request for an ambiguous eval.
+ * Creates an explicit, statically imported eval registry. A suite is a
+ * path-like grouping of evals; nesting is presentation derived from its ID.
  */
-export function registerEvals<const TEvals extends readonly EvalDefinition[]>(
-  evals: TEvals,
-): EvalRegistry<TEvals> {
-  const byId = new Map<string, TEvals[number]>();
-  for (const evaluation of evals) {
-    if (!evaluation.id.trim()) {
-      throw new Error('Eval registry contains an eval with an empty id');
+export function registerEvals<
+  const TRegistrations extends readonly EvalRegistration[],
+>(registrations: TRegistrations): EvalRegistry {
+  const byId = new Map<string, EvalDefinition>();
+  const suiteById = new Map<string, EvalSuite>();
+  const suiteIdByEvalId = new Map<string, string>();
+  const standalone: EvalDefinition[] = [];
+
+  for (const registration of registrations) {
+    const suite = isEvalSuite(registration) ? registration : undefined;
+    if (suite) {
+      if (!suite.id.trim())
+        throw new Error('Eval registry contains a suite with an empty id');
+      if (suiteById.has(suite.id))
+        throw new Error(
+          `Eval registry contains duplicate suite id: ${suite.id}`,
+        );
+      suiteById.set(suite.id, suite);
     }
-    if (byId.has(evaluation.id)) {
-      throw new Error(`Eval registry contains duplicate id: ${evaluation.id}`);
+    const evaluations: readonly EvalDefinition[] = suite
+      ? suite.evals
+      : [registration as EvalDefinition];
+    for (const evaluation of evaluations) {
+      if (!evaluation.id.trim())
+        throw new Error('Eval registry contains an eval with an empty id');
+      if (byId.has(evaluation.id))
+        throw new Error(
+          `Eval registry contains duplicate id: ${evaluation.id}`,
+        );
+      byId.set(evaluation.id, evaluation);
+      if (suite) suiteIdByEvalId.set(evaluation.id, suite.id);
+      else standalone.push(evaluation);
     }
-    byId.set(evaluation.id, evaluation);
   }
 
+  const evals = [
+    ...standalone,
+    ...Array.from(suiteById.values()).flatMap((suite) => suite.evals),
+  ];
   return {
     evals,
+    suites: [...suiteById.values()],
     get: (id) => byId.get(id),
+    getSuite: (id) => suiteById.get(id),
     metadata: () =>
       evals.map(({ id, name }) => ({
         id,
         ...(name ? { name } : {}),
+        ...(suiteIdByEvalId.has(id)
+          ? { suiteId: suiteIdByEvalId.get(id)! }
+          : {}),
       })),
+    suiteMetadata: () =>
+      [...suiteById.values()].map(({ id, name, evals }) => ({
+        id,
+        ...(name ? { name } : {}),
+        evalIds: evals.map((evaluation) => evaluation.id),
+      })),
+    catalog: () =>
+      evals.map((evaluation) => {
+        const suiteId = suiteIdByEvalId.get(evaluation.id);
+        const identity = evaluation.agent.identity;
+        return {
+          id: evaluation.id,
+          path: suiteId ? `${suiteId}#${evaluation.id}` : evaluation.id,
+          ...(evaluation.name ? { name: evaluation.name } : {}),
+          ...(suiteId ? { suiteId } : {}),
+          agent: {
+            kind: identity?.kind ?? 'adapter',
+            ...(identity?.id ? { id: identity.id } : {}),
+            ...(identity?.version ? { version: identity.version } : {}),
+            runtimes: Object.entries(evaluation.agent.runtimes ?? {}).map(
+              ([name, runtime]) => ({
+                name: name as AgentRuntimeName,
+                kind: runtime.kind,
+              }),
+            ),
+          },
+          fixtures: (evaluation.fixtures ?? []).map((fixture) =>
+            fixture.kind === 'dynamic'
+              ? { kind: 'dynamic', source: 'dynamic' }
+              : fixture.kind === 'inline'
+                ? {
+                    kind: 'inline',
+                    source: fixture.file,
+                    destination: fixture.file,
+                    visibility: fixture.visibility,
+                  }
+                : {
+                    kind: fixture.kind,
+                    source: fixture.src,
+                    destination: fixture.dst,
+                    visibility: fixture.visibility,
+                  },
+          ),
+          trialCount: evaluation.policy?.trials ?? 1,
+          scorers: evaluation.scoring.map(({ name, kind }) => ({ name, kind })),
+        };
+      }),
   };
 }
 
@@ -354,6 +505,9 @@ export type RunMetadata = {
   schemaVersion: 1;
   runId: string;
   evalId: string;
+  /** Path-like suite membership when this eval was invoked through a suite. */
+  suiteId?: string;
+  aut?: AutIdentity;
   startedAt: string;
 };
 
@@ -383,6 +537,7 @@ export type ArtifactEntry = {
 export type TrialSummary = {
   status: RunStatus;
   endedAt: string;
+  durationMs?: number;
   scoring?: TrialScoring;
   artifacts?: ArtifactEntry[];
   error?: RecordedError;
@@ -391,6 +546,7 @@ export type TrialSummary = {
 export type RunSummary = {
   status: RunStatus;
   endedAt: string;
+  durationMs?: number;
   trialCount: number;
   passed: number;
   failed: number;
@@ -415,14 +571,36 @@ export type ReportStore = {
   startRun(metadata: RunMetadata): Promise<RunWriter>;
 };
 
-export type RunResult = {
+export type TrialResult = {
   runId: string;
   trialId: string;
+  trialIndex: number;
   status: RunStatus;
   reportLocation: string;
+  durationMs?: number;
   scoring?: TrialScoring;
   error?: RecordedError;
 };
+
+export type AggregateScoring = {
+  passed: number;
+  failed: number;
+  passRate: number;
+  overall?: number;
+};
+
+export type RunResult = TrialResult & {
+  runId: string;
+  evalId?: string;
+  trialCount?: number;
+  passed?: number;
+  failed?: number;
+  aggregateScoring?: AggregateScoring;
+  /** Present for an aggregate multi-trial run. */
+  trials?: TrialResult[];
+};
+
+export * from './schema.js';
 
 export function recordError(error: unknown): RecordedError {
   if (error instanceof Error) {

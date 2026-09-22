@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "effect": "^3.19.0"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "check": "tsc --noEmit"

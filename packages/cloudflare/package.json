@@ -6,7 +6,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@evalkit/core": "workspace:*"
+    "@evalkit/core": "workspace:*",
+    "effect": "^3.19.0",
+    "hono": "^4.11.6"
   },
   "scripts": {
     "build": "tsc --noEmit",

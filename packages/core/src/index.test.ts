@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   agent,
   defineEval,
+  defineSuite,
+  directory,
   registerEvals,
   dynamic,
   inlineFile,
@@ -20,6 +22,15 @@ const aut = {
 };
 
 describe('core definitions', () => {
+  test('defaults shorthand directory fixtures to their candidate basename', () => {
+    expect(directory('../shared-fixtures/starter')).toEqual({
+      kind: 'directory',
+      src: '../shared-fixtures/starter',
+      dst: 'starter',
+      visibility: 'candidate',
+    });
+  });
+
   test('preserves declarative evaluation values', () => {
     const definition = defineEval({
       id: 'smoke',
@@ -51,6 +62,37 @@ describe('core definitions', () => {
     expect(registry.get('registered')).toBe(evaluation);
     expect(registry.metadata()).toEqual([
       { id: 'registered', name: 'Registered eval' },
+    ]);
+  });
+
+  test('flattens suites and preserves suite membership', () => {
+    const evaluation = defineEval({
+      id: 'ship-repair',
+      agent: aut,
+      transcript: [],
+      scoring: [],
+    });
+    const registry = registerEvals([
+      defineSuite({
+        id: 'grand-line.shipwright',
+        name: 'Shipwright journeys',
+        evals: [evaluation],
+      }),
+    ]);
+
+    expect(registry.get('ship-repair')).toBe(evaluation);
+    expect(registry.suiteMetadata()).toEqual([
+      {
+        id: 'grand-line.shipwright',
+        name: 'Shipwright journeys',
+        evalIds: ['ship-repair'],
+      },
+    ]);
+    expect(registry.metadata()).toEqual([
+      {
+        id: 'ship-repair',
+        suiteId: 'grand-line.shipwright',
+      },
     ]);
   });
 

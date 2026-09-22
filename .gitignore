@@ -5,4 +5,5 @@ dist
 .env.*
 !.env.example
 coverage
+evalkit-results
 .wrangler

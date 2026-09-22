@@ -87,14 +87,16 @@ const greeting = defineEval({
 `defineEval` validates and preserves the description; it does not execute it. A runner executes the value:
 
 ```ts
-const result = await runEval(greeting, {
-  report: localReportStore('.evalkit/runs'),
-});
+const result = await Effect.runPromise(
+  runEval(greeting, {
+    report: localReportStore('evalkit-results'),
+  }),
+);
 ```
 
 During execution, the runner:
 
-1. creates a run and trial context;
+1. creates one run context and one or more independent trial contexts;
 2. provisions configured fixtures;
 3. starts the AUT and registers an event callback;
 4. interprets transcript steps in order;
@@ -182,7 +184,7 @@ A predicate may return a number as shorthand or a detailed score result. Scorer 
 A report is a logical result spread across a durable tree, not one large JSON document:
 
 ```text
-.evalkit/runs/<run-id>/
+evalkit-results/<run-id>/
 ├── manifest.json
 ├── summary.json
 └── trials/
@@ -451,7 +453,7 @@ Trajectories and artifacts may contain prompts, model output, tool arguments, so
 
 The initial implementation should:
 
-- keep `.evalkit/` ignored by default;
+- keep `evalkit-results/` ignored by default;
 - avoid persisting environment variables or credentials in metadata;
 - store only relative report and artifact paths;
 - apply output-size limits to events and scorer evidence;
@@ -466,7 +468,7 @@ Implementation should proceed as a narrow vertical slice:
 
 1. Replace provisional core types with `EvalDefinition`, transcript `user(...)`, AUT, event, predicate, and result types.
 2. Validate the runner with an eval-author-defined test agent.
-3. Implement `runEval` for one trial and one or more user steps.
+3. Implement `runEval` for one run, its requested independent trials, and one or more user steps per trial.
 4. Implement deterministic predicates and score normalization.
 5. Implement a local hierarchical report store with append-only `trajectory.jsonl`.
 6. Add failure-path tests proving partial reports survive adapter and scorer errors.
@@ -479,7 +481,7 @@ Acceptance criteria for the first slice:
 - An eval-author-defined test agent can emit assistant and tool events through the callback.
 - A predicate can score the recorded trajectory.
 - The runner returns a compact result with the report path.
-- The local report store writes run and trial manifests, `trajectory.jsonl`, scoring, and summaries.
+- One local eval invocation writes one run manifest and summary, plus one isolated trial report tree per requested trial; `trajectory.jsonl`, scoring, and summaries remain trial-scoped.
 - A forced AUT failure leaves a readable partial trajectory and failed manifest.
 - Tests verify event ordering, score range validation, cleanup, and path containment.
 
@@ -504,10 +506,11 @@ Starting with an eval-author-defined test agent keeps the first implementation f
 Evalkit could expose only:
 
 ```ts
-runEval(async () => {
-  const output = await agent.chat('hello');
-  return output === 'hello back';
-});
+Effect.runPromise(
+  runEval(greeting, {
+    report: localReportStore('evalkit-results'),
+  }),
+);
 ```
 
 This would be quicker to implement but would make tool events, multi-turn scenarios, artifact evaluation, partial failure reports, and alternate transports ad hoc concerns. Each serious consumer would build a separate trajectory and persistence layer, defeating the purpose of a shared library.

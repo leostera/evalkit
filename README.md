@@ -10,6 +10,7 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 - `packages/runner` — in-process runner and local report store
 - `packages/agents` — future Cloudflare Agents SDK AUT adapter
 - `packages/cli` — `evalkit` command-line interface
+- `examples/starter` — runnable local eval project and CLI integration target
 - `examples/agents-sdk` — future evaluated agent example
 - `docs/rfds` — design records
 
@@ -18,7 +19,7 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 The implemented first slice runs a single trial against an AUT defined by the eval author, streams normalized events into an append-only `trajectory.jsonl`, runs deterministic predicates, and writes a local report tree:
 
 ```text
-.evalkit/runs/<run-id>/
+evalkit-results/<run-id>/
 ├── manifest.json
 ├── summary.json
 └── trials/<trial-id>/
@@ -28,7 +29,7 @@ The implemented first slice runs a single trial against an AUT defined by the ev
     └── summary.json
 ```
 
-Artifact workspaces, concrete AUT transports, judges, and CLI discovery are deliberately deferred.
+Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers an explicit project registry with `evalkit run-evals` and writes reports to `evalkit-results/` by default.
 
 ## Development
 

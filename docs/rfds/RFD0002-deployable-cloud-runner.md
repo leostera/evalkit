@@ -290,7 +290,7 @@ Artifacts is both the versioned source of Artifact-backed fixture trees and the 
 A local run uses the same report layout and can later be submitted to the project-owned deployment:
 
 ```bash
-npx evalkit archive .evalkit/runs/run_01K4... \
+npx evalkit archive evalkit-results/run_01K4... \
   --remote https://evals.example.com
 ```
 
@@ -323,7 +323,7 @@ A run always records its bundle version.
 
 #### Run
 
-One submitted invocation of one registered eval with a requested number of trials and serializable parameters. One RunCoordinator Durable Object owns its active state.
+One submitted invocation of one registered eval with a requested number of independent trials and serializable parameters. The run is the aggregate parent of its trial attempts; one RunCoordinator Durable Object owns its active state.
 
 #### Trial
 
@@ -750,7 +750,7 @@ Acceptance requires:
 
 ### Proposed design
 
-The proposed architecture aligns execution and persistence boundaries with the Evalkit data model. A run coordinator owns one run; a Sandbox owns one trial attempt; an Artifact repository owns one immutable attempt report. This makes retries and parallelism understandable and avoids shared mutable filesystems or Git write conflicts.
+The proposed architecture aligns execution and persistence boundaries with the Evalkit data model. A run coordinator owns one aggregate run and its trials; a Sandbox owns one trial attempt; an Artifact repository owns one immutable attempt report. This makes retries and parallelism understandable and avoids shared mutable filesystems or Git write conflicts.
 
 A generated, project-owned deployment solves the executable-definition problem without creating a central code-execution service. Authors deploy exactly the eval code they reviewed, and submissions reference registered IDs.
 

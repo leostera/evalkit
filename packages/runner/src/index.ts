@@ -1,3 +1,11 @@
+export {
+  AutExecutionError,
+  FixtureError,
+  ReportError,
+  ScoringError,
+} from './errors.js';
+
+import { Effect } from 'effect';
 import {
   recordError,
   type AgentRuntimeName,
@@ -11,6 +19,7 @@ import {
   type RunnerEvent,
   type RunResult,
   type RunStatus,
+  type RunWriter,
   type ScoreResult,
   type ScoreValue,
   type TrialScoring,
@@ -25,10 +34,46 @@ export type RunEvalOptions = {
   report: ReportStore;
   runId?: string;
   trialId?: string;
+  suiteId?: string;
+  /** Overrides the eval policy's requested number of independent trials. */
+  trials?: number;
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
   runtime?: AgentRuntimeName;
   now?: () => Date;
 };
+
+type InternalTrialOptions = RunEvalOptions & {
+  runWriter?: RunWriter;
+  trialIndex?: number;
+};
+
+/** Effect-native aggregate eval execution entry point. */
+export function runEval(
+  definition: EvalDefinition,
+  options: RunEvalOptions,
+): Effect.Effect<RunResult, unknown> {
+  return Effect.gen(function* () {
+    yield* Effect.logInfo('eval run started').pipe(
+      Effect.annotateLogs({
+        evalId: definition.id,
+        ...(options.runId ? { runId: options.runId } : {}),
+        ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+      }),
+    );
+    const result = yield* Effect.tryPromise({
+      try: () => executeRun(definition, options),
+      catch: (error) => error,
+    });
+    yield* Effect.logInfo('eval run finished').pipe(
+      Effect.annotateLogs({
+        evalId: definition.id,
+        runId: result.runId,
+        status: result.status,
+      }),
+    );
+    return result;
+  });
+}
 
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -86,10 +131,87 @@ async function closeSession(
   }
 }
 
-/** Executes one trial, streams its trajectory to the report store, and returns a compact result. */
-export async function runEval(
+/** Executes one aggregate eval run and its requested isolated trials. */
+async function executeRun(
   definition: EvalDefinition,
   options: RunEvalOptions,
+): Promise<RunResult> {
+  const requestedTrials = options.trials ?? definition.policy?.trials ?? 1;
+  if (!Number.isInteger(requestedTrials) || requestedTrials < 1) {
+    throw new Error(
+      `Trial count must be a positive integer; received ${requestedTrials}`,
+    );
+  }
+  if (requestedTrials === 1) return runTrial(definition, options);
+
+  const now = options.now ?? (() => new Date());
+  const aggregateStartedAt = now();
+  const runId = options.runId ?? createId('run');
+  const runWriter = await options.report.startRun({
+    schemaVersion: 1,
+    runId,
+    evalId: definition.id,
+    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+    ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+    startedAt: aggregateStartedAt.toISOString(),
+  });
+  const trials = await Promise.all(
+    Array.from({ length: requestedTrials }, (_, trialIndex) =>
+      runTrial(definition, {
+        ...options,
+        runId,
+        trialId: `trial-${String(trialIndex + 1).padStart(4, '0')}`,
+        trials: 1,
+        runWriter,
+        trialIndex,
+      }),
+    ),
+  );
+  const failed = trials.filter(
+    (trial) => trial.status !== 'completed' || !trial.scoring?.passed,
+  ).length;
+  const status = trials.some((trial) => trial.status === 'failed')
+    ? 'failed'
+    : 'completed';
+  const endedAt = now();
+  await runWriter.finalize({
+    status,
+    endedAt: endedAt.toISOString(),
+    durationMs: endedAt.getTime() - aggregateStartedAt.getTime(),
+    trialCount: trials.length,
+    passed: trials.length - failed,
+    failed,
+  });
+  const overallScores = trials
+    .map((trial) => trial.scoring?.overall)
+    .filter((score): score is number => score !== undefined);
+  return {
+    ...trials[0]!,
+    runId,
+    evalId: definition.id,
+    status,
+    trialCount: trials.length,
+    passed: trials.length - failed,
+    failed,
+    aggregateScoring: {
+      passed: trials.length - failed,
+      failed,
+      passRate: (trials.length - failed) / trials.length,
+      ...(overallScores.length
+        ? {
+            overall:
+              overallScores.reduce((sum, score) => sum + score, 0) /
+              overallScores.length,
+          }
+        : {}),
+    },
+    trials,
+  };
+}
+
+async function runTrial(
+  definition: EvalDefinition,
+  options: InternalTrialOptions,
 ): Promise<RunResult> {
   const now = options.now ?? (() => new Date());
   const runId = options.runId ?? createId('run');
@@ -109,22 +231,26 @@ export async function runEval(
     runId,
     evalId: definition.id,
     trialId,
-    trialIndex: 0,
+    trialIndex: options.trialIndex ?? 0,
     metadata: definition.metadata ?? {},
     ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
   const events: TrajectoryEvent[] = [];
-  const runWriter = await options.report.startRun({
-    schemaVersion: 1,
-    runId,
-    evalId: definition.id,
-    startedAt,
-  });
+  const runWriter =
+    options.runWriter ??
+    (await options.report.startRun({
+      schemaVersion: 1,
+      runId,
+      evalId: definition.id,
+      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+      ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+      startedAt,
+    }));
   const trialWriter = await runWriter.startTrial({
     schemaVersion: 1,
     runId,
     trialId,
-    trialIndex: 0,
+    trialIndex: options.trialIndex ?? 0,
     evalId: definition.id,
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt,
@@ -297,24 +423,30 @@ export async function runEval(
   await trialWriter.finalize({
     status,
     endedAt,
+    durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
     scoring,
     ...(artifacts ? { artifacts } : {}),
     ...(error ? { error } : {}),
   });
-  await runWriter.finalize({
-    status,
-    endedAt,
-    trialCount: 1,
-    passed: status === 'completed' && scoring.passed ? 1 : 0,
-    failed: status === 'failed' || !scoring.passed ? 1 : 0,
-    ...(error ? { error } : {}),
-  });
+  if (!options.runWriter) {
+    await runWriter.finalize({
+      status,
+      endedAt,
+      trialCount: 1,
+      passed: status === 'completed' && scoring.passed ? 1 : 0,
+      failed: status === 'failed' || !scoring.passed ? 1 : 0,
+      ...(error ? { error } : {}),
+    });
+  }
 
   return {
     runId,
     trialId,
+    trialIndex: options.trialIndex ?? 0,
+    evalId: definition.id,
     status,
     reportLocation: runWriter.location,
+    durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
     scoring,
     ...(error ? { error } : {}),
   };
