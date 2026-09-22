@@ -35,7 +35,8 @@ export type RunSummary = {
   evalId: string;
   suiteId?: string;
   agent?: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  /** Dashboard status: terminal runs are passed, failed, or errored. */
+  status: 'running' | 'passed' | 'failed' | 'errored';
   startedAt: string;
   completedAt?: string;
   completedTrials: number;

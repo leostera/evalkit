@@ -41,12 +41,14 @@ function assertUuid(value: string, label: string): void {
   if (!UUID_PATTERN.test(value)) throw new Error(`Invalid ${label}`);
 }
 
+type PersistedStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
 type LocalRun = {
   id: string;
   evalId: string;
   suiteId?: string;
   agent?: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'passed' | 'failed' | 'errored';
   startedAt: string;
   completedAt?: string;
   completedTrials: number;
@@ -84,6 +86,28 @@ type TrajectoryMeasurements = {
 
 const projectRoot = process.cwd();
 const reportRoot = resolve(projectRoot, 'evalkit-results');
+
+function dashboardRunStatus(summary: {
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  passed: number;
+  failed: number;
+  trialCount: number;
+}): LocalRun['status'] {
+  if (summary.status === 'running') return 'running';
+  if (summary.status !== 'completed') return 'errored';
+  return summary.failed === 0 && summary.passed === summary.trialCount
+    ? 'passed'
+    : 'failed';
+}
+
+function dashboardTrialStatus(summary: {
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  scoring?: { passed?: boolean };
+}): LocalTrial['status'] {
+  if (summary.status === 'running') return 'running';
+  if (summary.status !== 'completed') return 'errored';
+  return summary.scoring?.passed === true ? 'passed' : 'failed';
+}
 
 async function loadRegistry(): Promise<EvalRegistry> {
   const registryFile = pathToFileURL(
@@ -340,7 +364,7 @@ async function listLocalRuns(): Promise<LocalRun[]> {
                   .join(' / '),
               }
             : {}),
-          status: summary.status,
+          status: dashboardRunStatus(summary),
           startedAt: manifest.startedAt,
           ...(summary.endedAt ? { completedAt: summary.endedAt } : {}),
           ...(summary.durationMs !== undefined
@@ -380,16 +404,16 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
           resolve(trialsRoot, id, 'manifest.json'),
         ),
         readJson<{
-          status: LocalRun['status'];
+          status: PersistedStatus;
           endedAt?: string;
           durationMs?: number;
-          scoring?: { overall?: number; results: LocalScore[] };
+          scoring?: { overall?: number; passed?: boolean; results: LocalScore[] };
         }>(resolve(trialsRoot, id, 'summary.json')),
       ]);
       return {
         id,
         index: manifest.trialIndex,
-        status: summary.status,
+        status: dashboardTrialStatus(summary),
         startedAt: manifest.startedAt,
         ...(summary.endedAt ? { completedAt: summary.endedAt } : {}),
         ...(summary.durationMs !== undefined

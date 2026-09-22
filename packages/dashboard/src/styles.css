@@ -238,19 +238,22 @@ small {
   font-size: 0.72rem;
   padding: 0.1rem 0.3rem;
 }
-.status.running,
-.status.queued,
-.status.cancelled {
+.status.running {
   background: #eee;
   color: #111;
 }
-.status.completed {
+.status.passed {
   background: #111;
   color: #fff;
 }
 .status.failed {
   background: #ddd;
   color: #111;
+}
+.status.errored {
+  background: #f6d7d7;
+  border-color: #a00;
+  color: #700;
 }
 .error {
   background: #eee;
