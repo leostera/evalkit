@@ -44,8 +44,8 @@
         "evalkit": "./src/index.ts",
       },
       "dependencies": {
-        "@evalkit/core": "workspace:*",
-        "@evalkit/runner": "workspace:*",
+        "@evalkit/core": "file:../core",
+        "@evalkit/runner": "file:../runner",
         "effect": "^3.19.0",
         "hono": "^4.11.6",
       },
@@ -782,6 +782,10 @@
 
     "@babel/generator/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
+    "@evalkit/cli/@evalkit/core": ["@evalkit/core@file:packages/core", { "dependencies": { "effect": "^3.19.0" } }],
+
+    "@evalkit/cli/@evalkit/runner": ["@evalkit/runner@file:packages/runner", { "dependencies": { "@evalkit/core": "file:../core", "effect": "^3.19.0" } }],
+
     "@evalkit/runner/@evalkit/core": ["@evalkit/core@file:packages/core", { "dependencies": { "effect": "^3.19.0" } }],
 
     "@jridgewell/gen-mapping/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
@@ -811,6 +815,8 @@
     "type-is/mime-types": ["mime-types@3.0.2", "", { "dependencies": { "mime-db": "^1.54.0" } }, "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="],
 
     "wrap-ansi/string-width": ["string-width@7.2.0", "", { "dependencies": { "emoji-regex": "^10.3.0", "get-east-asian-width": "^1.0.0", "strip-ansi": "^7.1.0" } }, "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ=="],
+
+    "@evalkit/cli/@evalkit/runner/@evalkit/core": ["@evalkit/core@file:packages/core", {}],
 
     "accepts/mime-types/mime-db": ["mime-db@1.54.0", "", {}, "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ=="],
 

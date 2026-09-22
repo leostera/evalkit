@@ -6,8 +6,8 @@
     "evalkit": "./src/index.ts"
   },
   "dependencies": {
-    "@evalkit/core": "workspace:*",
-    "@evalkit/runner": "workspace:*",
+    "@evalkit/core": "file:../core",
+    "@evalkit/runner": "file:../runner",
     "effect": "^3.19.0",
     "hono": "^4.11.6"
   },
