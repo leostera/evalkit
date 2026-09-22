@@ -7,10 +7,12 @@ import { EventCard } from './EventCard.js';
 export function TrialDetail({
   api,
   selected,
+  evalName,
   onWorkspace,
 }: {
   api: DashboardApi;
   selected?: SelectedTrial;
+  evalName?: string;
   onWorkspace(): void;
 }) {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
@@ -45,7 +47,7 @@ export function TrialDetail({
           <dt>run</dt>
           <dd>{selected.run.id}</dd>
           <dt>eval</dt>
-          <dd>{selected.run.evalId}</dd>
+          <dd>{evalName ?? 'Unnamed eval'}</dd>
           <dt>trial number</dt>
           <dd>{selected.trial.index + 1}</dd>
           <dt>status</dt>

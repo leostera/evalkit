@@ -48,9 +48,7 @@ export function RunTable({
           run.suiteId,
         eval: evaluation?.name ?? evaluation?.slug ?? run.evalId,
         agent:
-          evaluation?.agent.name ??
-          evaluation?.agent.kind ??
-          evaluation?.agent.uri,
+          evaluation?.agent.name ?? evaluation?.agent.kind ?? 'Unnamed agent',
         status: run.status,
         trials: run.completedTrials,
         score: run.score,
@@ -164,7 +162,9 @@ export function RunTable({
                     {evaluation?.name ?? evaluation?.slug ?? 'Unnamed eval'}
                   </td>
                   <td>
-                    {evaluation?.agent.name ?? evaluation?.agent.kind ?? '—'}
+                    {evaluation?.agent.name ??
+                      evaluation?.agent.kind ??
+                      'Unnamed agent'}
                   </td>
                   <td>
                     <span className={`status ${run.status}`}>{run.status}</span>

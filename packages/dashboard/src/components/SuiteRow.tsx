@@ -13,8 +13,7 @@ export function SuiteRow({
   return (
     <tr onClick={onToggle}>
       <td>
-        <button className="mono">{suite.name ?? suite.uri}</button>
-        <small>{suite.uri}</small>
+        <button className="mono">{suite.name ?? 'Unnamed suite'}</button>
       </td>
       <td>{suite.evalUris.length}</td>
       <td>{expanded ? 'expanded' : 'configured'}</td>

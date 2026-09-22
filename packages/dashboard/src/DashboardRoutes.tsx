@@ -86,7 +86,9 @@ export function DashboardRoutes({
       />
       <Route
         path="/trial/:trialUuid"
-        element={<TrialDetailRoute api={api} selected={selected} />}
+        element={
+          <TrialDetailRoute api={api} catalog={catalog} selected={selected} />
+        }
       />
       <Route
         path="/workspace/:trialUuid"
@@ -160,15 +162,21 @@ function RunTableRoute(props: {
 }
 function TrialDetailRoute({
   api,
+  catalog,
   selected,
 }: {
   api: DashboardApi;
+  catalog: CatalogEval[];
   selected?: SelectedTrial;
 }) {
   const navigate = useNavigate();
   return (
     <TrialDetail
       api={api}
+      evalName={
+        catalog.find((entry) => entry.uri === selected?.run.evalId)?.name ??
+        catalog.find((entry) => entry.uri === selected?.run.evalId)?.slug
+      }
       selected={selected}
       onWorkspace={() =>
         selected &&
