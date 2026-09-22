@@ -243,17 +243,19 @@ small {
   color: #111;
 }
 .status.passed {
-  background: #111;
-  color: #fff;
+  background: #d9f2df;
+  border-color: #187a35;
+  color: #125c28;
 }
 .status.failed {
-  background: #ddd;
-  color: #111;
-}
-.status.errored {
   background: #f6d7d7;
   border-color: #a00;
   color: #700;
+}
+.status.errored {
+  background: #111;
+  border-color: #111;
+  color: #fff;
 }
 .error {
   background: #eee;
