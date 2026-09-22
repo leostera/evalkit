@@ -19,6 +19,24 @@ import { localReportStore, runEval } from '@evalkit/runner';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const colorEnabled =
+  process.env.NO_COLOR === undefined &&
+  (process.env.FORCE_COLOR === '1' || process.stdout.isTTY === true);
+
+function color(code: number, value: string): string {
+  return colorEnabled ? `\u001b[${code}m${value}\u001b[0m` : value;
+}
+
+const paint = {
+  blue: (value: string) => color(34, value),
+  cyan: (value: string) => color(36, value),
+  dim: (value: string) => color(2, value),
+  green: (value: string) => color(32, value),
+  magenta: (value: string) => color(35, value),
+  red: (value: string) => color(31, value),
+  yellow: (value: string) => color(33, value),
+};
+
 function assertUuid(value: string, label: string): void {
   if (!UUID_PATTERN.test(value)) throw new Error(`Invalid ${label}`);
 }
@@ -129,16 +147,20 @@ async function measureTrajectory(
 }
 
 function printEvalStart(evaluation: EvalDefinition, suiteId?: string): void {
-  console.log(`\n◆ ${evaluation.name ?? evaluation.uri}`);
   console.log(
-    `  eval     ${suiteId ? `${suiteId}#${evaluation.uri}` : evaluation.uri}`,
-  );
-  console.log(`  agent    ${agentLabel(evaluation)}`);
-  console.log(
-    `  runtime  local (${evaluation.agent.runtimes?.local?.kind ?? 'adapter default'})`,
+    `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? evaluation.uri)}`,
   );
   console.log(
-    `  input    ${evaluation.transcript.length} transcript step(s), ${evaluation.fixtures?.length ?? 0} fixture(s), ${evaluation.scoring.length} scorer(s)`,
+    `  ${paint.blue('eval')}     ${paint.dim(suiteId ? `${suiteId}#${evaluation.uri}` : evaluation.uri)}`,
+  );
+  console.log(
+    `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
+  );
+  console.log(
+    `  ${paint.blue('runtime')}  ${paint.green('local')} (${evaluation.agent.runtimes?.local?.kind ?? 'adapter default'})`,
+  );
+  console.log(
+    `  ${paint.blue('input')}    ${evaluation.transcript.length} transcript step(s), ${evaluation.fixtures?.length ?? 0} fixture(s), ${evaluation.scoring.length} scorer(s)`,
   );
 }
 
@@ -148,15 +170,23 @@ function printResult(
   durationMs: number,
   measurements: TrajectoryMeasurements,
 ): void {
-  const symbol = result.status === 'completed' ? '✓' : '✗';
-  console.log(`  ${symbol} ${result.status} in ${durationMs}ms`);
+  const passed = result.status === 'completed';
+  const symbol = passed ? paint.green('✓') : paint.red('✗');
+  console.log(
+    `  ${symbol} ${passed ? paint.green(result.status) : paint.red(result.status)} in ${paint.dim(`${durationMs}ms`)}`,
+  );
   for (const score of result.scoring?.results ?? []) {
     const value = score.value === undefined ? 'error' : `${score.value * 100}%`;
-    console.log(`    score   ${score.name}: ${value} (${score.durationMs}ms)`);
-    if (score.explanation) console.log(`            ${score.explanation}`);
+    const scoreColor =
+      score.error || score.passed === false ? paint.red : paint.green;
+    console.log(
+      `    ${paint.blue('score')}   ${score.name}: ${scoreColor(value)} ${paint.dim(`(${score.durationMs}ms)`)}`,
+    );
+    if (score.explanation)
+      console.log(`            ${paint.dim(score.explanation)}`);
   }
   console.log(
-    `    events  ${measurements.eventCount} total (${measurements.autEventCount} AUT, ${measurements.runnerEventCount} runner)`,
+    `    ${paint.blue('events')}  ${measurements.eventCount} total (${measurements.autEventCount} AUT, ${measurements.runnerEventCount} runner)`,
   );
   if (
     measurements.turnLatencyMs ||
@@ -164,12 +194,16 @@ function printResult(
     measurements.outputTokens
   ) {
     console.log(
-      `    usage   ${measurements.turnLatencyMs}ms turn latency, ${measurements.inputTokens} input tokens, ${measurements.outputTokens} output tokens`,
+      `    ${paint.blue('usage')}   ${measurements.turnLatencyMs}ms turn latency, ${measurements.inputTokens} input tokens, ${measurements.outputTokens} output tokens`,
     );
   }
-  console.log(`    report  ${result.reportLocation}`);
+  console.log(
+    `    ${paint.blue('report')}  ${paint.dim(result.reportLocation)}`,
+  );
   if (result.error)
-    console.log(`    error   ${result.error.name}: ${result.error.message}`);
+    console.log(
+      `    ${paint.red('error')}   ${result.error.name}: ${result.error.message}`,
+    );
   void evaluation;
 }
 
@@ -216,7 +250,7 @@ async function runEvals(options: {
     const trialResults = aggregate.trials ?? [aggregate];
     for (const [index, result] of trialResults.entries()) {
       if (!options.json && trialCount > 1)
-        console.log(`\n  Trial ${index + 1}/${trialCount}`);
+        console.log(`\n  ${paint.yellow(`Trial ${index + 1}/${trialCount}`)}`);
       const measurements = await measureTrajectory(
         result.runId,
         result.trialId,
@@ -235,7 +269,7 @@ async function runEvals(options: {
     }
     if (!options.json && trialCount > 1)
       console.log(
-        `\n  run     ${aggregate.runId} (${Math.round(performance.now() - startedAt)}ms aggregate)`,
+        `\n  ${paint.cyan('run')}     ${paint.dim(aggregate.runId)} (${Math.round(performance.now() - startedAt)}ms aggregate)`,
       );
   }
   if (failed) process.exitCode = 1;
