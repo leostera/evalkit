@@ -29,7 +29,7 @@ _evalkit-results/<run-id>/
     └── summary.json
 ```
 
-Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers an explicit project registry with `evalkit run-evals`, writes reports to `_evalkit-results/`, and preserves candidate/evaluator workspaces under `_evalkit-sandbox/<eval-id>/` for local inspection.
+Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers an explicit project registry with `evalkit run-evals`, writes reports to `_evalkit-results/`, and preserves candidate/evaluator workspaces under `_evalkit-sandbox/<trial-id>/` for local inspection.
 
 ## Development
 

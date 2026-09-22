@@ -82,9 +82,8 @@ function assertUniqueDestinations(
 }
 
 /** Creates isolated candidate and evaluator directories and materializes fixtures into each. */
-function evalDirectoryName(evalId: string): string {
-  const value = evalId.split(':').at(-1) ?? evalId;
-  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+function trialDirectoryName(trialId: string): string {
+  return trialId.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 export async function createTrialWorkspace(
@@ -95,8 +94,7 @@ export async function createTrialWorkspace(
   const root = persistentRoot
     ? path.join(
         path.resolve(persistentRoot),
-        evalDirectoryName(context.evalId),
-        `${context.runId}-${context.trialId}`,
+        trialDirectoryName(context.trialId),
       )
     : await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
   const persistent = persistentRoot !== undefined;
