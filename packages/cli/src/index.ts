@@ -11,6 +11,7 @@ import {
   RunSummarySchema,
   type EvalDefinition,
   type EvalRegistry,
+  type AgentRuntimeName,
   type TrajectoryEvent,
   type TrialResult,
 } from '@evalkit/core';
@@ -120,6 +121,13 @@ async function loadRegistry(): Promise<EvalRegistry> {
   return module.default;
 }
 
+function runtimeFor(evaluation: EvalDefinition): AgentRuntimeName | undefined {
+  for (const runtime of ['local', 'remote', 'sandbox'] as const) {
+    if (evaluation.agent.runtimes?.[runtime]) return runtime;
+  }
+  return undefined;
+}
+
 function agentLabel(evaluation: EvalDefinition): string {
   const identity = evaluation.agent.identity;
   if (!identity) return 'unidentified agent';
@@ -178,8 +186,9 @@ function printEvalStart(evaluation: EvalDefinition): void {
   console.log(
     `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
   );
+  const runtime = runtimeFor(evaluation);
   console.log(
-    `  ${paint.blue('runtime')}  ${paint.green('local')} (${evaluation.agent.runtimes?.local?.kind ?? 'adapter default'})`,
+    `  ${paint.blue('runtime')}  ${paint.green(runtime ?? 'default')} (${runtime ? evaluation.agent.runtimes?.[runtime]?.kind : 'adapter default'})`,
   );
   console.log(
     `  ${paint.blue('input')}    ${evaluation.transcript.length} transcript step(s), ${evaluation.fixtures?.length ?? 0} fixture(s), ${evaluation.scoring.length} scorer(s)`,
@@ -273,7 +282,7 @@ async function runEvals(options: {
             runEval(evaluation, {
               report: localReportStore(reportRoot),
               ...(suiteId ? { suiteId } : {}),
-              runtime: 'local',
+              ...(runtimeFor(evaluation) ? { runtime: runtimeFor(evaluation) } : {}),
               concurrency: options.concurrency,
               semaphore,
             }),
