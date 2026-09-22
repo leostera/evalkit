@@ -8,6 +8,7 @@ export {
 import { Effect } from 'effect';
 import {
   recordError,
+  resourceUri,
   type AgentRuntimeName,
   type ArtifactEntry,
   type AutContext,
@@ -21,6 +22,7 @@ import {
   type RunStatus,
   type RunWriter,
   type ScoreResult,
+  type Uuid,
   type ScoreValue,
   type TrialScoring,
   type TrajectoryEvent,
@@ -77,6 +79,10 @@ export function runEval(
 
 function createId(_kind: 'run' | 'trial'): string {
   return crypto.randomUUID();
+}
+
+function canonicalId<K extends 'run' | 'trial'>(kind: K, id: string) {
+  return resourceUri(kind, id as Uuid);
 }
 
 function normalizeScore(
@@ -150,8 +156,18 @@ async function executeRun(
   const runWriter = await options.report.startRun({
     schemaVersion: 1,
     runId,
+    runUri: canonicalId('run', runId),
     evalId: definition.uri,
-    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+    evalUri: definition.uri,
+    ...(options.suiteId
+      ? {
+          suiteId: options.suiteId,
+          suiteUri: canonicalId('run', options.suiteId).replace(
+            'evalkit:run:',
+            'evalkit:suite:',
+          ) as `evalkit:suite:${string}`,
+        }
+      : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt: aggregateStartedAt.toISOString(),
   });
@@ -241,17 +257,30 @@ async function runTrial(
     (await options.report.startRun({
       schemaVersion: 1,
       runId,
+      runUri: canonicalId('run', runId),
       evalId: definition.uri,
-      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+      evalUri: definition.uri,
+      ...(options.suiteId
+        ? {
+            suiteId: options.suiteId,
+            suiteUri: canonicalId('run', options.suiteId).replace(
+              'evalkit:run:',
+              'evalkit:suite:',
+            ) as `evalkit:suite:${string}`,
+          }
+        : {}),
       ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
       startedAt,
     }));
   const trialWriter = await runWriter.startTrial({
     schemaVersion: 1,
     runId,
+    runUri: canonicalId('run', runId),
     trialId,
+    trialUri: canonicalId('trial', trialId),
     trialIndex: options.trialIndex ?? 0,
     evalId: definition.uri,
+    evalUri: definition.uri,
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     startedAt,
   });
@@ -441,9 +470,12 @@ async function runTrial(
 
   return {
     runId,
+    runUri: canonicalId('run', runId),
     trialId,
+    trialUri: canonicalId('trial', trialId),
     trialIndex: options.trialIndex ?? 0,
     evalId: definition.uri,
+    evalUri: definition.uri,
     status,
     reportLocation: runWriter.location,
     durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),

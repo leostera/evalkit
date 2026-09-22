@@ -526,9 +526,12 @@ export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export type RunMetadata = {
   schemaVersion: 1;
   runId: string;
+  runUri: ResourceUri<'run'>;
   evalId: string;
-  /** Path-like suite membership when this eval was invoked through a suite. */
+  evalUri: ResourceUri<'eval'>;
+  /** Canonical suite membership when this eval was invoked through a suite. */
   suiteId?: string;
+  suiteUri?: ResourceUri<'suite'>;
   aut?: AutIdentity;
   startedAt: string;
 };
@@ -536,9 +539,12 @@ export type RunMetadata = {
 export type TrialMetadata = {
   schemaVersion: 1;
   runId: string;
+  runUri: ResourceUri<'run'>;
   trialId: string;
+  trialUri: ResourceUri<'trial'>;
   trialIndex: number;
   evalId: string;
+  evalUri: ResourceUri<'eval'>;
   aut?: AutIdentity;
   startedAt: string;
 };
@@ -595,8 +601,11 @@ export type ReportStore = {
 
 export type TrialResult = {
   runId: string;
+  runUri: ResourceUri<'run'>;
   trialId: string;
+  trialUri: ResourceUri<'trial'>;
   trialIndex: number;
+  evalUri: ResourceUri<'eval'>;
   status: RunStatus;
   reportLocation: string;
   durationMs?: number;

@@ -23,8 +23,11 @@ export const AutIdentitySchema = Schema.Struct({
 export const RunMetadataSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
+  runUri: Schema.String,
   evalId: Schema.String,
+  evalUri: Schema.String,
   suiteId: Schema.optional(Schema.String),
+  suiteUri: Schema.optional(Schema.String),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });
@@ -32,9 +35,12 @@ export const RunMetadataSchema = Schema.Struct({
 export const TrialMetadataSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
+  runUri: Schema.String,
   trialId: Schema.String,
+  trialUri: Schema.String,
   trialIndex: Schema.Number,
   evalId: Schema.String,
+  evalUri: Schema.String,
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });
