@@ -12,9 +12,10 @@
   "dependencies": {
     "@evalkit/core": "workspace:*",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-router-dom": "^7.18.4",
+    "vite": "latest"
   },
   "devDependencies": {
     "@types/react": "latest",

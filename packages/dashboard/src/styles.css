@@ -41,7 +41,8 @@ nav {
   display: grid;
   gap: 0;
 }
-nav button {
+nav button,
+nav a {
   border: 0;
   border-bottom: 1px solid #ccc;
   background: transparent;
@@ -50,9 +51,12 @@ nav button {
   padding: 0.45rem 0.25rem;
   text-align: left;
   text-transform: capitalize;
+  text-decoration: none;
 }
 nav button:hover,
-nav button.active {
+nav button.active,
+nav a:hover,
+nav a.active {
   background: #111;
   color: #fff;
 }

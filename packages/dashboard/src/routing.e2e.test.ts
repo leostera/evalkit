@@ -149,7 +149,7 @@ describe('dashboard URL routing', () => {
     );
 
     await page.evaluate(() => {
-      const button = [...document.querySelectorAll('nav button')].find(
+      const button = [...document.querySelectorAll('nav a')].find(
         (node) => node.textContent === 'runs',
       );
       if (!(button instanceof HTMLElement))
