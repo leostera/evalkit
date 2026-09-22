@@ -9,7 +9,8 @@ import type {
   TrialSummary,
 } from './api.js';
 
-type Screen = 'catalog' | 'eval' | 'agents' | 'fixtures' | 'runs' | 'trial';
+type Screen =
+  'catalog' | 'eval' | 'agents' | 'fixtures' | 'runs' | 'trial' | 'workspace';
 
 type SelectedTrial = { run: RunSummary; trial: TrialSummary };
 
@@ -21,6 +22,7 @@ function routeScreen(path: string): Screen {
   if (path.startsWith('/runs') || path.startsWith('/run/')) return 'runs';
   if (path.startsWith('/evals/')) return 'eval';
   if (path.startsWith('/trial/')) return 'trial';
+  if (path.startsWith('/workspace/')) return 'workspace';
   if (path.startsWith('/agents')) return 'agents';
   if (path.startsWith('/fixtures')) return 'fixtures';
   return 'catalog';
@@ -59,9 +61,15 @@ export function App({ api }: { api: DashboardApi }) {
   }, [api]);
 
   useEffect(() => {
-    const trialId = path.startsWith('/trial/')
-      ? decodeURIComponent(path.slice('/trial/'.length).split('/')[0] ?? '')
-      : undefined;
+    const workspace = path.startsWith('/workspace/');
+    const trialId =
+      path.startsWith('/trial/') || workspace
+        ? decodeURIComponent(
+            path
+              .slice(workspace ? '/workspace/'.length : '/trial/'.length)
+              .split('/')[0] ?? '',
+          )
+        : undefined;
     if (!trialId || !runs.length) return;
     if (selected?.trial.id === trialId) return;
     void Promise.all(
@@ -89,6 +97,7 @@ export function App({ api }: { api: DashboardApi }) {
     fixtures: 'Fixtures',
     runs: 'Runs',
     trial: 'Trial detail',
+    workspace: 'Candidate workspace',
     eval: 'Eval detail',
   };
 
@@ -160,7 +169,20 @@ export function App({ api }: { api: DashboardApi }) {
           />
         ) : null}
         {screen === 'trial' ? (
-          <TrialDetail api={api} selected={selected} />
+          <TrialDetail
+            api={api}
+            selected={selected}
+            onWorkspace={() =>
+              selected
+                ? navigate(
+                    `/workspace/${encodeURIComponent(selected.trial.id)}`,
+                  )
+                : undefined
+            }
+          />
+        ) : null}
+        {screen === 'workspace' ? (
+          <WorkspaceDetail api={api} selected={selected} />
         ) : null}
       </section>
     </main>
@@ -427,9 +449,11 @@ function RunTable({
 function TrialDetail({
   api,
   selected,
+  onWorkspace,
 }: {
   api: DashboardApi;
   selected?: SelectedTrial;
+  onWorkspace(): void;
 }) {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
   const [detail, setDetail] = useState<{
@@ -458,6 +482,7 @@ function TrialDetail({
       <p className="mono">
         {selected.run.id} / {selected.trial.id}
       </p>
+      <button onClick={onWorkspace}>Open candidate workspace →</button>
       <section className="trial-summary">
         <div>
           <strong>status</strong>
@@ -683,6 +708,49 @@ function ArtifactRow({
       <td>{artifact.kind}</td>
       <td>{artifact.size === undefined ? '—' : `${artifact.size} bytes`}</td>
     </tr>
+  );
+}
+
+function WorkspaceDetail({
+  api,
+  selected,
+}: {
+  api: DashboardApi;
+  selected?: SelectedTrial;
+}) {
+  const [entries, setEntries] = useState<
+    Awaited<ReturnType<DashboardApi['listWorkspace']>>
+  >([]);
+  useEffect(() => {
+    if (selected)
+      void api
+        .listWorkspace(selected.run.id, selected.trial.id)
+        .then(setEntries);
+  }, [api, selected]);
+  if (!selected)
+    return <Empty message="Select a trial to inspect its workspace." />;
+  return (
+    <section className="workspace-inspector">
+      <p className="mono">candidate workspace / {selected.trial.id}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Kind</th>
+            <th>Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.path}>
+              <td className="mono">{entry.path}</td>
+              <td>{entry.kind}</td>
+              <td>{entry.size ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

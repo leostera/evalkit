@@ -42,6 +42,12 @@ export type RunSummary = {
   durationMs?: number;
 };
 
+export type WorkspaceEntry = {
+  path: string;
+  kind: 'file' | 'directory';
+  size?: number;
+};
+
 export type TrialSummary = {
   id: string;
   index: number;
@@ -86,6 +92,12 @@ export interface DashboardApi {
     runId: string,
     trialId: string,
   ): Promise<Array<{ path: string; kind: string; size?: number }>>;
+  listWorkspace(runId: string, trialId: string): Promise<WorkspaceEntry[]>;
+  getWorkspaceFile(
+    runId: string,
+    trialId: string,
+    path: string,
+  ): Promise<Response>;
   runEval(path: string): Promise<void>;
   runSuite(suiteId: string): Promise<void>;
 }
@@ -135,6 +147,25 @@ export function createHttpDashboardApi(options: {
           `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/artifacts`,
         )
       ).artifacts;
+    },
+    async listWorkspace(runId, trialId) {
+      return request<WorkspaceEntry[]>(
+        `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace`,
+      );
+    },
+    async getWorkspaceFile(runId, trialId, filePath) {
+      const response = await send(
+        new URL(
+          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace/${filePath
+            .split('/')
+            .map(encodeURIComponent)
+            .join('/')}`,
+          options.baseUrl,
+        ),
+      );
+      if (!response.ok)
+        throw new Error(`Dashboard request failed: ${response.status}`);
+      return response;
     },
     async getTrajectory(runId, trialId) {
       return (

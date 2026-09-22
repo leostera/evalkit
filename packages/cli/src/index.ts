@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { readdir, readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
 import { Hono } from 'hono';
@@ -387,6 +387,70 @@ async function listTrialArtifacts(runId: string, trialId: string) {
   return result;
 }
 
+async function listCandidateWorkspace(runId: string, trialId: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
+    throw new Error('Invalid report ID');
+  const root = resolve(
+    reportRoot,
+    runId,
+    'trials',
+    trialId,
+    'artifacts',
+    'candidate',
+  );
+  const result: Array<{
+    path: string;
+    kind: 'file' | 'directory';
+    size?: number;
+  }> = [];
+  async function visit(directory: string, prefix: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        result.push({ path: relative, kind: 'directory' });
+        await visit(resolve(directory, entry.name), relative);
+      } else {
+        result.push({
+          path: relative,
+          kind: 'file',
+          size: Bun.file(resolve(directory, entry.name)).size,
+        });
+      }
+    }
+  }
+  try {
+    await visit(root, '');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return result;
+}
+
+async function readCandidateWorkspaceFile(
+  runId: string,
+  trialId: string,
+  relativePath: string,
+): Promise<Response> {
+  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(trialId))
+    throw new Error('Invalid report ID');
+  const root = resolve(
+    reportRoot,
+    runId,
+    'trials',
+    trialId,
+    'artifacts',
+    'candidate',
+  );
+  const file = resolve(root, relativePath);
+  if (file !== root && !file.startsWith(`${root}${sep}`))
+    throw new Error('Invalid workspace path');
+  const info = await stat(file);
+  if (!info.isFile()) throw new Error('Workspace path is not a file');
+  return new Response(await Bun.file(file).arrayBuffer(), {
+    headers: { 'content-type': contentType(file) },
+  });
+}
+
 async function readTrajectory(
   runId: string,
   trialId: string,
@@ -489,6 +553,37 @@ async function serveDashboard(): Promise<void> {
       return context.text(
         error instanceof Error ? error.message : 'Not found',
         404,
+      );
+    }
+  });
+  app.get('/v1/runs/:runId/trials/:trialId/workspace', async (context) => {
+    try {
+      return context.json(
+        await listCandidateWorkspace(
+          context.req.param('runId'),
+          context.req.param('trialId'),
+        ),
+      );
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : 'Unable to list workspace',
+        400,
+      );
+    }
+  });
+  app.get('/v1/runs/:runId/trials/:trialId/workspace/*', async (context) => {
+    try {
+      return await readCandidateWorkspaceFile(
+        context.req.param('runId'),
+        context.req.param('trialId'),
+        context.req.param('*') ?? '',
+      );
+    } catch (error) {
+      return context.text(
+        error instanceof Error
+          ? error.message
+          : 'Unable to read workspace file',
+        400,
       );
     }
   });
