@@ -53,16 +53,16 @@ evalkit:artifact:<uuid>
 ## Phase 3 — Runner and reports
 
 - [x] Generate UUIDs for run and trial route keys.
-- [ ] Store canonical run/trial URIs plus UUIDs in manifests and summaries.
-- [ ] Store suite/eval/agent canonical URIs in report metadata.
-- [ ] Use UUIDs as local report directory segments.
+- [x] Store canonical run/trial URIs plus UUIDs in manifests and summaries.
+- [x] Store suite/eval/agent canonical URIs in report metadata.
+- [x] Use UUIDs as local report directory segments.
 - [ ] Keep `trialIndex` only as ordering/display metadata.
 - [ ] Update report schemas, readers, and aggregate projections.
 
 ## Phase 4 — Hono APIs
 
-- [ ] API payloads expose canonical URI and UUID separately where required.
-- [ ] All resource lookup routes accept UUID route keys only.
+- [x] API payloads expose canonical URI and UUID separately where required.
+- [x] All local resource lookup routes accept UUID route keys only.
 - [ ] Update local report/detail/artifact endpoints and hosted catalog endpoint contracts.
 - [ ] Validate UUID path parameters with Schema/Hono middleware.
 
@@ -87,8 +87,8 @@ Routes:
 - [x] Remove the Trajectories navigation item and `trajectory` screen.
 - [x] Rename trajectory inspector to trial detail.
 - [x] Use `/trial/:trialUuid` for explicit trial actions and refresh restoration.
-- [ ] Keep event timeline as the right column inside trial detail.
-- [ ] Add workspace/artifact route from trial detail.
+- [x] Keep event timeline as the right column inside trial detail.
+- [x] Add workspace/artifact route from trial detail.
 - [ ] Replace all display of legacy IDs with canonical URI/short UUID presentation.
 
 ## Phase 6 — Validation and documentation
