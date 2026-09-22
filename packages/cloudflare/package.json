@@ -1,0 +1,18 @@
+{
+  "name": "@evalkit/cloudflare",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@evalkit/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0"
+  }
+}
