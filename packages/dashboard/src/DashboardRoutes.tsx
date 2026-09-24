@@ -46,6 +46,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
+            runs={runs}
             onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
               navigate(`/evals/${encodeURIComponent(entry.path)}`)
@@ -55,7 +56,9 @@ export function DashboardRoutes({
       />
       <Route
         path="/suites/:suiteId"
-        element={<SuiteRoute api={api} suites={suites} catalog={catalog} />}
+        element={
+          <SuiteRoute api={api} suites={suites} catalog={catalog} runs={runs} />
+        }
       />
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
       <Route path="/agents" element={<AgentTable catalog={catalog} />} />
@@ -101,6 +104,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
+            runs={runs}
             onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
               navigate(`/evals/${encodeURIComponent(entry.path)}`)
@@ -116,6 +120,7 @@ function SuiteRoute(props: {
   api: DashboardApi;
   suites: SuiteSummary[];
   catalog: CatalogEval[];
+  runs: RunSummary[];
 }) {
   const { suiteId } = useParams();
   const navigate = useNavigate();

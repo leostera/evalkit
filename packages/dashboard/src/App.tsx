@@ -38,18 +38,51 @@ function Dashboard({ api }: { api: DashboardApi }) {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    void Promise.all([api.listCatalog(), api.listSuites(), api.listRuns()])
-      .then(([nextCatalog, nextSuites, nextRuns]) => {
+    let active = true;
+    void Promise.all([api.listCatalog(), api.listSuites()])
+      .then(([nextCatalog, nextSuites]) => {
+        if (!active) return;
         setCatalog(nextCatalog);
         setSuites(nextSuites);
-        setRuns(nextRuns);
       })
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error ? cause.message : 'Unable to load dashboard',
-        ),
-      );
+      .catch((cause: unknown) => {
+        if (active)
+          setError(
+            cause instanceof Error ? cause.message : 'Unable to load dashboard',
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [api]);
+
+  // Navigation and new runs must not require a full page reload. Poll while this
+  // dashboard is open so in-progress runs and their final verdicts stay current.
+  useEffect(() => {
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const nextRuns = await api.listRuns();
+        if (active) setRuns(nextRuns);
+      } catch (cause) {
+        if (active)
+          setError(
+            cause instanceof Error ? cause.message : 'Unable to load runs',
+          );
+      } finally {
+        pending = false;
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 2_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [api, location.pathname]);
 
   useEffect(() => {
     const match = location.pathname.match(/^\/(?:trial|workspace)\/([^/]+)/);

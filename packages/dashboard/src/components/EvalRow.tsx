@@ -1,15 +1,17 @@
-import type { CatalogEval } from '../api.js';
+import type { CatalogEval, RunSummary } from '../api.js';
 import { agentName } from './agentName.js';
 export function EvalRow({
   id,
   evaluation,
   onRun,
   onOpen,
+  status,
 }: {
   id: string;
   evaluation?: CatalogEval;
   onRun?: () => void;
   onOpen?: () => void;
+  status?: RunSummary['status'];
 }) {
   return (
     <tr onClick={onOpen}>
@@ -23,7 +25,21 @@ export function EvalRow({
           'default'}
       </td>
       <td>{evaluation?.trialCount ?? '—'}</td>
-      <td>{onRun ? <button onClick={onRun}>Run eval</button> : null}</td>
+      <td>
+        {status ? <span className={`status ${status}`}>{status}</span> : '—'}
+      </td>
+      <td>
+        {onRun ? (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onRun();
+            }}
+          >
+            Run eval
+          </button>
+        ) : null}
+      </td>
     </tr>
   );
 }

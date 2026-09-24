@@ -1,5 +1,10 @@
 import { Fragment, useState } from 'react';
-import type { CatalogEval, DashboardApi, SuiteSummary } from '../api.js';
+import type {
+  CatalogEval,
+  DashboardApi,
+  RunSummary,
+  SuiteSummary,
+} from '../api.js';
 import { Empty } from './Empty.js';
 import { EvalRow } from './EvalRow.js';
 import { SuiteRow } from './SuiteRow.js';
@@ -7,6 +12,7 @@ export function SuiteTable({
   api,
   suites,
   catalog,
+  runs = [],
   selectedSuiteId,
   onOpenSuite,
   onOpenEval,
@@ -14,12 +20,19 @@ export function SuiteTable({
   api: DashboardApi;
   suites: SuiteSummary[];
   catalog: CatalogEval[];
+  runs?: RunSummary[];
   selectedSuiteId?: string;
   onOpenSuite(id: string): void;
   onOpenEval(entry: CatalogEval): void;
 }) {
   const [expanded, setExpanded] = useState<string>();
   const expandedSuite = selectedSuiteId ?? expanded;
+  const latestRunByEval = new Map<string, RunSummary>();
+  for (const run of runs) {
+    const previous = latestRunByEval.get(run.evalId);
+    if (!previous || previous.startedAt <= run.startedAt)
+      latestRunByEval.set(run.evalId, run);
+  }
   const standalone = catalog.filter(
     (entry) =>
       !entry.suiteId &&
@@ -56,7 +69,7 @@ export function SuiteTable({
                   />
                   {expandedSuite === suite.id ? (
                     <tr key={`${suite.id}-evals`}>
-                      <td colSpan={3}>
+                      <td colSpan={4}>
                         <table className="nested">
                           <thead>
                             <tr>
@@ -64,6 +77,7 @@ export function SuiteTable({
                               <th>Agent</th>
                               <th>Runtime</th>
                               <th>Trials</th>
+                              <th>Latest run</th>
                               <th />
                             </tr>
                           </thead>
@@ -77,6 +91,7 @@ export function SuiteTable({
                                   key={id}
                                   id={id}
                                   evaluation={evaluation}
+                                  status={latestRunByEval.get(id)?.status}
                                   onRun={
                                     evaluation
                                       ? () => void api.runEval(evaluation.path)
@@ -112,6 +127,7 @@ export function SuiteTable({
                   <th>Agent</th>
                   <th>Runtime</th>
                   <th>Trials</th>
+                  <th>Latest run</th>
                   <th />
                 </tr>
               </thead>
@@ -121,6 +137,7 @@ export function SuiteTable({
                     key={evaluation.id}
                     id={evaluation.id}
                     evaluation={evaluation}
+                    status={latestRunByEval.get(evaluation.id)?.status}
                     onRun={() => void api.runEval(evaluation.path)}
                     onOpen={() => onOpenEval(evaluation)}
                   />

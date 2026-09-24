@@ -132,7 +132,9 @@ describe('dashboard URL routing', () => {
 
     await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
     await page.waitForSelector('tbody tr button');
-    await page.click('tbody tr button');
+    await page.$eval('tbody tr button', (button) =>
+      (button as HTMLElement).click(),
+    );
     expect(new URL(page.url()).pathname).toBe('/suites/starter');
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
@@ -169,12 +171,22 @@ describe('dashboard URL routing', () => {
     );
   }, 30_000);
 
-  test('opens a discovered eval when the project has no suites', async () => {
+  test('shows a newly started eval without a page reload', async () => {
     const page = await browser.newPage();
+    let started = false;
     try {
       await page.setRequestInterception(true);
       page.on('request', (request) => {
         const path = new URL(request.url()).pathname;
+        if (path === '/v1/runs' && request.method() === 'POST') {
+          started = true;
+          void request.respond({
+            status: 202,
+            contentType: 'application/json',
+            body: JSON.stringify({ accepted: true }),
+          });
+          return;
+        }
         const bodies: Record<string, unknown> = {
           '/v1/catalog': {
             evals: [
@@ -190,7 +202,20 @@ describe('dashboard URL routing', () => {
             ],
           },
           '/v1/suites': { suites: [] },
-          '/v1/runs': { runs: [] },
+          '/v1/runs': {
+            runs: started
+              ? [
+                  {
+                    id: '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+                    evalId: 'echo',
+                    status: 'running',
+                    startedAt: new Date().toISOString(),
+                    completedTrials: 0,
+                    requestedTrials: 1,
+                  },
+                ]
+              : [],
+          },
         };
         if (path in bodies) {
           void request.respond({
@@ -212,6 +237,24 @@ describe('dashboard URL routing', () => {
           (row) => row.textContent,
         ),
       ).toContain('Echo Worker');
+      await page.click('section[aria-label="Standalone evals"] button');
+      expect(new URL(page.url()).pathname).toBe('/suites');
+      await page.click('nav a[href="/runs"]');
+      await page.waitForFunction(
+        () =>
+          location.pathname === '/runs' &&
+          [
+            ...document.querySelectorAll('.table-wrap > table > tbody > tr'),
+          ].some((row) => row.textContent?.includes('running')),
+      );
+      await page.click('nav a[href="/suites"]');
+      await page.waitForFunction(
+        () =>
+          location.pathname === '/suites' &&
+          document
+            .querySelector('section[aria-label="Standalone evals"] tbody tr')
+            ?.textContent?.includes('running'),
+      );
       await page.click('section[aria-label="Standalone evals"] tbody tr');
       expect(new URL(page.url()).pathname).toBe('/evals/echo');
     } finally {

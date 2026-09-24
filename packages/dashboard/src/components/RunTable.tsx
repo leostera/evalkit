@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type {
   CatalogEval,
   DashboardApi,
@@ -32,6 +32,19 @@ export function RunTable({
   selectedRunId?: string;
 }) {
   const [trials, setTrials] = useState<Record<string, TrialSummary[]>>({});
+  // A run can appear before its first trial is persisted; refresh expanded trials
+  // when the run list is polled rather than caching an empty result forever.
+  useEffect(() => {
+    if (!selectedRunId || !runs.some((run) => run.id === selectedRunId)) return;
+    let active = true;
+    void api.listTrials(selectedRunId).then((value) => {
+      if (active)
+        setTrials((current) => ({ ...current, [selectedRunId]: value }));
+    });
+    return () => {
+      active = false;
+    };
+  }, [api, runs, selectedRunId]);
   const [sort, setSort] = useState<SortState>({
     key: 'started',
     direction: 'desc',
@@ -44,8 +57,7 @@ export function RunTable({
       {
         run: run.id,
         suite:
-          suites.find((suite) => suite.id === run.suiteId)?.name ??
-          run.suiteId,
+          suites.find((suite) => suite.id === run.suiteId)?.name ?? run.suiteId,
         eval: evaluation?.name ?? run.evalId,
         agent:
           evaluation?.agent.name ?? evaluation?.agent.kind ?? 'Unnamed agent',
@@ -158,9 +170,7 @@ export function RunTable({
                     {suites.find((suite) => suite.id === run.suiteId)?.name ??
                       '—'}
                   </td>
-                  <td>
-                    {evaluation?.name ?? run.evalId}
-                  </td>
+                  <td>{evaluation?.name ?? run.evalId}</td>
                   <td>
                     {evaluation?.agent.name ??
                       evaluation?.agent.kind ??

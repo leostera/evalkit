@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { CatalogEval, DashboardApi, SuiteSummary } from '../api.js';
+import type {
+  CatalogEval,
+  DashboardApi,
+  RunSummary,
+  SuiteSummary,
+} from '../api.js';
 import { SuiteTable } from './SuiteTable.js';
 
 const standalone: CatalogEval = {
@@ -13,12 +18,17 @@ const standalone: CatalogEval = {
   scorers: [],
 };
 
-function render(suites: SuiteSummary[], catalog: CatalogEval[]): string {
+function render(
+  suites: SuiteSummary[],
+  catalog: CatalogEval[],
+  runs: RunSummary[] = [],
+): string {
   return renderToStaticMarkup(
     <SuiteTable
       api={{} as DashboardApi}
       suites={suites}
       catalog={catalog}
+      runs={runs}
       onOpenSuite={() => {}}
       onOpenEval={() => {}}
     />,
@@ -51,6 +61,33 @@ test('standalone evals remain visible alongside suites without duplicating suite
   expect(html).toContain('Standalone evals');
   expect(html).toContain('Echo Worker');
   expect(html).not.toContain('Greeting'); // suite members are only shown when expanded
+});
+
+test('a standalone eval shows the latest run status', () => {
+  const html = render(
+    [],
+    [standalone],
+    [
+      {
+        id: 'new-run',
+        evalId: 'echo',
+        status: 'running',
+        startedAt: '2026-01-02T00:00:00Z',
+        completedTrials: 0,
+        requestedTrials: 1,
+      },
+      {
+        id: 'old-run',
+        evalId: 'echo',
+        status: 'passed',
+        startedAt: '2026-01-01T00:00:00Z',
+        completedTrials: 1,
+        requestedTrials: 1,
+      },
+    ],
+  );
+  expect(html).toContain('class="status running"');
+  expect(html).not.toContain('class="status passed"');
 });
 
 test('empty state is shown only when there are no evals and no suites', () => {

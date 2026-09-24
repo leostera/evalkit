@@ -182,7 +182,9 @@ function printEvalStart(evaluation: EvalDefinition): void {
   console.log(
     `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? authoringId(evaluation))}`,
   );
-  console.log(`  ${paint.blue('eval')}     ${paint.dim(authoringId(evaluation))}`);
+  console.log(
+    `  ${paint.blue('eval')}     ${paint.dim(authoringId(evaluation))}`,
+  );
   console.log(
     `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
   );
@@ -238,16 +240,28 @@ function printResult(
   void evaluation;
 }
 
-async function runEvals(options: { evalIds: string[]; suiteId?: string; concurrency: number }): Promise<void> {
+async function runEvals(options: {
+  evalIds: string[];
+  suiteId?: string;
+  concurrency: number;
+}): Promise<void> {
   const registry = await loadRegistry();
-  const evaluations = options.evalIds.map(id => registry.get(id));
-  if (evaluations.some(e => !e)) throw new Error('Unknown eval');
-  await Effect.runPromise(Effect.all(evaluations.map(evaluation =>
-    runEval(evaluation!, {
-      report: localReportStore(reportRoot), workspaceRoot: sandboxRoot,
-      suiteId: options.suiteId, runtime: runtimeFor(evaluation!),
-      concurrency: options.concurrency,
-    })), { concurrency: options.concurrency }));
+  const evaluations = options.evalIds.map((id) => registry.get(id));
+  if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
+  await Effect.runPromise(
+    Effect.all(
+      evaluations.map((evaluation) =>
+        runEval(evaluation!, {
+          report: localReportStore(reportRoot),
+          workspaceRoot: sandboxRoot,
+          suiteId: options.suiteId,
+          runtime: runtimeFor(evaluation!),
+          concurrency: options.concurrency,
+        }),
+      ),
+      { concurrency: options.concurrency },
+    ),
+  );
 }
 
 async function listLocalRuns(): Promise<LocalRun[]> {
@@ -262,20 +276,37 @@ async function listLocalRuns(): Promise<LocalRun[]> {
     entries.map(async (id) => {
       const directory = resolve(reportRoot, id);
       try {
-        const [manifest, summary] = await Promise.all([
-          readSchema(`${directory}/manifest.json`, RunMetadataSchema),
-          readSchema(`${directory}/summary.json`, RunSummarySchema),
-        ]);
-        const trialIds = await readdir(`${directory}/trials`);
+        const manifest = await readSchema(
+          `${directory}/manifest.json`,
+          RunMetadataSchema,
+        );
+        const summary = await readSchema(
+          `${directory}/summary.json`,
+          RunSummarySchema,
+        ).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+            return undefined;
+          throw error;
+        });
+        const trialIds = await readdir(`${directory}/trials`).catch(
+          (error: unknown): string[] => {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+            throw error;
+          },
+        );
         const trials = await Promise.all(
           trialIds.map((trialId) =>
             readJson<{ durationMs?: number; scoring?: { overall?: number } }>(
               `${directory}/trials/${trialId}/summary.json`,
-            ),
+            ).catch((error: unknown) => {
+              if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+                return undefined;
+              throw error;
+            }),
           ),
         );
         const scores = trials.flatMap((trial) =>
-          trial.scoring?.overall === undefined ? [] : [trial.scoring.overall],
+          trial?.scoring?.overall === undefined ? [] : [trial.scoring.overall],
         );
         return {
           id,
@@ -292,14 +323,17 @@ async function listLocalRuns(): Promise<LocalRun[]> {
                   .join(' / '),
               }
             : {}),
-          status: dashboardRunStatus(summary),
+          status: summary ? dashboardRunStatus(summary) : 'running',
           startedAt: manifest.startedAt,
-          ...(summary.endedAt ? { completedAt: summary.endedAt } : {}),
-          ...(summary.durationMs !== undefined
+          ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
+          ...(summary?.durationMs !== undefined
             ? { durationMs: summary.durationMs }
             : {}),
-          completedTrials: summary.trialCount,
-          requestedTrials: summary.trialCount,
+          completedTrials: summary?.trialCount ?? trials.filter(Boolean).length,
+          requestedTrials:
+            summary?.trialCount ??
+            project?.registry.get(manifest.evalId)?.policy?.trials ??
+            1,
           ...(scores.length
             ? {
                 score:
@@ -327,30 +361,33 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
   }
   const trials = await Promise.all(
     trialIds.map(async (id) => {
-      const [manifest, summary] = await Promise.all([
-        readJson<{ trialIndex: number; startedAt: string }>(
-          resolve(trialsRoot, id, 'manifest.json'),
-        ),
-        readJson<{
-          status: PersistedStatus;
-          endedAt?: string;
-          durationMs?: number;
-          scoring?: { overall?: number; passed?: boolean; results: LocalScore[] };
-        }>(resolve(trialsRoot, id, 'summary.json')),
-      ]);
+      const manifest = await readJson<{
+        trialIndex: number;
+        startedAt: string;
+      }>(resolve(trialsRoot, id, 'manifest.json'));
+      const summary = await readJson<{
+        status: PersistedStatus;
+        endedAt?: string;
+        durationMs?: number;
+        scoring?: { overall?: number; passed?: boolean; results: LocalScore[] };
+      }>(resolve(trialsRoot, id, 'summary.json')).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          return undefined;
+        throw error;
+      });
       return {
         id,
         index: manifest.trialIndex,
-        status: dashboardTrialStatus(summary),
+        status: summary ? dashboardTrialStatus(summary) : 'running',
         startedAt: manifest.startedAt,
-        ...(summary.endedAt ? { completedAt: summary.endedAt } : {}),
-        ...(summary.durationMs !== undefined
+        ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
+        ...(summary?.durationMs !== undefined
           ? { durationMs: summary.durationMs }
           : {}),
-        ...(summary.scoring?.overall === undefined
+        ...(summary?.scoring?.overall === undefined
           ? {}
           : { score: summary.scoring.overall }),
-        scores: summary.scoring?.results ?? [],
+        scores: summary?.scoring?.results ?? [],
       };
     }),
   );
@@ -363,7 +400,13 @@ async function readTrialDetail(runId: string, trialId: string) {
   const root = resolve(reportRoot, runId, 'trials', trialId);
   return {
     manifest: await readJson(resolve(root, 'manifest.json')),
-    summary: await readJson(resolve(root, 'summary.json')),
+    summary: await readJson(resolve(root, 'summary.json')).catch(
+      (error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          return { status: 'running' };
+        throw error;
+      },
+    ),
   };
 }
 
@@ -469,7 +512,10 @@ async function readTrajectory(
   const contents = await readFile(
     resolve(reportRoot, runId, 'trials', trialId, 'trajectory.jsonl'),
     'utf8',
-  );
+  ).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw error;
+  });
   return contents
     .split('\n')
     .filter(Boolean)
@@ -680,7 +726,10 @@ try {
     const { values } = parseRunArgs(arguments_);
     project = await loadProject(projectRoot, values.config);
     projectRoot = project.root;
-    reportRoot = resolve(projectRoot, project.config.reportDir ?? '_evalkit-results');
+    reportRoot = resolve(
+      projectRoot,
+      project.config.reportDir ?? '_evalkit-results',
+    );
     await serveDashboard();
   } else if (command === 'help' || command === '--help') {
     console.log(`evalkit
