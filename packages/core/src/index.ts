@@ -118,7 +118,10 @@ export type AutContext = {
   evaluatorWorkspace: EvaluatorWorkspace;
 };
 
-export type FixtureContext = Omit<AutContext, 'workspace' | 'evaluatorWorkspace'>;
+export type FixtureContext = Omit<
+  AutContext,
+  'workspace' | 'evaluatorWorkspace'
+>;
 
 export type AutAdapter<TMessage = string> = {
   readonly identity?: AutIdentity;
@@ -447,7 +450,8 @@ export function registerEvals<
     const suite = isEvalSuite(registration) ? registration : undefined;
     if (suite) {
       const id = authoringId(suite);
-      if (suiteById.has(id)) throw new Error(`Eval registry contains duplicate suite ID: ${id}`);
+      if (suiteById.has(id))
+        throw new Error(`Eval registry contains duplicate suite ID: ${id}`);
       suiteById.set(id, suite);
     }
     const evaluations: readonly EvalDefinition[] = suite
@@ -455,7 +459,8 @@ export function registerEvals<
       : [registration as EvalDefinition];
     for (const evaluation of evaluations) {
       const id = authoringId(evaluation);
-      if (byId.has(id)) throw new Error(`Eval registry contains duplicate eval ID: ${id}`);
+      if (byId.has(id))
+        throw new Error(`Eval registry contains duplicate eval ID: ${id}`);
       byId.set(id, evaluation);
       if (suite) suiteIdByEvalId.set(id, suite);
       else standalone.push(evaluation);
@@ -643,6 +648,7 @@ export type RunResult = TrialResult & {
 
 export * from './identity.js';
 export * from './schema.js';
+export * from './trajectory.js';
 
 export function recordError(error: unknown): RecordedError {
   if (error instanceof Error) {
