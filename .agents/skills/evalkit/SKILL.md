@@ -22,7 +22,7 @@ For a cross-cutting change, use all relevant subskills; for a focused task, load
 
 ## Invariants
 
-- Work from the eval project's directory (for the included project, `examples/starter`). By default the CLI discovers default-exported `evals/*.eval.ts` without a config or registry. The starter is an exception: its `src/registry.ts` declares a suite. An optional `evalkit.config.js`/`.ts` customizes discovery and execution, or can supply an explicit registry/eval list. Fixture source paths and `_evalkit-results` / `_evalkit-sandbox` resolve relative to the config directory or project root.
+- Work from the eval project's directory (for the included project, `examples/starter`). By default the CLI discovers default-exported `evals/*.eval.ts` without a config or registry. The starter demonstrates this zero-config discovery path; `examples/configured-matrix` demonstrates optional config and a runnable sweep. An optional `evalkit.config.js`/`.ts` customizes discovery and execution, or can supply an explicit registry/eval list. Fixture source paths and `_evalkit-results` / `_evalkit-sandbox` resolve relative to the config directory or project root.
 - Authored suites, evals, agents, and matrices use stable lowercase kebab-case IDs. Fixtures have no IDs; destination conflicts are checked within each trial workspace. Only runs and trials receive generated runtime URIs.
 - Keep evaluator fixtures/answers private from the agent and model. Local sandboxes retain evaluator files: review before sharing.
 - Only `user(...)` transcript steps and `predicate(...)` scorers execute today. `agentsSdk()` remote transport, `judgeScorer(...)`, `agent(...)`/`judge(...)` steps, and enforced `policy.timeoutMs` are not available. Do not suggest them as a working solution.

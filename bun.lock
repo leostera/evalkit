@@ -17,6 +17,15 @@
         "@evalkit/core": "workspace:*",
       },
     },
+    "examples/configured-matrix": {
+      "name": "@evalkit/example-configured-matrix",
+      "dependencies": {
+        "@evalkit/cli": "workspace:*",
+        "@evalkit/core": "workspace:*",
+        "@evalkit/runner": "workspace:*",
+        "effect": "^3.19.0",
+      },
+    },
     "examples/starter": {
       "name": "@evalkit/example-starter",
       "dependencies": {
@@ -352,6 +361,8 @@
     "@evalkit/dashboard": ["@evalkit/dashboard@workspace:packages/dashboard"],
 
     "@evalkit/example-agents-sdk": ["@evalkit/example-agents-sdk@workspace:examples/agents-sdk"],
+
+    "@evalkit/example-configured-matrix": ["@evalkit/example-configured-matrix@workspace:examples/configured-matrix"],
 
     "@evalkit/example-starter": ["@evalkit/example-starter@workspace:examples/starter"],
 

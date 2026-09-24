@@ -1,16 +1,15 @@
 {
-  "name": "@evalkit/example-starter",
+  "name": "@evalkit/example-configured-matrix",
   "private": true,
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "evals": "evalkit run-evals --local",
-    "greeting": "evalkit run-evals greeting --local --trials 1",
+    "plan": "evalkit run-matrix letter-case --dry-run",
+    "matrix": "evalkit run-matrix letter-case --local",
     "dashboard": "evalkit serve-dashboard"
   },
   "dependencies": {
-    "@evalkit/agents": "workspace:*",
     "@evalkit/cli": "workspace:*",
     "@evalkit/core": "workspace:*",
     "@evalkit/runner": "workspace:*",

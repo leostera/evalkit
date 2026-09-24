@@ -1,8 +1,8 @@
-# Agents SDK eval example
+# Agents SDK transport (planned example)
 
-This example will eventually configure a Cloudflare Agents SDK implementation as an Evalkit Agent Under Test (AUT).
+**Not runnable yet.** `agentsSdk(...)` currently throws `Agents SDK transport is not implemented yet` when called. This directory does not contain discoverable `evals/*.eval.ts` files or a `src/registry.ts`, so do not run the Evalkit CLI here expecting an eval.
 
-The intended configuration shape is:
+When the transport exists, an eval could default-export a definition like this from `evals/support.eval.ts` (the shape below is illustrative, **not** a working integration):
 
 ```ts
 import { defineEval, user } from '@evalkit/core';
@@ -18,3 +18,5 @@ export default defineEval({
   scoring: [],
 });
 ```
+
+No registry or config would be needed for a single eval: the CLI discovers default exports from `evals/*.eval.ts`. Until this transport is implemented, use the runnable [`starter`](../starter/) for a local AUT or [`configured-matrix`](../configured-matrix/) for parameter sweeps.

@@ -10,3 +10,5 @@ export const piGreetingEval = defineEval({
   scoring: [piGreetingJudge],
   policy: { trials: 10 },
 });
+
+export default piGreetingEval;

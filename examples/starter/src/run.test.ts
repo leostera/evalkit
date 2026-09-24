@@ -5,19 +5,21 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
 import { localReportStore, runEval } from '@evalkit/runner';
-
-import registry from './registry.js';
+import { loadProject } from '@evalkit/cli/project';
 
 process.chdir(
   dirname(fileURLToPath(new URL('../package.json', import.meta.url))),
 );
 
-test('runs the starter eval and writes an inspectable report', async () => {
+test('discovers and runs the starter eval without a config or registry', async () => {
   const reportRoot = await mkdtemp(join(tmpdir(), 'evalkit-starter-'));
-  const evaluation = registry.get(
-    'greeting',
-  );
-  if (!evaluation) throw new Error('Starter eval is not registered');
+  const { config, registry } = await loadProject(process.cwd());
+  expect(config).toEqual({});
+  expect(registry.evals.map((evaluation) => evaluation.id)).toEqual([
+    'greeting', 'pi-greeting', 'pi-number',
+  ]);
+  const evaluation = registry.get('greeting');
+  if (!evaluation) throw new Error('Starter eval was not discovered');
 
   const result = await Effect.runPromise(
     runEval(evaluation, {

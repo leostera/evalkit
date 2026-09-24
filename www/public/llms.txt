@@ -7,13 +7,14 @@
 - [Complete manual](https://evalkit.leostera.dev/docs/manual/): Setup, agents, fixtures, eval definitions, suites, matrices, scoring, CLI, reports, and troubleshooting. Source of truth: [manual Markdown](https://github.com/leostera/evalkit/blob/main/www/src/content/manual.md).
 - [Get started](https://evalkit.leostera.dev/docs/): A shorter walkthrough for the included starter project.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
-- [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with an explicit eval registry.
+- [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported eval discovery, no registry or config.
+- [Configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix): Runnable project with an optional `evalkit.config.ts` and a provider-free parameter sweep.
 
 ## Implementation notes
 
 - Start with `bun create github.com/leostera/evalkit` to copy the monorepo (Bun installs its dependencies); then enter `evalkit/examples/starter` to run the self-contained greeting eval.
 - Authored suites, evals, agents, and matrices use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Fixtures have no ID: their destinations are scoped to an eval's trial workspace. Only runs and trials have generated URIs.
-- The local CLI discovers default-exported `evals/**/*.eval.ts`/`.js` by default. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes discovery and execution; `src/registry.ts` is for an explicit registry such as the starter's suite. A config takes precedence over that file unless it explicitly supplies a registry. Reports are saved under `_evalkit-results/`.
+- The local CLI discovers default-exported `evals/**/*.eval.ts`/`.js` by default. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes discovery and execution; `src/registry.ts` is for an optional explicit registry or suite. A config takes precedence over that file unless it explicitly supplies a registry. Reports are saved under `_evalkit-results/`.
 - Config can define a parameter matrix with `id`, axes, defaults, and execution safety limits. Matrices expand lazily; select by ID with `run-matrix <matrix-id> --eval <eval-id>` and inspect a plan with `--dry-run`. The agent adapter must consume `context.parameters` for a model axis to change the model.
 - The Agent Under Test (AUT) is the system whose behavior the eval measures, not the scorer. An adapter starts a fresh session, receives user messages, and emits events for scorers to inspect. Today, only `user(...)` transcript steps and `predicate(...)` scoring rules execute. Judge scorers, remote Agents SDK transport, enforced timeout policies, and a dedicated Evalkit project scaffold are not available.
 - Eval definitions can be versioned in Git; reports are local files, not automatically versioned or shared. The starter ignores report directories in Git; review for sensitive data and commit selected summaries if a versioned outcome history is needed. Run completion is not the same as a scoring pass: consult the run summary's `failed` count for trial outcomes.

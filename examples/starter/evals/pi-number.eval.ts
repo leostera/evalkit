@@ -17,3 +17,5 @@ export const piNumberEval = defineEval({
   scoring: [piNumberCloseToSevenJudge, piNumberCoolnessJudge],
   policy: { trials: 10 },
 });
+
+export default piNumberEval;

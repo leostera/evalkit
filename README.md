@@ -10,8 +10,9 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 - `packages/runner` — in-process runner and local report store
 - `packages/agents` — future Cloudflare Agents SDK AUT adapter
 - `packages/cli` — `evalkit` command-line interface
-- `examples/starter` — runnable local eval project and CLI integration target
-- `examples/agents-sdk` — future evaluated agent example
+- `examples/starter` — runnable zero-config eval discovery and CLI integration target
+- `examples/configured-matrix` — runnable, provider-free parameter sweep with `evalkit.config.ts`
+- `examples/agents-sdk` — planned remote transport example (not runnable yet)
 - `www` — Astro website, built as Cloudflare Workers Static Assets (not deployed)
 - `docs/rfds` — design records
 

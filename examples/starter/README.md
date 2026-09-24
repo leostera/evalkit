@@ -1,13 +1,17 @@
 # Evalkit starter example
 
-A real, workspace-backed Evalkit project used as an integration target while the scaffold and hosted runner are built.
+A runnable, **zero-config** Evalkit project. The CLI discovers the default exports of `evals/*.eval.ts` automatically; there is no registry or `evalkit.config.js` to maintain. Each eval has a human-readable ID.
 
-It contains a project-owned AUT, candidate-visible fixture, predicate judge, explicit eval registry, executable local run command, and report assertion. Fixture source paths such as `directory('fixtures/starter')` are resolved from the project directory where Evalkit is invoked; the default options copy the directory as a candidate-visible fixture beneath its basename.
+From this repository, install workspace dependencies at the root and then:
 
 ```bash
-bun install
-bun run evals
-bun run dashboard
+cd examples/starter
+bun run greeting    # run only the self-contained eval (no Pi or provider needed)
+bun run dashboard   # inspect its trials in the local dashboard
 ```
 
-`bun run evals` delegates to `evalkit run-evals`: this example loads `src/registry.ts` to demonstrate a suite, but new projects can just default-export `evals/*.eval.ts` files for automatic discovery. The command writes local reports under `_evalkit-results/`, and preserves trial workspaces under `_evalkit-sandbox/<trial-id>/` for inspection. These ordinary local directories can be deleted when no longer needed. `bun run dashboard` delegates to `evalkit serve-dashboard`, then prints the local dashboard URL. Report and sandbox state are ignored by Git.
+`bun run evals` runs **all** discovered evals, including the Pi-backed examples. Those require a working `pi` command and configured model access and may incur costs. To run just one directly, use `bun run evalkit run-evals greeting --trials 1`; inspect the selection with `--dry-run` first.
+
+The greeting eval composes a project-owned Agent Under Test (AUT), the candidate-visible `directory('fixtures/starter')`, and a reusable predicate scorer. Fixture source paths resolve from this project directory. Runs write `_evalkit-results/` and isolated trial workspaces under `_evalkit-sandbox/`; both are ignored by Git. Local evaluator workspaces can contain sensitive data, so review reports and sandboxes before sharing.
+
+See [`src/run.test.ts`](src/run.test.ts) for a discovery and report smoke test. For an optional `evalkit.config.js` with a parameter matrix, see [`../configured-matrix/`](../configured-matrix/). The Agents SDK transport in [`../agents-sdk/`](../agents-sdk/) is not runnable yet.

@@ -19,7 +19,7 @@ export default defineConfig({
 });
 ```
 
-Each `evals/*.eval.ts` default-exports `defineEval(...)` (or an array). Discovery is sorted and rejects duplicate eval IDs. Use `testDir`, `include`, `exclude`, or an explicit `evals`/`registry` property to customize. `--config file` selects a config relative to the invoking directory; fixture sources resolve relative to that config. Without a config, the CLI discovers `./evals/` by default. An explicit `src/registry.ts` is only necessary when choosing a curated registry or defining suites; a config must include its `registry` property if both are used.
+Each `evals/*.eval.ts` default-exports `defineEval(...)` (or an array). Discovery is sorted and rejects duplicate eval IDs. Use `testDir`, `include`, `exclude`, or an explicit `evals`/`registry` property to customize. `--config file` selects a config relative to the invoking directory; fixture sources resolve relative to that config. Without a config, the CLI discovers `./evals/` by default, as shown in `examples/starter`. An explicit `src/registry.ts` is only necessary when choosing a curated registry or defining suites; a config must include its `registry` property if both are used. See `examples/configured-matrix` for a runnable config and parameter sweep.
 
 ```sh
 evalkit run-evals --dry-run

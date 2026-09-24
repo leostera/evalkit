@@ -8,9 +8,9 @@ Evalkit is a kit for authoring agent evals as code. Keep TypeScript eval definit
 
 New to Evalkit? Follow the [getting-started guide](https://evalkit.leostera.dev/docs/) for the first run, starter project, and local dashboard. Come back here for the detailed contracts and examples behind each step.
 
-The CLI uses **the current working directory** as the project root. By default it discovers default-exported `evals/**/*.eval.ts`/`.js` files. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes the project; a `src/registry.ts` is only needed for an explicit registry (such as the starter's suite). It resolves fixture sources relative to this directory and writes `_evalkit-results/` and `_evalkit-sandbox/` here. Run commands from the eval project directory, not the monorepo root. Set `EVALKIT_NO_OPEN=1` to suppress automatic browser opening or `PORT=4318` to choose another dashboard port.
+The CLI uses **the current working directory** as the project root. By default it discovers default-exported `evals/**/*.eval.ts`/`.js` files. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes the project; a `src/registry.ts` is only needed for an explicit registry or suite. It resolves fixture sources relative to this directory and writes `_evalkit-results/` and `_evalkit-sandbox/` here. Run commands from the eval project directory, not the monorepo root. Set `EVALKIT_NO_OPEN=1` to suppress automatic browser opening or `PORT=4318` to choose another dashboard port.
 
-Explore the runnable example: [`examples/starter/src/registry.ts`](../../../examples/starter/src/registry.ts), [`agents/greeting-agent.ts`](../../../examples/starter/agents/greeting-agent.ts), [`evals/greeting.eval.ts`](../../../examples/starter/evals/greeting.eval.ts), and [`judges/greeting.ts`](../../../examples/starter/judges/greeting.ts).
+Explore the runnable zero-config [starter](../../../examples/starter/README.md): [`agents/greeting-agent.ts`](../../../examples/starter/agents/greeting-agent.ts), [`evals/greeting.eval.ts`](../../../examples/starter/evals/greeting.eval.ts), and [`judges/greeting.ts`](../../../examples/starter/judges/greeting.ts). For a real `evalkit.config.ts` and lazy parameter sweep, see [configured-matrix](../../../examples/configured-matrix/README.md).
 
 ## Project structure and registration
 
@@ -211,17 +211,18 @@ Run these from the project directory (`examples/starter` for the included exampl
 ```sh
 bun run evalkit run-evals                        # all discovered evals (or an explicit registry)
 bun run evalkit run-evals greeting               # select an eval ID
-bun run evalkit run-suite starter                # only when a suite is explicitly defined
 bun run evalkit run-evals greeting --json
 bun run evalkit run-evals greeting --concurrency 4
 bun run evalkit serve-dashboard
 ```
 
+If you defined an explicit suite in a registry, run it with `bun run evalkit run-suite my-suite`; the zero-config starter does not define suites. For a matrix, use the [configured example](../../../examples/configured-matrix/README.md) below.
+
 `--json` emits one JSON object per completed matrix cell, including its key, eval ID, parameters, and run result. `--concurrency <positive integer>` bounds parallel cells (default 4). Be mindful of API rate limits and provider costs.
 
 The CLI also accepts `--model`, `--max-tokens`, `--chat-timeout-ms`, and `--turn-budget`; these become `context.parameters` for adapters that implement them. **The built-in `piAgent()` does not consume these parameters.** Its `args` option is set when constructing `piAgent({ args: [...] })`. Use `--trials <positive integer>` to override `policy.trials` for a run.
 
-Optional matrices lazily expand a Cartesian product of parameter axes. With default-exported `evals/*.eval.ts` files, configure one in `evalkit.config.js`:
+Optional matrices lazily expand a Cartesian product of parameter axes. With default-exported `evals/*.eval.ts` files, configure one in `evalkit.config.js` (or see the runnable [configured-matrix](../../../examples/configured-matrix/README.md) project):
 
 ```js
 import { defineConfig } from '@evalkit/core';
