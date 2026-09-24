@@ -5,7 +5,7 @@ description: Work on or use this Evalkit repository end to end. Use for onboardi
 
 # Evalkit (project guide)
 
-This is a Bun workspace, not a published/scaffolded product. Read `../../../www/src/content/manual.md` for the user workflow; consult the implementation when behavior matters: `../../../packages/core/src/index.ts`, `../../../packages/runner/src/index.ts`, `../../../packages/cli/src/index.ts`, and `../../../examples/starter/` (paths relative to this skill directory). Check `git status --short` first and preserve unrelated changes.
+This is a Bun workspace without a dedicated scaffold. `packages/evalkit` builds the single `@leostera/evalkit` artifact; the manual GitHub Packages workflow has not published it yet. The `@evalkit/*` packages are internal to the workspace. Read `../../../www/src/content/manual.md` for the user workflow; consult the implementation when behavior matters: `../../../packages/core/src/index.ts`, `../../../packages/runner/src/index.ts`, `../../../packages/cli/src/index.ts`, and `../../../examples/starter/` (paths relative to this skill directory). Check `git status --short` first and preserve unrelated changes.
 
 ## Route the task
 

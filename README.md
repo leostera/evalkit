@@ -9,7 +9,8 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 - `packages/core` — declarative eval, AUT, trajectory, scoring, and report contracts
 - `packages/runner` — in-process runner and local report store
 - `packages/agents` — future Cloudflare Agents SDK AUT adapter
-- `packages/cli` — `evalkit` command-line interface
+- `packages/cli` — internal `evalkit` command-line implementation
+- `packages/evalkit` — single installable `@leostera/evalkit` package with API, CLI, and dashboard ([install/publish instructions](packages/evalkit/README.md))
 - `examples/starter` — runnable zero-config eval discovery and CLI integration target
 - `examples/configured-matrix` — runnable, provider-free parameter sweep with `evalkit.config.ts`
 - `examples/agents-sdk` — planned remote transport example (not runnable yet)
@@ -43,4 +44,8 @@ Start with the [getting-started guide](www/src/pages/docs/index.astro), then use
 bun install
 bun run check
 bun test
+bun run --cwd packages/evalkit build
+bun run --cwd packages/evalkit pack:check
 ```
+
+The GitHub Packages publish workflow is manual; packaging locally does not publish or deploy anything.

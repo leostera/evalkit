@@ -1,21 +1,43 @@
 {
-  "name": "evalkit",
+  "name": "@leostera/evalkit",
   "version": "0.0.1",
+  "description": "Author and run agent evals as code",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "bin": { "evalkit": "./src/cli.ts" },
-  "peerDependencies": {
-    "@evalkit/core": "*",
-    "@evalkit/runner": "*",
-    "@evalkit/cli": "*"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leostera/evalkit.git",
+    "directory": "packages/evalkit"
   },
-  "peerDependenciesMeta": {
-    "@evalkit/core": { "optional": true },
-    "@evalkit/runner": { "optional": true },
-    "@evalkit/cli": { "optional": true }
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.mts",
+      "import": "./dist/runner.mjs"
+    }
+  },
+  "bin": { "evalkit": "./dist/cli.mjs" },
+  "dependencies": {
+    "effect": "^3.19.0",
+    "hono": "^4.11.6"
   },
   "scripts": {
-    "build": "tsc --noEmit",
-    "check": "tsc --noEmit"
+    "build": "bun run --cwd ../dashboard build && tsdown && bun scripts/copy-dashboard.ts",
+    "check": "tsc --noEmit",
+    "pack:check": "bun scripts/pack-check.ts"
+  },
+  "devDependencies": {
+    "@evalkit/agents": "workspace:*",
+    "@evalkit/cli": "workspace:*",
+    "@evalkit/core": "workspace:*",
+    "@evalkit/runner": "workspace:*",
+    "tsdown": "^0.23.0"
   }
 }

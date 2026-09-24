@@ -7,6 +7,7 @@
 - [Complete manual](https://evalkit.leostera.dev/docs/manual/): Setup, agents, fixtures, eval definitions, suites, matrices, scoring, CLI, reports, and troubleshooting. Source of truth: [manual Markdown](https://github.com/leostera/evalkit/blob/main/www/src/content/manual.md).
 - [Get started](https://evalkit.leostera.dev/docs/): A shorter walkthrough for the included starter project.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
+- [Single-package install and publishing](https://github.com/leostera/evalkit/tree/main/packages/evalkit): `@leostera/evalkit` includes the authoring API, CLI, and dashboard. GitHub Packages publication is manual and has not happened yet.
 - [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported eval discovery, no registry or config.
 - [Configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix): Runnable project with an optional `evalkit.config.ts` and a provider-free parameter sweep.
 
