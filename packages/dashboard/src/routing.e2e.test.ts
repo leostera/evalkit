@@ -133,18 +133,12 @@ describe('dashboard URL routing', () => {
     await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
     await page.waitForSelector('tbody tr button');
     await page.click('tbody tr button');
-    expect(new URL(page.url()).pathname).toBe(
-      '/suites/starter',
-    );
+    expect(new URL(page.url()).pathname).toBe('/suites/starter');
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
-    expect(new URL(page.url()).pathname).toBe(
-      '/evals/starter%23greeting',
-    );
+    expect(new URL(page.url()).pathname).toBe('/evals/starter%23greeting');
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe(
-      '/suites/starter',
-    );
+    expect(new URL(page.url()).pathname).toBe('/suites/starter');
 
     await page.evaluate(() => {
       const button = [...document.querySelectorAll('nav a')].find(
@@ -173,5 +167,55 @@ describe('dashboard URL routing', () => {
     expect(new URL(page.url()).pathname).toBe(
       '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
+  }, 30_000);
+
+  test('opens a discovered eval when the project has no suites', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        const bodies: Record<string, unknown> = {
+          '/v1/catalog': {
+            evals: [
+              {
+                id: 'echo',
+                path: 'echo',
+                name: 'Echo Worker',
+                trialCount: 1,
+                agent: { kind: 'worker', runtimes: [] },
+                fixtures: [],
+                scorers: [],
+              },
+            ],
+          },
+          '/v1/suites': { suites: [] },
+          '/v1/runs': { runs: [] },
+        };
+        if (path in bodies) {
+          void request.respond({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(bodies[path]),
+          });
+        } else {
+          void request.continue();
+        }
+      });
+      await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
+      await page.waitForSelector(
+        'section[aria-label="Standalone evals"] tbody tr',
+      );
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr',
+          (row) => row.textContent,
+        ),
+      ).toContain('Echo Worker');
+      await page.click('section[aria-label="Standalone evals"] tbody tr');
+      expect(new URL(page.url()).pathname).toBe('/evals/echo');
+    } finally {
+      await page.close();
+    }
   }, 30_000);
 });
