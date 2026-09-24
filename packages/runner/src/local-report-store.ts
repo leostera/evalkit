@@ -1,4 +1,5 @@
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rename, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import * as Schema from 'effect/Schema';
 import {
@@ -22,6 +23,12 @@ const MANIFEST_FILE = 'manifest.json';
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function replaceJson(filePath: string, value: unknown): Promise<void> {
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  await writeJson(temporary, value);
+  await rename(temporary, filePath);
 }
 
 function assertPathSegment(value: string, name: string): void {
@@ -50,7 +57,10 @@ function artifactPath(root: string, value: string): string {
 }
 
 class LocalTrialWriter implements TrialWriter {
-  constructor(private readonly directory: string) {}
+  constructor(
+    private readonly directory: string,
+    private readonly metadata: TrialMetadata,
+  ) {}
 
   appendEvent(event: TrajectoryEvent): Promise<void> {
     return appendFile(
@@ -74,6 +84,10 @@ class LocalTrialWriter implements TrialWriter {
 
   async finalize(summary: TrialSummary): Promise<void> {
     await writeJson(path.join(this.directory, 'summary.json'), summary);
+    await replaceJson(path.join(this.directory, MANIFEST_FILE), {
+      ...Schema.encodeSync(TrialMetadataSchema)(this.metadata),
+      status: summary.status,
+    });
   }
 }
 
@@ -81,6 +95,7 @@ class LocalRunWriter implements RunWriter {
   constructor(
     readonly location: string,
     private readonly directory: string,
+    private readonly metadata: RunMetadata,
   ) {}
 
   async startTrial(metadata: TrialMetadata): Promise<TrialWriter> {
@@ -91,14 +106,18 @@ class LocalRunWriter implements RunWriter {
       ...Schema.encodeSync(TrialMetadataSchema)(metadata),
       status: 'running',
     });
-    return new LocalTrialWriter(directory);
+    return new LocalTrialWriter(directory, metadata);
   }
 
-  finalize(summary: RunSummary): Promise<void> {
-    return writeJson(
+  async finalize(summary: RunSummary): Promise<void> {
+    await writeJson(
       path.join(this.directory, 'summary.json'),
       Schema.encodeSync(RunSummarySchema)(summary),
     );
+    await replaceJson(path.join(this.directory, MANIFEST_FILE), {
+      ...Schema.encodeSync(RunMetadataSchema)(this.metadata),
+      status: summary.status,
+    });
   }
 }
 
@@ -116,6 +135,7 @@ export function localReportStore(rootDirectory: string): ReportStore {
       return new LocalRunWriter(
         path.relative(process.cwd(), directory),
         directory,
+        metadata,
       );
     },
   };

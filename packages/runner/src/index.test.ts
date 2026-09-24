@@ -102,6 +102,29 @@ describe('runEval', () => {
     expect(result.status).toBe('completed');
     expect(result.scoring?.overall).toBe(1);
     expect(result.scoring?.passed).toBe(true);
+    const runManifest = JSON.parse(
+      await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
+    );
+    const trialManifest = JSON.parse(
+      await readFile(
+        path.join(
+          root,
+          result.runId,
+          'trials',
+          result.trialId!,
+          'manifest.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(runManifest).toMatchObject({
+      evalId: 'eval-01',
+      status: 'completed',
+    });
+    expect(trialManifest).toMatchObject({
+      evalId: 'eval-01',
+      status: 'completed',
+    });
 
     const trajectory = await readFile(
       path.join(
@@ -270,24 +293,13 @@ describe('runEval', () => {
       }),
       fixtures: [
         directory(source, { dst: 'project', visibility: 'candidate' }),
-        file(
-          path.join(source, 'starter.txt'),
-          {
-            dst: 'copied.txt',
-            visibility: 'evaluator',
-          },
-        ),
-        inlineFile(
-          'hidden.txt',
-          'evaluator fixture',
-          'evaluator',
-        ),
+        file(path.join(source, 'starter.txt'), {
+          dst: 'copied.txt',
+          visibility: 'evaluator',
+        }),
+        inlineFile('hidden.txt', 'evaluator fixture', 'evaluator'),
         dynamic(() =>
-          inlineFile(
-            'generated.txt',
-            'dynamic fixture',
-            'candidate',
-          ),
+          inlineFile('generated.txt', 'dynamic fixture', 'candidate'),
         ),
       ],
       transcript: [user('Create the output')],
@@ -348,13 +360,7 @@ describe('runEval', () => {
     const evaluation = defineEval({
       id: 'eval-0b',
       agent: testAgent('unused'),
-      fixtures: [
-        inlineFile(
-          '../outside.txt',
-          'nope',
-          'candidate',
-        ),
-      ],
+      fixtures: [inlineFile('../outside.txt', 'nope', 'candidate')],
       transcript: [],
       scoring: [],
     });
@@ -375,16 +381,8 @@ describe('runEval', () => {
       id: 'eval-0c',
       agent: testAgent('unused'),
       fixtures: [
-        inlineFile(
-          'same.txt',
-          'first',
-          'candidate',
-        ),
-        inlineFile(
-          'same.txt',
-          'second',
-          'candidate',
-        ),
+        inlineFile('same.txt', 'first', 'candidate'),
+        inlineFile('same.txt', 'second', 'candidate'),
       ],
       transcript: [],
       scoring: [],
@@ -420,6 +418,23 @@ describe('runEval', () => {
     });
 
     expect(result.status).toBe('failed');
+    const runManifest = JSON.parse(
+      await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
+    );
+    const trialManifest = JSON.parse(
+      await readFile(
+        path.join(
+          root,
+          result.runId,
+          'trials',
+          result.trialId!,
+          'manifest.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(runManifest.status).toBe('failed');
+    expect(trialManifest.status).toBe('failed');
     const trajectory = await readFile(
       path.join(
         root,
