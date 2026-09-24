@@ -88,7 +88,7 @@ export const ScoreResultSchema = Schema.Struct({
   error: Schema.optional(RecordedErrorSchema),
 });
 export const TrialScoringSchema = Schema.Struct({
-  results: Schema.Array(ScoreResultSchema),
+  results: Schema.mutable(Schema.Array(ScoreResultSchema)),
   overall: Schema.optional(Schema.Number),
   passed: Schema.Boolean,
 });
@@ -102,7 +102,7 @@ export const TrialSummarySchema = Schema.Struct({
   endedAt: Schema.String,
   durationMs: Schema.optional(Schema.Number),
   scoring: Schema.optional(TrialScoringSchema),
-  artifacts: Schema.optional(Schema.Array(ArtifactEntrySchema)),
+  artifacts: Schema.optional(Schema.mutable(Schema.Array(ArtifactEntrySchema))),
   error: Schema.optional(RecordedErrorSchema),
 });
 
