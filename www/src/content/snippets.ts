@@ -16,7 +16,9 @@ export const greetingEval = defineEval({
   transcript: [user('Ada')],
   scoring: [greetingIsReturned],
   policy: { trials: 3 },
-});`;
+});
+
+export default greetingEval;`;
 
 export const agentDefinition = `import { defineAgent } from '@evalkit/core';
 
@@ -89,12 +91,17 @@ export const resultsCommand = `RUN="_evalkit-results/<run-id>"
 jq '{trialCount, passed, failed}' "$RUN/summary.json"
 jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN"/trials/*/scoring.json`;
 
-export const heroDefinition = `export const greetingEval = defineEval({
-  // Stable identity for this evaluation
+export const heroDefinition = `import { defineEval, directory, user } from '@evalkit/core';
+import { greetingAgent } from '../agents/greeting-agent.js';
+import { greetingIsReturned } from '../judges/greeting.js';
+
+export const greetingEval = defineEval({
   id: 'greeting',
   agent: greetingAgent,
-  fixtures: [starterFiles],
+  fixtures: [directory('fixtures/starter')],
   transcript: [user('Say hello to Ada')],
   scoring: [greetingIsReturned],
   policy: { trials: 3 },
-});`;
+});
+
+export default greetingEval;`;

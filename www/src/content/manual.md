@@ -1,6 +1,6 @@
 # Evalkit manual
 
-Evalkit runs evaluations against an **Agent Under Test (AUT)** and records what happened in a local report. An eval combines an agent, a sequence of user messages, optional fixture files, and scoring rules. A **run** contains one or more independent **trials**; each trial gets its own workspace and event trajectory.
+Evalkit is a kit for authoring agent evals as code. Keep TypeScript eval definitions in Git so your team can review and version them, reuse input fixtures and executable predicate judges across tasks, and run parameter matrices to compare model settings. Each run writes local reports you can inspect, compare, or deliberately archive; results are not automatically committed or shared. An eval combines an **Agent Under Test (AUT)**—the assistant, service, or program being measured—with user messages, optional fixture files, and scoring rules. Evalkit talks to the AUT through an adapter, records what it does, then applies scorers to that evidence. A **run** contains one or more independent **trials**; each trial gets its own workspace and event trajectory.
 
 > **Current scope:** This manual describes the local Bun CLI in this repository. There is no dedicated standalone Evalkit project scaffold or remote Agents SDK transport yet; `bun create` simply copies this repository. Only `user(...)` transcript steps and `predicate(...)` scorers execute today; `agent(...)`/`judge(...)` steps and `judgeScorer(...)` are defined in the API but are not runnable. `policy.timeoutMs` is declared but not enforced. See [Current limitations](#troubleshooting-and-current-limitations).
 
@@ -8,7 +8,7 @@ Evalkit runs evaluations against an **Agent Under Test (AUT)** and records what 
 
 New to Evalkit? Follow the [getting-started guide](https://evalkit.leostera.dev/docs/) for the first run, starter project, and local dashboard. Come back here for the detailed contracts and examples behind each step.
 
-The CLI uses **the current working directory** as the project root. It loads `evalkit.config.ts` if present, otherwise uses `src/registry.ts` or discovers `evals/*.eval.ts`. It resolves fixture sources relative to this directory and writes `_evalkit-results/` and `_evalkit-sandbox/` here. Run commands from the eval project directory, not the monorepo root. Set `EVALKIT_NO_OPEN=1` to suppress automatic browser opening or `PORT=4318` to choose another dashboard port.
+The CLI uses **the current working directory** as the project root. By default it discovers default-exported `evals/**/*.eval.ts`/`.js` files. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes the project; a `src/registry.ts` is only needed for an explicit registry (such as the starter's suite). It resolves fixture sources relative to this directory and writes `_evalkit-results/` and `_evalkit-sandbox/` here. Run commands from the eval project directory, not the monorepo root. Set `EVALKIT_NO_OPEN=1` to suppress automatic browser opening or `PORT=4318` to choose another dashboard port.
 
 Explore the runnable example: [`examples/starter/src/registry.ts`](../../../examples/starter/src/registry.ts), [`agents/greeting-agent.ts`](../../../examples/starter/agents/greeting-agent.ts), [`evals/greeting.eval.ts`](../../../examples/starter/evals/greeting.eval.ts), and [`judges/greeting.ts`](../../../examples/starter/judges/greeting.ts).
 
@@ -18,28 +18,21 @@ A typical local project looks like this:
 
 ```text
 my-project/
-├── src/registry.ts             # optional explicit registry
+├── evalkit.config.js           # optional project configuration
 ├── agents/my-agent.ts          # AUT adapters
-├── evals/my-eval.ts            # eval definitions
+├── evals/my-eval.eval.ts       # default-exported eval
 ├── judges/my-judges.ts         # predicate scorers
 └── fixtures/my-case/          # input files
 ```
 
-There is no dedicated `evalkit init` command yet; `bun create github.com/leostera/evalkit` copies the entire repository. For a new project **inside this monorepo**, use `examples/starter` as a template, give it a `package.json` with workspace dependencies on `@evalkit/core`, `@evalkit/runner`, and `@evalkit/cli` (plus `@evalkit/agents` if using Pi), then run `bun install` at the repository root. These packages are currently private workspace packages, not a published standalone install. For an explicit registry, import each eval into `src/registry.ts` and register it. Alternatively, default-export `defineEval(...)` from `evals/*.eval.ts` to use discovery. For a standalone registry eval:
+There is no dedicated `evalkit init` command yet; `bun create github.com/leostera/evalkit` copies the entire repository. For a new project **inside this monorepo**, use `examples/starter` as a template, give it a `package.json` with workspace dependencies on `@evalkit/core`, `@evalkit/runner`, and `@evalkit/cli` (plus `@evalkit/agents` if using Pi), then run `bun install` at the repository root. These packages are currently private workspace packages, not a published standalone install. For the usual workflow, put a default-exported eval in `evals/*.eval.ts` and run it by `id`: no registry or config file is required. See the [complete eval example](#add-a-scorer-and-an-eval) below.
 
-```ts
-import { registerEvals } from '@evalkit/core';
-import { myEval } from '../evals/my-eval.js';
-
-export default registerEvals([myEval]);
-```
-
-To group evals, register a suite instead (do not also register its members standalone):
+If you need an explicit suite, group its evals in `src/registry.ts` instead (do not also register its members standalone):
 
 ```ts
 import { defineSuite, registerEvals } from '@evalkit/core';
-import { myEval } from '../evals/my-eval.js';
-import { otherEval } from '../evals/other-eval.js';
+import { myEval } from '../evals/my-eval.eval.js';
+import { otherEval } from '../evals/other-eval.eval.js';
 
 export default registerEvals([
   defineSuite({
@@ -54,7 +47,7 @@ Choose a stable, unique lowercase kebab-case `id` for suites, evals, agents, and
 
 ### Configuration and discovery
 
-A default-exported `evalkit.config.js` (also `.ts` or `.mjs`) takes precedence over the fallback `src/registry.ts`. Unless the config supplies `registry` or `evals`, the CLI discovers default exports in `evals/**/*.eval.ts` and `*.eval.js` in sorted path order. Each file can export one eval or an array. To use the named `myEval` example above with discovery, add `export default myEval` to its file. An explicit registry can also be provided as `registry` in the config; it is **not** loaded automatically when a config exists.
+With no config or registry, the CLI discovers default exports in `evals/**/*.eval.ts` and `*.eval.js` in sorted path order. Each file can export one eval or an array. Add `evalkit.config.js` (also `.ts` or `.mjs`) only to customize discovery, execution, or a matrix. A config takes precedence over `src/registry.ts`; if you need an explicit suite **and** a config, supply its registry as the config's `registry` property. An explicit `evals` list is another alternative to discovery.
 
 ```js
 import { defineConfig } from '@evalkit/core';
@@ -72,7 +65,9 @@ Source paths and output directories resolve relative to the config's directory. 
 
 ## Add an agent
 
-An adapter implements `start`, returning a session with `send` and `close`. `send` must resolve when that turn is finished. Emit normalized events so scorers and the dashboard can inspect responses; `content` must be JSON-serializable. For example:
+The **Agent Under Test (AUT)** is the system you want to evaluate—not the scorer. It might be your assistant, a local process, or a service. An adapter bridges that system to Evalkit: each trial gets a fresh session, receives the eval's user messages, and emits a trajectory of events. After the session closes, scorers inspect those events and the trial's files.
+
+The adapter implements `start`, returning a session with `send` and `close`. `send` must resolve when that turn is finished; returning an answer from `send` alone does **not** put it in the trajectory. Emit normalized assistant message events for scoring and the dashboard; `content` must be JSON-serializable. For example:
 
 ```ts
 import { defineAgent } from '@evalkit/core';
@@ -190,7 +185,7 @@ export const repliesPolitely = predicate(
 ```
 
 ```ts
-// evals/my-eval.ts
+// evals/my-eval.eval.ts
 import { defineEval, user } from '@evalkit/core';
 import { myAgent } from '../agents/my-agent.js';
 import { repliesPolitely } from '../judges/my-judges.js';
@@ -203,18 +198,20 @@ export const myEval = defineEval({
   scoring: [repliesPolitely],
   policy: { trials: 3 },
 });
+
+export default myEval;
 ```
 
-Add `fixtures: inputs` if needed, then import this eval in the registry. Every `user(...)` step calls `session.send(...)` in order on the same session; the runner replaces `{{randomSeed}}` in messages with a newly generated seed per trial. Each trial starts a fresh session and workspace. Scorers run **after** the session closes. Use `artifacts.candidate.root` and `artifacts.evaluator.root` inside a scorer to read files (for example with `node:fs/promises`); `trajectory.events` contains `source: 'aut'` and `source: 'runner'` events. If execution fails, normal scorers are skipped; `predicate(name, fn, { supportsPartial: true })` can score the partial trajectory when a context/workspace exists. A scorer exception is recorded as a failed scorer, not as a successful score.
+Add `fixtures: inputs` if needed. The default export makes the eval discoverable; you only import it into a registry when deliberately defining an explicit suite. Every `user(...)` step calls `session.send(...)` in order on the same session; the runner replaces `{{randomSeed}}` in messages with a newly generated seed per trial. Each trial starts a fresh session and workspace. Scorers run **after** the session closes. Use `artifacts.candidate.root` and `artifacts.evaluator.root` inside a scorer to read files (for example with `node:fs/promises`); `trajectory.events` contains `source: 'aut'` and `source: 'runner'` events. If execution fails, normal scorers are skipped; `predicate(name, fn, { supportsPartial: true })` can score the partial trajectory when a context/workspace exists. A scorer exception is recorded as a failed scorer, not as a successful score.
 
 ## Run from the CLI
 
 Run these from the project directory (`examples/starter` for the included example):
 
 ```sh
-bun run evalkit run-evals                        # all registered evals
+bun run evalkit run-evals                        # all discovered evals (or an explicit registry)
 bun run evalkit run-evals greeting               # select an eval ID
-bun run evalkit run-suite starter                # select a suite ID
+bun run evalkit run-suite starter                # only when a suite is explicitly defined
 bun run evalkit run-evals greeting --json
 bun run evalkit run-evals greeting --concurrency 4
 bun run evalkit serve-dashboard
@@ -273,7 +270,7 @@ jq -s 'map(select(.source == "aut" and .kind == "message"))' "$RUN"/trials/*/tra
 
 ## Troubleshooting and current limitations
 
-- **Unknown eval:** Run from the project directory and select the eval by its ID. Either default-export it from `evals/*.eval.ts` for discovery or register it in `src/registry.ts`. Check for duplicate or malformed IDs.
+- **Unknown eval:** Run from the project directory and select the eval by its ID. Default-export it from a matching `evals/*.eval.ts` file; check `testDir`/`include`/`exclude` if you have a config. If using an explicit suite, confirm its registry is loaded. Check for duplicate or malformed IDs.
 - **Fixture not found / duplicate destination:** Fixture `src` is relative to the working directory, not the eval file. Give each fixture a unique destination per workspace; do not use absolute paths or `..` as destinations.
 - **Pi exited / command not found:** Install/configure Pi, or run only the self-contained greeting eval. The Pi adapter requires the local `pi` command; the Agents SDK remote adapter is not implemented.
 - **No response in a score:** The adapter must emit an assistant `message` event; merely returning a value from `send` does not put it in the trajectory.

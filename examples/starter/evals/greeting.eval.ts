@@ -15,3 +15,5 @@ export const greetingEval = defineEval({
   scoring: [greetingIsReturned],
   policy: { trials: 10 },
 });
+
+export default greetingEval;
