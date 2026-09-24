@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import type {
   CatalogEval,
   DashboardApi,
+  MatrixSummary,
   RunSummary,
   SuiteSummary,
 } from '../api.js';
@@ -12,6 +13,7 @@ export function SuiteTable({
   api,
   suites,
   catalog,
+  matrix,
   runs = [],
   selectedSuiteId,
   onOpenSuite,
@@ -20,12 +22,42 @@ export function SuiteTable({
   api: DashboardApi;
   suites: SuiteSummary[];
   catalog: CatalogEval[];
+  matrix?: MatrixSummary | null;
   runs?: RunSummary[];
   selectedSuiteId?: string;
   onOpenSuite(id: string): void;
   onOpenEval(entry: CatalogEval): void;
 }) {
   const [expanded, setExpanded] = useState<string>();
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  const [runError, setRunError] = useState<string>();
+  const parameters =
+    matrix &&
+    Object.entries(matrix.parameters).every(
+      ([axis, values]) =>
+        choices[axis] !== undefined &&
+        values[Number(choices[axis])] !== undefined,
+    )
+      ? Object.fromEntries(
+          Object.entries(matrix.parameters).map(([axis, values]) => [
+            axis,
+            values[Number(choices[axis])],
+          ]),
+        )
+      : undefined;
+  const canRun =
+    matrix === null || (matrix !== undefined && parameters !== undefined);
+  const runEval = (path: string) => {
+    if (!canRun) return;
+    setRunError(undefined);
+    void api
+      .runEval(path, parameters)
+      .catch((error: unknown) =>
+        setRunError(
+          error instanceof Error ? error.message : 'Unable to start eval',
+        ),
+      );
+  };
   const expandedSuite = selectedSuiteId ?? expanded;
   const latestRunByEval = new Map<string, RunSummary>();
   for (const run of runs) {
@@ -42,6 +74,38 @@ export function SuiteTable({
     return <Empty message="No evals or suites are loaded." />;
   return (
     <>
+      {matrix ? (
+        <section aria-label="Matrix cell selection">
+          <p>
+            Choose one configured cell before running an eval. Suite-wide matrix
+            runs require the CLI dry-run.
+          </p>
+          {Object.entries(matrix.parameters).map(([axis, values]) => (
+            <label key={axis}>
+              {axis}{' '}
+              <select
+                aria-label={axis}
+                value={choices[axis] ?? ''}
+                onChange={(event) =>
+                  setChoices({ ...choices, [axis]: event.target.value })
+                }
+              >
+                <option value="">Select {axis}</option>
+                {values.map((value, index) => (
+                  <option key={index} value={index}>
+                    {typeof value === 'string' ? value : JSON.stringify(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </section>
+      ) : null}
+      {runError ? (
+        <p className="error" role="alert">
+          {runError}
+        </p>
+      ) : null}
       {suites.length > 0 ? (
         <div className="table-wrap">
           <table>
@@ -65,7 +129,20 @@ export function SuiteTable({
                       );
                       onOpenSuite(suite.id);
                     }}
-                    onRun={() => void api.runSuite(suite.id)}
+                    onRun={
+                      matrix === null
+                        ? () =>
+                            void api
+                              .runSuite(suite.id)
+                              .catch((error: unknown) =>
+                                setRunError(
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Unable to start suite',
+                                ),
+                              )
+                        : undefined
+                    }
                   />
                   {expandedSuite === suite.id ? (
                     <tr key={`${suite.id}-evals`}>
@@ -93,10 +170,11 @@ export function SuiteTable({
                                   evaluation={evaluation}
                                   status={latestRunByEval.get(id)?.status}
                                   onRun={
-                                    evaluation
-                                      ? () => void api.runEval(evaluation.path)
+                                    evaluation && canRun
+                                      ? () => runEval(evaluation.path)
                                       : undefined
                                   }
+                                  runDisabled={!!evaluation && !canRun}
                                   onOpen={
                                     evaluation
                                       ? () => onOpenEval(evaluation)
@@ -138,7 +216,8 @@ export function SuiteTable({
                     id={evaluation.id}
                     evaluation={evaluation}
                     status={latestRunByEval.get(evaluation.id)?.status}
-                    onRun={() => void api.runEval(evaluation.path)}
+                    onRun={canRun ? () => runEval(evaluation.path) : undefined}
+                    runDisabled={!canRun}
                     onOpen={() => onOpenEval(evaluation)}
                   />
                 ))}

@@ -6,6 +6,7 @@ import type { SelectedTrial } from './components/types.js';
 import type {
   CatalogEval,
   DashboardApi,
+  MatrixSummary,
   RunSummary,
   SuiteSummary,
 } from './api.js';
@@ -33,17 +34,19 @@ function Dashboard({ api }: { api: DashboardApi }) {
   const location = useLocation();
   const [catalog, setCatalog] = useState<CatalogEval[]>([]);
   const [suites, setSuites] = useState<SuiteSummary[]>([]);
+  const [matrix, setMatrix] = useState<MatrixSummary | null>();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<SelectedTrial>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.listCatalog(), api.listSuites()])
-      .then(([nextCatalog, nextSuites]) => {
+    void Promise.all([api.listCatalog(), api.listSuites(), api.getMatrix()])
+      .then(([nextCatalog, nextSuites, nextMatrix]) => {
         if (!active) return;
         setCatalog(nextCatalog);
         setSuites(nextSuites);
+        setMatrix(nextMatrix);
       })
       .catch((cause: unknown) => {
         if (active)
@@ -145,6 +148,7 @@ function Dashboard({ api }: { api: DashboardApi }) {
           api={api}
           catalog={catalog}
           suites={suites}
+          matrix={matrix}
           runs={runs}
           selected={selected}
           onTrial={(run, trial) => setSelected({ run, trial })}

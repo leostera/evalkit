@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
@@ -17,7 +18,8 @@ import {
   type TrajectoryEvent,
   type TrialResult,
 } from '@evalkit/core';
-import { localReportStore, runEval } from '@evalkit/runner';
+import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
+import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import { parseRunArgs, runProjectCommand } from './run-command.js';
 
@@ -544,13 +546,30 @@ function contentType(file: string): string {
 
 async function serveDashboard(): Promise<void> {
   const registry = await loadRegistry();
+  const bundledDashboard = new URL('./dashboard/', import.meta.url);
   const dashboardRoot = fileURLToPath(
-    new URL('../../dashboard/dist/', import.meta.url),
+    existsSync(bundledDashboard)
+      ? bundledDashboard
+      : new URL('../../dashboard/dist/', import.meta.url),
   );
   const app = new Hono();
+  const dashboardMatrix = project?.config.matrix
+    ? registry.matrices.at(-1)
+    : undefined;
+  let matrixRunning = false;
+  app.get('/v1/matrix', (context) =>
+    context.json({
+      matrix: dashboardMatrix
+        ? { id: dashboardMatrix.id, parameters: dashboardMatrix.parameters }
+        : null,
+    }),
+  );
   app.post('/v1/runs', async (context) => {
-    const body = (await context.req.json()) as { path?: unknown };
-    if (typeof body.path !== 'string')
+    const body = (await context.req.json().catch(() => null)) as {
+      path?: unknown;
+      parameters?: unknown;
+    } | null;
+    if (!body || typeof body.path !== 'string')
       return context.text('path is required', 400);
     const [suiteId, evalId] = body.path.includes('#')
       ? body.path.split('#', 2)
@@ -562,21 +581,58 @@ async function serveDashboard(): Promise<void> {
       (suiteId && !registeredSuite?.evals.includes(evaluation))
     )
       return context.text('Unknown eval', 404);
-    void runEvals({
-      evalIds: [authoringId(evaluation)],
-      suiteId,
-      concurrency: 32,
-    });
+    if (dashboardMatrix) {
+      let selection;
+      try {
+        selection = selectDashboardCell(
+          dashboardMatrix,
+          authoringId(evaluation),
+          body.parameters,
+        );
+      } catch (error) {
+        return context.text(
+          error instanceof Error ? error.message : 'Invalid selection',
+          400,
+        );
+      }
+      if (matrixRunning)
+        return context.text('A dashboard matrix cell is already running', 409);
+      matrixRunning = true;
+      void Effect.runPromise(
+        runMatrix(dashboardMatrix, {
+          selection,
+          concurrency: 1,
+          trials: project?.config.execution?.trials,
+          ...(suiteId ? { suiteId } : {}),
+          report: localReportStore(reportRoot),
+          workspaceRoot: sandboxRoot,
+        }),
+      )
+        .catch((error) => console.error('Dashboard matrix run failed:', error))
+        .finally(() => {
+          matrixRunning = false;
+        });
+    } else {
+      if (body.parameters !== undefined)
+        return context.text('Project has no matrix', 400);
+      void runEvals({
+        evalIds: [authoringId(evaluation)],
+        suiteId,
+        concurrency: 32,
+      }).catch((error) => console.error('Dashboard run failed:', error));
+    }
     return context.json({ accepted: true }, 202);
   });
   app.post('/v1/suites/:suiteId/runs', async (context) => {
+    if (dashboardMatrix)
+      return context.text('Select a single eval and matrix cell', 400);
     const suite = registry.getSuite(context.req.param('suiteId'));
     if (!suite) return context.text('Unknown suite', 404);
     void runEvals({
       evalIds: suite.evals.map(authoringId),
       suiteId: authoringId(suite),
       concurrency: 32,
-    });
+    }).catch((error) => console.error('Dashboard suite run failed:', error));
     return context.json({ accepted: true }, 202);
   });
   app.get('/v1/catalog', (context) =>

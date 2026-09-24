@@ -8,20 +8,28 @@ export function SuiteRow({
   suite: SuiteSummary;
   expanded: boolean;
   onToggle(): void;
-  onRun(): void;
+  onRun?: () => void;
 }) {
   return (
     <tr onClick={onToggle}>
       <td>
-        <button className="mono">{suite.name ?? suite.id ?? 'Unnamed suite'}</button>
+        <button className="mono">
+          {suite.name ?? suite.id ?? 'Unnamed suite'}
+        </button>
       </td>
       <td>{suite.evalIds.length}</td>
       <td>{expanded ? 'expanded' : 'configured'}</td>
       <td>
         <button
+          disabled={!onRun}
+          title={
+            onRun
+              ? undefined
+              : 'Run matrix evals individually after selecting a cell'
+          }
           onClick={(event) => {
             event.stopPropagation();
-            onRun();
+            onRun?.();
           }}
         >
           Run suite

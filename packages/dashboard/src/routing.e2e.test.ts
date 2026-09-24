@@ -45,6 +45,7 @@ describe('dashboard URL routing', () => {
     page.on('request', (request) => {
       const url = new URL(request.url());
       const responses: Record<string, unknown> = {
+        '/v1/matrix': { matrix: null },
         '/v1/catalog': {
           evals: [
             {
@@ -179,6 +180,10 @@ describe('dashboard URL routing', () => {
       page.on('request', (request) => {
         const path = new URL(request.url()).pathname;
         if (path === '/v1/runs' && request.method() === 'POST') {
+          expect(JSON.parse(request.postData() ?? '{}')).toEqual({
+            path: 'echo',
+            parameters: { model: 'glm', mode: 'with-docs' },
+          });
           started = true;
           void request.respond({
             status: 202,
@@ -188,6 +193,15 @@ describe('dashboard URL routing', () => {
           return;
         }
         const bodies: Record<string, unknown> = {
+          '/v1/matrix': {
+            matrix: {
+              id: 'benchmark',
+              parameters: {
+                model: ['glm', 'scout'],
+                mode: ['with-docs', 'without-docs'],
+              },
+            },
+          },
           '/v1/catalog': {
             evals: [
               {
@@ -237,7 +251,22 @@ describe('dashboard URL routing', () => {
           (row) => row.textContent,
         ),
       ).toContain('Echo Worker');
-      await page.click('section[aria-label="Standalone evals"] button');
+      const runButton = 'section[aria-label="Standalone evals"] button';
+      expect(
+        await page.$eval(
+          runButton,
+          (button) => (button as HTMLButtonElement).disabled,
+        ),
+      ).toBe(true);
+      await page.select('select[aria-label="model"]', '0');
+      await page.select('select[aria-label="mode"]', '0');
+      expect(
+        await page.$eval(
+          runButton,
+          (button) => (button as HTMLButtonElement).disabled,
+        ),
+      ).toBe(false);
+      await page.click(runButton);
       expect(new URL(page.url()).pathname).toBe('/suites');
       await page.click('nav a[href="/runs"]');
       await page.waitForFunction(

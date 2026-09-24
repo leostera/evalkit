@@ -21,6 +21,10 @@ export type CatalogEval = EvalSummary & {
   }>;
   scorers: Array<{ name: string; kind: string }>;
 };
+export type MatrixSummary = {
+  id: string;
+  parameters: Record<string, unknown[]>;
+};
 export type SuiteSummary = {
   id: string;
   name?: string;
@@ -79,6 +83,7 @@ type FetchLike = (
 
 export interface DashboardApi {
   listCatalog(): Promise<CatalogEval[]>;
+  getMatrix(): Promise<MatrixSummary | null>;
   listEvals(): Promise<EvalSummary[]>;
   listSuites(): Promise<SuiteSummary[]>;
   listRuns(): Promise<RunSummary[]>;
@@ -98,7 +103,7 @@ export interface DashboardApi {
     trialId: string,
     path: string,
   ): Promise<Response>;
-  runEval(path: string): Promise<void>;
+  runEval(path: string, parameters?: Record<string, unknown>): Promise<void>;
   runSuite(suiteId: string): Promise<void>;
 }
 
@@ -117,6 +122,10 @@ export function createHttpDashboardApi(options: {
   return {
     async listCatalog() {
       return (await request<{ evals: CatalogEval[] }>('/v1/catalog')).evals;
+    },
+    async getMatrix() {
+      return (await request<{ matrix: MatrixSummary | null }>('/v1/matrix'))
+        .matrix;
     },
     async listEvals() {
       return (await request<{ evals: EvalSummary[] }>('/v1/evals')).evals;
@@ -174,10 +183,10 @@ export function createHttpDashboardApi(options: {
         )
       ).events;
     },
-    async runEval(path) {
+    async runEval(path, parameters) {
       await request('/v1/runs', {
         method: 'POST',
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, ...(parameters ? { parameters } : {}) }),
         headers: { 'content-type': 'application/json' },
       });
     },

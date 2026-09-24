@@ -8,6 +8,7 @@ import {
 import type {
   CatalogEval,
   DashboardApi,
+  MatrixSummary,
   RunSummary,
   SuiteSummary,
   TrialSummary,
@@ -25,6 +26,7 @@ export function DashboardRoutes({
   api,
   catalog,
   suites,
+  matrix,
   runs,
   selected,
   onTrial,
@@ -32,6 +34,7 @@ export function DashboardRoutes({
   api: DashboardApi;
   catalog: CatalogEval[];
   suites: SuiteSummary[];
+  matrix?: MatrixSummary | null;
   runs: RunSummary[];
   selected?: SelectedTrial;
   onTrial(run: RunSummary, trial: TrialSummary): void;
@@ -46,6 +49,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
+            matrix={matrix}
             runs={runs}
             onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
@@ -57,7 +61,13 @@ export function DashboardRoutes({
       <Route
         path="/suites/:suiteId"
         element={
-          <SuiteRoute api={api} suites={suites} catalog={catalog} runs={runs} />
+          <SuiteRoute
+            api={api}
+            suites={suites}
+            catalog={catalog}
+            matrix={matrix}
+            runs={runs}
+          />
         }
       />
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
@@ -104,6 +114,7 @@ export function DashboardRoutes({
             api={api}
             suites={suites}
             catalog={catalog}
+            matrix={matrix}
             runs={runs}
             onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
             onOpenEval={(entry) =>
@@ -120,6 +131,7 @@ function SuiteRoute(props: {
   api: DashboardApi;
   suites: SuiteSummary[];
   catalog: CatalogEval[];
+  matrix?: MatrixSummary | null;
   runs: RunSummary[];
 }) {
   const { suiteId } = useParams();

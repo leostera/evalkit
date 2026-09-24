@@ -4,12 +4,14 @@ export function EvalRow({
   id,
   evaluation,
   onRun,
+  runDisabled = false,
   onOpen,
   status,
 }: {
   id: string;
   evaluation?: CatalogEval;
   onRun?: () => void;
+  runDisabled?: boolean;
   onOpen?: () => void;
   status?: RunSummary['status'];
 }) {
@@ -29,11 +31,17 @@ export function EvalRow({
         {status ? <span className={`status ${status}`}>{status}</span> : '—'}
       </td>
       <td>
-        {onRun ? (
+        {onRun || runDisabled ? (
           <button
+            disabled={runDisabled}
+            title={
+              runDisabled
+                ? 'Select one value for each matrix axis before running'
+                : undefined
+            }
             onClick={(event) => {
               event.stopPropagation();
-              onRun();
+              onRun?.();
             }}
           >
             Run eval
