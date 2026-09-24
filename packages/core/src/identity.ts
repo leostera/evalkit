@@ -8,6 +8,7 @@ export const ResourceKindSchema = Schema.Literal(
   'run',
   'trial',
   'artifact',
+  'matrix',
 );
 export type ResourceKind = typeof ResourceKindSchema.Type;
 
@@ -24,7 +25,7 @@ export type ResourceUri<TKind extends ResourceKind = ResourceKind> =
 
 export const ResourceUriSchema = Schema.String.pipe(
   Schema.pattern(
-    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact):[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact|matrix):[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   ),
 );
 
@@ -51,7 +52,7 @@ export function parseResourceUri<TKind extends ResourceKind>(
   expectedKind?: TKind,
 ): { kind: TKind; uuid: Uuid; uri: ResourceUri<TKind> } {
   const match =
-    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact):(.+)$/.exec(value);
+    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact|matrix):(.+)$/.exec(value);
   if (!match) throw new Error(`Invalid Evalkit resource URI: ${value}`);
   const kind = match[1] as TKind;
   if (expectedKind && kind !== expectedKind)

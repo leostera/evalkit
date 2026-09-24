@@ -345,6 +345,58 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
   return definition;
 }
 
+export type EvalMatrixCell = {
+  /** Stable, human-readable key within the matrix. */
+  key: string;
+  eval: EvalDefinition;
+  parameters: JsonObject;
+};
+
+export type EvalMatrix = {
+  kind: 'matrix';
+  uri: ResourceUri<'matrix'>;
+  slug?: string;
+  name?: string;
+  evals: readonly EvalDefinition[];
+  /** Each axis value must be JSON-serializable so cells can be persisted and resumed. */
+  parameters: Readonly<Record<string, readonly JsonValue[]>>;
+  defaults?: JsonObject;
+  /** Lazily expands the Cartesian product into executable cells. */
+  cells(): readonly EvalMatrixCell[];
+};
+
+export function defineEvalMatrix<const T extends {
+  uri: ResourceUri<'matrix'>;
+  slug?: string;
+  name?: string;
+  evals: readonly EvalDefinition[];
+  parameters: Readonly<Record<string, readonly JsonValue[]>>;
+  defaults?: JsonObject;
+}>(definition: T): EvalMatrix & T {
+  return {
+    ...definition,
+    kind: 'matrix',
+    cells: () => {
+      const axes = Object.entries(definition.parameters);
+      const cells: EvalMatrixCell[] = [];
+      for (const evaluation of definition.evals) {
+        const expand = (index: number, values: Record<string, JsonValue>) => {
+          if (index === axes.length) {
+            const parameters = { ...(definition.defaults ?? {}), ...values };
+            const key = `${evaluation.slug ?? evaluation.uri}:${JSON.stringify(parameters)}`;
+            cells.push({ key, eval: evaluation, parameters });
+            return;
+          }
+          const [axis, choices] = axes[index]!;
+          for (const choice of choices) expand(index + 1, { ...values, [axis]: choice });
+        };
+        expand(0, {});
+      }
+      return cells;
+    },
+  };
+}
+
 export type EvalSuite<
   TEvals extends readonly EvalDefinition[] = readonly EvalDefinition[],
 > = {
@@ -360,18 +412,25 @@ export function defineSuite<const TSuite extends EvalSuite>(
   return suite;
 }
 
-export type EvalRegistration = EvalDefinition | EvalSuite;
+export type EvalRegistration = EvalDefinition | EvalSuite | EvalMatrix;
+
+function isEvalMatrix(
+  registration: EvalRegistration,
+): registration is EvalMatrix {
+  return 'kind' in registration && registration.kind === 'matrix';
+}
 
 function isEvalSuite(
   registration: EvalRegistration,
 ): registration is EvalSuite {
-  return 'evals' in registration;
+  return !isEvalMatrix(registration) && 'evals' in registration;
 }
 
 export type EvalRegistry = {
   /** All registered evals, flattened from standalone entries and suites. */
   evals: readonly EvalDefinition[];
   suites: readonly EvalSuite[];
+  matrices: readonly EvalMatrix[];
   get(uri: string): EvalDefinition | undefined;
   getSuite(uri: string): EvalSuite | undefined;
   metadata(): EvalRegistryMetadata[];
@@ -430,8 +489,17 @@ export function registerEvals<
   const suiteByUri = new Map<string, EvalSuite>();
   const suiteUriByEvalUri = new Map<string, ResourceUri<'suite'>>();
   const standalone: EvalDefinition[] = [];
+  const matrices: EvalMatrix[] = [];
 
   for (const registration of registrations) {
+    if (isEvalMatrix(registration)) {
+      if (!registration.uri.trim())
+        throw new Error('Eval registry contains a matrix with an empty URI');
+      if (matrices.some((matrix) => matrix.uri === registration.uri))
+        throw new Error(`Eval registry contains duplicate matrix URI: ${registration.uri}`);
+      matrices.push(registration);
+      continue;
+    }
     const suite = isEvalSuite(registration) ? registration : undefined;
     if (suite) {
       if (!suite.uri.trim())
@@ -465,6 +533,7 @@ export function registerEvals<
   return {
     evals,
     suites: [...suiteByUri.values()],
+    matrices,
     get: (uri) => byUri.get(uri),
     getSuite: (uri) => suiteByUri.get(uri),
     metadata: () =>

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   agent,
   defineEval,
+  defineEvalMatrix,
   defineSuite,
   directory,
   registerEvals,
@@ -121,6 +122,33 @@ describe('core definitions', () => {
         suiteUri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b17',
       },
     ]);
+  });
+
+  test('expands eval matrices lazily into parameterized cells', () => {
+    const first = defineEval({
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b11',
+      slug: 'first',
+      agent: { start: async () => ({ send: async () => {}, close: async () => {} }) },
+      transcript: [],
+      scoring: [],
+    });
+    const second = defineEval({
+      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b12',
+      slug: 'second',
+      agent: first.agent,
+      transcript: [],
+      scoring: [],
+    });
+    const matrix = defineEvalMatrix({
+      uri: 'evalkit:matrix:0197f17c-4d89-7f81-9d42-6c497e6f6b13',
+      evals: [first, second],
+      parameters: { model: ['a', 'b'], mode: ['without-docs', 'with-docs'] },
+    });
+    expect(matrix.cells()).toHaveLength(8);
+    expect(matrix.cells()[0]).toMatchObject({
+      eval: first,
+      parameters: { model: 'a', mode: 'without-docs' },
+    });
   });
 
   test('rejects duplicate registry IDs', () => {

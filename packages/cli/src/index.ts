@@ -336,6 +336,38 @@ async function runEvals(options: {
   if (failed.some(Boolean)) process.exitCode = 1;
 }
 
+async function runMatrix(options: {
+  matrixId: string;
+  evalSlugs?: string[];
+  json: boolean;
+  concurrency: number;
+  parameters?: JsonObject;
+}): Promise<void> {
+  const registry = await loadRegistry();
+  const matrix = registry.matrices.find(
+    (candidate) => candidate.uri === options.matrixId || candidate.slug === options.matrixId,
+  );
+  if (!matrix) throw new Error(`Unknown matrix: ${options.matrixId}`);
+  const selected = matrix.cells().filter((cell) =>
+    !options.evalSlugs?.length || options.evalSlugs.includes(cell.eval.slug ?? cell.eval.uri),
+  );
+  await Effect.runPromise(
+    Effect.all(
+      selected.map((cell) =>
+        Effect.tryPromise(() =>
+          runEvals({
+            evalIds: [cell.eval.uri],
+            json: options.json,
+            concurrency: 1,
+            parameters: { ...cell.parameters, ...(options.parameters ?? {}) },
+          }),
+        ),
+      ),
+      { concurrency: options.concurrency },
+    ),
+  );
+}
+
 async function listLocalRuns(): Promise<LocalRun[]> {
   let entries: string[];
   try {
@@ -802,7 +834,17 @@ const parameters: JsonObject = {
   ...(numericArgument('--turn-budget') !== undefined ? { turnBudget: numericArgument('--turn-budget')! } : {}),
 };
 const runParameters = Object.keys(parameters).length > 0 ? parameters : undefined;
-if (command === 'run-evals')
+if (command === 'run-matrix') {
+  if (!evalId) throw new Error('run-matrix requires a matrix URI or slug');
+  const evalSelection = argumentValue('--eval');
+  await runMatrix({
+    matrixId: evalId,
+    evalSlugs: evalSelection?.split(',').filter(Boolean),
+    json: flags.has('--json'),
+    concurrency,
+    parameters: runParameters,
+  });
+} else if (command === 'run-evals')
   await runEvals({
     evalIds: evalId ? [evalId] : undefined,
     json: flags.has('--json'),
@@ -824,7 +866,7 @@ else if (command === 'run-suite') {
 } else if (command === 'serve-dashboard') await serveDashboard();
 else if (command === 'help' || command === '--help')
   console.log(
-    'evalkit\n\nCommands:\n  run-evals [eval-id] [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-suite <suite-id> [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  serve-dashboard\n',
+    'evalkit\n\nCommands:\n  run-evals [eval-id] [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-suite <suite-id> [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-matrix <matrix-id-or-slug> [--eval <slug,...>] [--model <id>] [--max-tokens <n>]\n  serve-dashboard\n',
   );
 else {
   console.error(`Unknown command: ${command}`);
