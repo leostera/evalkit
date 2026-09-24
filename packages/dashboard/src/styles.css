@@ -141,6 +141,25 @@ th {
 .nested {
   background: #fafafa;
 }
+.matrix-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+.matrix-filter input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  border: 1px solid #999;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+}
+.matrix-filter span {
+  color: #555;
+}
 .matrix-pages {
   display: flex;
   align-items: center;

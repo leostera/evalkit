@@ -359,7 +359,20 @@ describe('dashboard URL routing', () => {
             ],
           },
           '/v1/suites': { suites: [] },
-          '/v1/runs': { runs: [] },
+          '/v1/runs': {
+            runs: [
+              {
+                id: 'r50',
+                evalId: 'echo',
+                matrixId: 'benchmark',
+                parameters: { model: 'model-50', mode: 'with-docs' },
+                status: 'passed',
+                startedAt: '2026-01-01T00:00:00Z',
+                completedTrials: 1,
+                requestedTrials: 1,
+              },
+            ],
+          },
         };
         void request.respond({
           status: 200,
@@ -387,6 +400,42 @@ describe('dashboard URL routing', () => {
           (row) => row.textContent,
         ),
       ).toContain('model-25');
+      // Filtering includes off-page cells and their latest-run status.
+      const filter = 'input[aria-label="Filter matrix cells"]';
+      await page.type(filter, 'passed');
+      expect(
+        await page.$eval('.matrix-filter span', (span) => span.textContent),
+      ).toContain('1 of 102');
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          (cell) => cell.textContent?.trim(),
+        ),
+      ).toBe('model-50');
+      await page.$eval(filter, (input) => (input as HTMLInputElement).select());
+      await page.keyboard.type('model-2');
+      expect(
+        await page.$eval('.matrix-filter span', (span) => span.textContent),
+      ).toContain('22 of 102');
+      expect(await page.$('.matrix-pages')).toBeNull();
+      await page.click(
+        'section[aria-label="Standalone evals"] th:nth-child(2) button',
+      );
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          (cell) => cell.textContent?.trim(),
+        ),
+      ).toBe('model-2');
+      await page.click(
+        'section[aria-label="Standalone evals"] th:nth-child(2) button',
+      );
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          (cell) => cell.textContent?.trim(),
+        ),
+      ).toBe('model-29');
       const posted = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === '/v1/runs' &&
@@ -397,7 +446,7 @@ describe('dashboard URL routing', () => {
       );
       await posted;
       expect(submissions).toEqual([
-        { path: 'echo', parameters: { model: 'model-25', mode: 'with-docs' } },
+        { path: 'echo', parameters: { model: 'model-29', mode: 'with-docs' } },
       ]);
     } finally {
       await page.close();

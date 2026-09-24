@@ -127,8 +127,9 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
     },
   ];
   const html = render([], [standalone], runs, matrix);
-  expect(html).toContain('<th>model</th>');
-  expect(html).toContain('<th>mode</th>');
+  expect(html).toContain('class="table-sort">model ↕</button>');
+  expect(html).toContain('class="table-sort">mode ↕</button>');
+  expect(html).toContain('aria-label="Filter matrix cells"');
   expect(html).not.toContain('<select');
   expect(html.match(/Run eval/g)).toHaveLength(4);
   expect(html).toContain('with-docs');
@@ -148,7 +149,7 @@ test('suite members also display one row per configured matrix cell', () => {
     'starter',
   );
   expect(html).toContain('class="nested"');
-  expect(html).toContain('<th>model</th>');
+  expect(html).toContain('class="table-sort">model ↕</button>');
   expect(html.match(/Run eval/g)).toHaveLength(2);
   expect(html).not.toContain('<select');
 });
