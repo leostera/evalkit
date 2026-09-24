@@ -2,6 +2,7 @@
   "name": "@evalkit/cli",
   "version": "0.0.1",
   "type": "module",
+  "exports": { "./bin": "./src/index.ts", "./project": "./src/project.ts" },
   "bin": {
     "evalkit": "./src/index.ts"
   },

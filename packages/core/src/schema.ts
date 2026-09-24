@@ -22,6 +22,9 @@ export const AutIdentitySchema = Schema.Struct({
   version: Schema.optional(Schema.String),
 });
 
+const ParametersSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+const MatrixCellSchema = Schema.Struct({ uri: resourceUriSchema('matrix'), cellKey: Schema.String });
+
 export const RunMetadataSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
@@ -30,6 +33,8 @@ export const RunMetadataSchema = Schema.Struct({
   evalUri: resourceUriSchema('eval'),
   suiteId: Schema.optional(Schema.String),
   suiteUri: Schema.optional(resourceUriSchema('suite')),
+  parameters: Schema.optional(ParametersSchema),
+  matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });
@@ -43,6 +48,8 @@ export const TrialMetadataSchema = Schema.Struct({
   trialIndex: Schema.Number,
   evalId: Schema.String,
   evalUri: resourceUriSchema('eval'),
+  parameters: Schema.optional(ParametersSchema),
+  matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
 });

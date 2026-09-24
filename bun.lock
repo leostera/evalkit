@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "evalkit",
+      "name": "@evalkit/workspace",
       "devDependencies": {
         "@types/bun": "latest",
         "prettier": "latest",
@@ -91,6 +91,23 @@
         "@types/react-dom": "latest",
         "puppeteer": "^25.11.0",
       },
+    },
+    "packages/evalkit": {
+      "name": "evalkit",
+      "version": "0.0.1",
+      "bin": {
+        "evalkit": "./src/cli.ts",
+      },
+      "peerDependencies": {
+        "@evalkit/cli": "*",
+        "@evalkit/core": "*",
+        "@evalkit/runner": "*",
+      },
+      "optionalPeers": [
+        "@evalkit/cli",
+        "@evalkit/core",
+        "@evalkit/runner",
+      ],
     },
     "packages/runner": {
       "name": "@evalkit/runner",
@@ -482,6 +499,8 @@
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
+
+    "evalkit": ["evalkit@workspace:packages/evalkit"],
 
     "effect": ["effect@3.22.2", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-fm1CQXCs7GTMwpadZxwU5rnAb2bN6mbQpknq/pXBGCzSKkosNYb9k0wsoL0TfB10rSa5xOEZJjo77u/KLXSANg=="],
 

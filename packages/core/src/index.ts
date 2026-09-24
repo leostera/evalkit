@@ -1,4 +1,5 @@
 import { parseResourceUri, type ResourceUri, type Uuid } from './identity.js';
+export { defineConfig, type EvalkitConfig } from './config.js';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue =
@@ -345,57 +346,9 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
   return definition;
 }
 
-export type EvalMatrixCell = {
-  /** Stable, human-readable key within the matrix. */
-  key: string;
-  eval: EvalDefinition;
-  parameters: JsonObject;
-};
-
-export type EvalMatrix = {
-  kind: 'matrix';
-  uri: ResourceUri<'matrix'>;
-  slug?: string;
-  name?: string;
-  evals: readonly EvalDefinition[];
-  /** Each axis value must be JSON-serializable so cells can be persisted and resumed. */
-  parameters: Readonly<Record<string, readonly JsonValue[]>>;
-  defaults?: JsonObject;
-  /** Lazily expands the Cartesian product into executable cells. */
-  cells(): readonly EvalMatrixCell[];
-};
-
-export function defineEvalMatrix<const T extends {
-  uri: ResourceUri<'matrix'>;
-  slug?: string;
-  name?: string;
-  evals: readonly EvalDefinition[];
-  parameters: Readonly<Record<string, readonly JsonValue[]>>;
-  defaults?: JsonObject;
-}>(definition: T): EvalMatrix & T {
-  return {
-    ...definition,
-    kind: 'matrix',
-    cells: () => {
-      const axes = Object.entries(definition.parameters);
-      const cells: EvalMatrixCell[] = [];
-      for (const evaluation of definition.evals) {
-        const expand = (index: number, values: Record<string, JsonValue>) => {
-          if (index === axes.length) {
-            const parameters = { ...(definition.defaults ?? {}), ...values };
-            const key = `${evaluation.slug ?? evaluation.uri}:${JSON.stringify(parameters)}`;
-            cells.push({ key, eval: evaluation, parameters });
-            return;
-          }
-          const [axis, choices] = axes[index]!;
-          for (const choice of choices) expand(index + 1, { ...values, [axis]: choice });
-        };
-        expand(0, {});
-      }
-      return cells;
-    },
-  };
-}
+export { defineEvalMatrix, canonicalParameters } from './matrix.js';
+export type { EvalMatrix, EvalMatrixCell, MatrixSelection } from './matrix.js';
+import type { EvalMatrix } from './matrix.js';
 
 export type EvalSuite<
   TEvals extends readonly EvalDefinition[] = readonly EvalDefinition[],
@@ -609,6 +562,8 @@ export type RunMetadata = {
   /** Canonical suite membership when this eval was invoked through a suite. */
   suiteId?: string;
   suiteUri?: ResourceUri<'suite'>;
+  parameters?: JsonObject;
+  matrix?: { uri: ResourceUri<'matrix'>; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
 };
@@ -622,6 +577,8 @@ export type TrialMetadata = {
   trialIndex: number;
   evalId: string;
   evalUri: ResourceUri<'eval'>;
+  parameters?: JsonObject;
+  matrix?: { uri: ResourceUri<'matrix'>; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
 };

@@ -144,8 +144,9 @@ describe('core definitions', () => {
       evals: [first, second],
       parameters: { model: ['a', 'b'], mode: ['without-docs', 'with-docs'] },
     });
-    expect(matrix.cells()).toHaveLength(8);
-    expect(matrix.cells()[0]).toMatchObject({
+    expect(matrix.count()).toBe(8);
+    expect([...matrix.cells()]).toHaveLength(8);
+    expect(matrix.cells().next().value).toMatchObject({
       eval: first,
       parameters: { model: 'a', mode: 'without-docs' },
     });

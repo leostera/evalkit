@@ -23,6 +23,7 @@ import {
   type RunStatus,
   type ResourceKind,
   type RunWriter,
+  type RunMetadata,
   type ScoreResult,
   type Uuid,
   type ScoreValue,
@@ -33,6 +34,7 @@ import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
 
 export { localReportStore } from './local-report-store.js';
+export { runMatrix } from './matrix.js';
 
 export type RunEvalOptions = {
   report: ReportStore;
@@ -43,6 +45,8 @@ export type RunEvalOptions = {
   trials?: number;
   /** Parameters made available to the AUT for this invocation. */
   parameters?: JsonObject;
+  /** Matrix provenance retained with every aggregate and trial manifest. */
+  matrix?: RunMetadata['matrix'];
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
   runtime?: AgentRuntimeName;
   /** Maximum number of trials from this aggregate run executing concurrently. */
@@ -191,6 +195,8 @@ async function executeRun(
         }
       : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+    parameters: options.parameters,
+    matrix: options.matrix,
     startedAt: aggregateStartedAt.toISOString(),
   });
   const trialEffects = Array.from(
@@ -307,6 +313,8 @@ async function runTrial(
           }
         : {}),
       ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+      parameters: options.parameters,
+      matrix: options.matrix,
       startedAt,
     }));
   const trialWriter = await runWriter.startTrial({
@@ -319,6 +327,8 @@ async function runTrial(
     evalId: definition.uri,
     evalUri: definition.uri,
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+    parameters: options.parameters,
+    matrix: options.matrix,
     startedAt,
   });
 

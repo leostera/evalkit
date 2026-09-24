@@ -17,6 +17,8 @@ import {
   type TrialResult,
 } from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
+import { loadProject } from './project.js';
+import { parseRunArgs, runProjectCommand } from './run-command.js';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -86,9 +88,10 @@ type TrajectoryMeasurements = {
   outputTokens: number;
 };
 
-const projectRoot = process.cwd();
-const reportRoot = resolve(projectRoot, '_evalkit-results');
+let projectRoot = process.cwd();
+let reportRoot = resolve(projectRoot, '_evalkit-results');
 const sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
+let project: Awaited<ReturnType<typeof loadProject>> | undefined;
 
 function dashboardRunStatus(summary: {
   status: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -113,14 +116,8 @@ function dashboardTrialStatus(summary: {
 }
 
 async function loadRegistry(): Promise<EvalRegistry> {
-  const registryFile = pathToFileURL(
-    resolve(projectRoot, 'src/registry.ts'),
-  ).href;
-  const module = (await import(registryFile)) as { default?: EvalRegistry };
-  if (!module.default?.get || !module.default?.evals) {
-    throw new Error('src/registry.ts must default-export registerEvals([...])');
-  }
-  return module.default;
+  project ??= await loadProject(projectRoot);
+  return project.registry;
 }
 
 function runtimeFor(evaluation: EvalDefinition): AgentRuntimeName | undefined {
@@ -240,132 +237,16 @@ function printResult(
   void evaluation;
 }
 
-async function runEvals(options: {
-  evalIds?: string[];
-  json: boolean;
-  suiteId?: string;
-  suiteName?: string;
-  concurrency: number;
-  parameters?: JsonObject;
-}): Promise<void> {
+async function runEvals(options: { evalIds: string[]; suiteId?: string; concurrency: number }): Promise<void> {
   const registry = await loadRegistry();
-  const evaluations = options.evalIds
-    ? options.evalIds.map((id) => registry.get(id))
-    : registry.evals;
-  if (evaluations.some((evaluation) => !evaluation)) {
-    throw new Error(`Unknown eval: ${options.evalIds?.join(', ')}`);
-  }
-
-  if (!options.json && options.suiteId) {
-    console.log(
-      `\nSuite: ${options.suiteId}${options.suiteName ? ` — ${options.suiteName}` : ''}`,
-    );
-  }
-
-  const suiteIdByEvalId = new Map(
-    registry.metadata().map((metadata) => [metadata.uri, metadata.suiteUri]),
-  );
-  const semaphore = Effect.unsafeMakeSemaphore(options.concurrency);
-  const jobs = evaluations
-    .filter(
-      (evaluation): evaluation is EvalDefinition => evaluation !== undefined,
-    )
-    .map((evaluation) =>
-      Effect.tryPromise({
-        try: async () => {
-          const suiteId =
-            options.suiteId ?? suiteIdByEvalId.get(evaluation.uri);
-          const trialCount = evaluation.policy?.trials ?? 1;
-          if (!options.json) {
-            printEvalStart(evaluation);
-            console.log(`  trials   ${trialCount}`);
-          }
-          const startedAt = performance.now();
-          const aggregate = await Effect.runPromise(
-            runEval(evaluation, {
-              report: localReportStore(reportRoot),
-              ...(suiteId ? { suiteId } : {}),
-              workspaceRoot: sandboxRoot,
-              ...(runtimeFor(evaluation) ? { runtime: runtimeFor(evaluation) } : {}),
-              concurrency: options.concurrency,
-              semaphore,
-              ...(options.parameters ? { parameters: options.parameters } : {}),
-            }),
-          );
-          const trialResults = aggregate.trials ?? [aggregate];
-          let failed = false;
-          for (const [index, result] of trialResults.entries()) {
-            if (!options.json && trialCount > 1)
-              console.log(
-                `\n  ${paint.yellow(`Trial ${index + 1}/${trialCount}`)}`,
-              );
-            const measurements = await measureTrajectory(
-              result.runId,
-              result.trialId,
-            );
-            if (options.json)
-              console.log(
-                JSON.stringify({
-                  ...result,
-                  trial: index + 1,
-                  trialCount,
-                  measurements,
-                }),
-              );
-            else
-              printResult(
-                evaluation,
-                result,
-                result.durationMs ?? 0,
-                measurements,
-              );
-            failed ||= result.status !== 'completed';
-          }
-          if (!options.json && trialCount > 1)
-            console.log(
-              `\n  ${paint.cyan('run')}     ${paint.dim(aggregate.runId)} (${Math.round(performance.now() - startedAt)}ms aggregate)`,
-            );
-          return failed;
-        },
-        catch: (error) => error,
-      }),
-    );
-  const failed = await Effect.runPromise(
-    Effect.all(jobs, { concurrency: options.concurrency }),
-  );
-  if (failed.some(Boolean)) process.exitCode = 1;
-}
-
-async function runMatrix(options: {
-  matrixId: string;
-  evalSlugs?: string[];
-  json: boolean;
-  concurrency: number;
-  parameters?: JsonObject;
-}): Promise<void> {
-  const registry = await loadRegistry();
-  const matrix = registry.matrices.find(
-    (candidate) => candidate.uri === options.matrixId || candidate.slug === options.matrixId,
-  );
-  if (!matrix) throw new Error(`Unknown matrix: ${options.matrixId}`);
-  const selected = matrix.cells().filter((cell) =>
-    !options.evalSlugs?.length || options.evalSlugs.includes(cell.eval.slug ?? cell.eval.uri),
-  );
-  await Effect.runPromise(
-    Effect.all(
-      selected.map((cell) =>
-        Effect.tryPromise(() =>
-          runEvals({
-            evalIds: [cell.eval.uri],
-            json: options.json,
-            concurrency: 1,
-            parameters: { ...cell.parameters, ...(options.parameters ?? {}) },
-          }),
-        ),
-      ),
-      { concurrency: options.concurrency },
-    ),
-  );
+  const evaluations = options.evalIds.map(id => registry.get(id));
+  if (evaluations.some(e => !e)) throw new Error('Unknown eval');
+  await Effect.runPromise(Effect.all(evaluations.map(evaluation =>
+    runEval(evaluation!, {
+      report: localReportStore(reportRoot), workspaceRoot: sandboxRoot,
+      suiteId: options.suiteId, runtime: runtimeFor(evaluation!),
+      concurrency: options.concurrency,
+    })), { concurrency: options.concurrency }));
 }
 
 async function listLocalRuns(): Promise<LocalRun[]> {
@@ -635,10 +516,8 @@ async function serveDashboard(): Promise<void> {
     )
       return context.text('Unknown eval', 404);
     void runEvals({
-      json: false,
       evalIds: [evaluation.uri],
       suiteId,
-      suiteName: registeredSuite?.name,
       concurrency: 32,
     });
     return context.json({ accepted: true }, 202);
@@ -647,10 +526,8 @@ async function serveDashboard(): Promise<void> {
     const suite = registry.getSuite(context.req.param('suiteId'));
     if (!suite) return context.text('Unknown suite', 404);
     void runEvals({
-      json: false,
       evalIds: suite.evals.map((evaluation) => evaluation.uri),
       suiteId: suite.uri,
-      suiteName: suite.name,
       concurrency: 32,
     });
     return context.json({ accepted: true }, 202);
@@ -795,80 +672,39 @@ async function serveDashboard(): Promise<void> {
 }
 
 const [command = 'help', ...arguments_] = process.argv.slice(2);
-const flags = new Set(
-  arguments_.filter((argument) => argument.startsWith('--')),
-);
-const valueOptions = new Set(['--model', '--max-tokens', '--chat-timeout-ms', '--turn-budget', '--concurrency']);
-const positionalArguments: string[] = [];
-for (let index = 0; index < arguments_.length; index += 1) {
-  const argument = arguments_[index]!;
-  if (argument.startsWith('--')) {
-    if (!argument.includes('=') && valueOptions.has(argument)) index += 1;
-    continue;
-  }
-  positionalArguments.push(argument);
-}
-const evalId = positionalArguments[0];
-function argumentValue(name: string): string | undefined {
-  const inline = arguments_.find((argument) => argument.startsWith(`${name}=`));
-  if (inline) return inline.slice(name.length + 1);
-  const index = arguments_.indexOf(name);
-  return index >= 0 ? arguments_[index + 1] : undefined;
-}
-function numericArgument(name: string): number | undefined {
-  const value = argumentValue(name);
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) throw new Error(`${name} must be numeric; received ${value}`);
-  return parsed;
-}
-const concurrency = Number(argumentValue('--concurrency') ?? process.env.EVALKIT_CONCURRENCY ?? 32);
-if (!Number.isInteger(concurrency) || concurrency < 1)
-  throw new Error(
-    `Concurrency must be a positive integer; received ${concurrency}`,
-  );
-const parameters: JsonObject = {
-  ...(argumentValue('--model') ? { model: argumentValue('--model')! } : {}),
-  ...(numericArgument('--max-tokens') !== undefined ? { maxTokens: numericArgument('--max-tokens')! } : {}),
-  ...(numericArgument('--chat-timeout-ms') !== undefined ? { chatTimeoutMs: numericArgument('--chat-timeout-ms')! } : {}),
-  ...(numericArgument('--turn-budget') !== undefined ? { turnBudget: numericArgument('--turn-budget')! } : {}),
-};
-const runParameters = Object.keys(parameters).length > 0 ? parameters : undefined;
-if (command === 'run-matrix') {
-  if (!evalId) throw new Error('run-matrix requires a matrix URI or slug');
-  const evalSelection = argumentValue('--eval');
-  await runMatrix({
-    matrixId: evalId,
-    evalSlugs: evalSelection?.split(',').filter(Boolean),
-    json: flags.has('--json'),
-    concurrency,
-    parameters: runParameters,
-  });
-} else if (command === 'run-evals')
-  await runEvals({
-    evalIds: evalId ? [evalId] : undefined,
-    json: flags.has('--json'),
-    concurrency,
-    parameters: runParameters,
-  });
-else if (command === 'run-suite') {
-  if (!evalId) throw new Error('run-suite requires a suite ID');
-  const suite = (await loadRegistry()).getSuite(evalId);
-  if (!suite) throw new Error(`Unknown suite: ${evalId}`);
-  await runEvals({
-    evalIds: suite.evals.map((evaluation) => evaluation.uri),
-    json: flags.has('--json'),
-    suiteId: suite.uri,
-    suiteName: suite.name,
-    concurrency,
-    parameters: runParameters,
-  });
-} else if (command === 'serve-dashboard') await serveDashboard();
-else if (command === 'help' || command === '--help')
-  console.log(
-    'evalkit\n\nCommands:\n  run-evals [eval-id] [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-suite <suite-id> [--model <id>] [--max-tokens <n>] [--chat-timeout-ms <n>] [--turn-budget <n>]\n  run-matrix <matrix-id-or-slug> [--eval <slug,...>] [--model <id>] [--max-tokens <n>]\n  serve-dashboard\n',
-  );
-else {
-  console.error(`Unknown command: ${command}`);
+try {
+  if (['run-evals', 'run-matrix', 'run-suite'].includes(command)) {
+    await runProjectCommand(command, arguments_);
+  } else if (command === 'serve-dashboard') {
+    const { values } = parseRunArgs(arguments_);
+    project = await loadProject(projectRoot, values.config);
+    projectRoot = project.root;
+    reportRoot = resolve(projectRoot, project.config.reportDir ?? '_evalkit-results');
+    await serveDashboard();
+  } else if (command === 'help' || command === '--help') {
+    console.log(`evalkit
+
+Commands:
+  run-evals [eval-slug-or-uri,...]
+  run-matrix <matrix-slug-or-uri>
+  run-suite <suite-slug-or-uri>
+  serve-dashboard
+
+Project: evalkit.config.js / .ts, with default discovery in evals/**/*.eval.{ts,js}
+Run options:
+  --config <file>               Select project configuration
+  --eval <slug,...>             Select tasks
+  --model <key,...> --mode <key,...>  Select matrix values
+  --select <axis=value>         Select any custom axis (repeatable)
+  --param <name=JSON>           Override non-axis agent parameters
+  --max-tokens <n> --turn-budget <n> --chat-timeout-ms <n>
+  --concurrency <n> --trials <n>
+  --dry-run                    Show plan without starting agents
+  --all                        Permit plans above the safety limit
+  --json                       Emit results as JSON
+`);
+  } else throw new Error(`Unknown command: ${command}`);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }
