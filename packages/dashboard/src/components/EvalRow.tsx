@@ -3,6 +3,8 @@ import { agentName } from './agentName.js';
 export function EvalRow({
   id,
   evaluation,
+  parameters = [],
+  trials,
   onRun,
   runDisabled = false,
   onOpen,
@@ -10,6 +12,8 @@ export function EvalRow({
 }: {
   id: string;
   evaluation?: CatalogEval;
+  parameters?: readonly unknown[];
+  trials?: number;
   onRun?: () => void;
   runDisabled?: boolean;
   onOpen?: () => void;
@@ -21,12 +25,17 @@ export function EvalRow({
         {evaluation?.name ?? id}
         <small className="mono">{evaluation?.path ?? id}</small>
       </td>
+      {parameters.map((value, index) => (
+        <td key={index} className="mono">
+          {typeof value === 'string' ? value : JSON.stringify(value)}
+        </td>
+      ))}
       <td>{agentName(evaluation)}</td>
       <td>
         {evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ||
           'default'}
       </td>
-      <td>{evaluation?.trialCount ?? '—'}</td>
+      <td>{trials ?? evaluation?.trialCount ?? '—'}</td>
       <td>
         {status ? <span className={`status ${status}`}>{status}</span> : '—'}
       </td>
@@ -35,9 +44,7 @@ export function EvalRow({
           <button
             disabled={runDisabled}
             title={
-              runDisabled
-                ? 'Select one value for each matrix axis before running'
-                : undefined
+              runDisabled ? 'Matrix configuration is still loading' : undefined
             }
             onClick={(event) => {
               event.stopPropagation();

@@ -7,8 +7,9 @@ import type {
   SuiteSummary,
 } from '../api.js';
 import { Empty } from './Empty.js';
-import { EvalRow } from './EvalRow.js';
+import { MatrixEvalTable } from './MatrixEvalTable.js';
 import { SuiteRow } from './SuiteRow.js';
+
 export function SuiteTable({
   api,
   suites,
@@ -29,26 +30,8 @@ export function SuiteTable({
   onOpenEval(entry: CatalogEval): void;
 }) {
   const [expanded, setExpanded] = useState<string>();
-  const [choices, setChoices] = useState<Record<string, string>>({});
   const [runError, setRunError] = useState<string>();
-  const parameters =
-    matrix &&
-    Object.entries(matrix.parameters).every(
-      ([axis, values]) =>
-        choices[axis] !== undefined &&
-        values[Number(choices[axis])] !== undefined,
-    )
-      ? Object.fromEntries(
-          Object.entries(matrix.parameters).map(([axis, values]) => [
-            axis,
-            values[Number(choices[axis])],
-          ]),
-        )
-      : undefined;
-  const canRun =
-    matrix === null || (matrix !== undefined && parameters !== undefined);
-  const runEval = (path: string) => {
-    if (!canRun) return;
+  const runEval = (path: string, parameters?: Record<string, unknown>) => {
     setRunError(undefined);
     void api
       .runEval(path, parameters)
@@ -59,12 +42,6 @@ export function SuiteTable({
       );
   };
   const expandedSuite = selectedSuiteId ?? expanded;
-  const latestRunByEval = new Map<string, RunSummary>();
-  for (const run of runs) {
-    const previous = latestRunByEval.get(run.evalId);
-    if (!previous || previous.startedAt <= run.startedAt)
-      latestRunByEval.set(run.evalId, run);
-  }
   const standalone = catalog.filter(
     (entry) =>
       !entry.suiteId &&
@@ -75,31 +52,10 @@ export function SuiteTable({
   return (
     <>
       {matrix ? (
-        <section aria-label="Matrix cell selection">
-          <p>
-            Choose one configured cell before running an eval. Suite-wide matrix
-            runs require the CLI dry-run.
-          </p>
-          {Object.entries(matrix.parameters).map(([axis, values]) => (
-            <label key={axis}>
-              {axis}{' '}
-              <select
-                aria-label={axis}
-                value={choices[axis] ?? ''}
-                onChange={(event) =>
-                  setChoices({ ...choices, [axis]: event.target.value })
-                }
-              >
-                <option value="">Select {axis}</option>
-                {values.map((value, index) => (
-                  <option key={index} value={index}>
-                    {typeof value === 'string' ? value : JSON.stringify(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </section>
+        <p>
+          Each row is one configured matrix cell. Run one row at a time; use the
+          CLI dry-run for larger selections.
+        </p>
       ) : null}
       {runError ? (
         <p className="error" role="alert">
@@ -147,44 +103,15 @@ export function SuiteTable({
                   {expandedSuite === suite.id ? (
                     <tr key={`${suite.id}-evals`}>
                       <td colSpan={4}>
-                        <table className="nested">
-                          <thead>
-                            <tr>
-                              <th>Eval</th>
-                              <th>Agent</th>
-                              <th>Runtime</th>
-                              <th>Trials</th>
-                              <th>Latest run</th>
-                              <th />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {suite.evalIds.map((id) => {
-                              const evaluation = catalog.find(
-                                (entry) => entry.id === id,
-                              );
-                              return (
-                                <EvalRow
-                                  key={id}
-                                  id={id}
-                                  evaluation={evaluation}
-                                  status={latestRunByEval.get(id)?.status}
-                                  onRun={
-                                    evaluation && canRun
-                                      ? () => runEval(evaluation.path)
-                                      : undefined
-                                  }
-                                  runDisabled={!!evaluation && !canRun}
-                                  onOpen={
-                                    evaluation
-                                      ? () => onOpenEval(evaluation)
-                                      : undefined
-                                  }
-                                />
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                        <MatrixEvalTable
+                          evalIds={suite.evalIds}
+                          catalog={catalog}
+                          matrix={matrix}
+                          runs={runs}
+                          nested
+                          onRun={runEval}
+                          onOpenEval={onOpenEval}
+                        />
                       </td>
                     </tr>
                   ) : null}
@@ -198,31 +125,14 @@ export function SuiteTable({
         <section aria-label="Standalone evals">
           <h2>Standalone evals</h2>
           <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Eval</th>
-                  <th>Agent</th>
-                  <th>Runtime</th>
-                  <th>Trials</th>
-                  <th>Latest run</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {standalone.map((evaluation) => (
-                  <EvalRow
-                    key={evaluation.id}
-                    id={evaluation.id}
-                    evaluation={evaluation}
-                    status={latestRunByEval.get(evaluation.id)?.status}
-                    onRun={canRun ? () => runEval(evaluation.path) : undefined}
-                    runDisabled={!canRun}
-                    onOpen={() => onOpenEval(evaluation)}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <MatrixEvalTable
+              evalIds={standalone.map((evaluation) => evaluation.id)}
+              catalog={catalog}
+              matrix={matrix}
+              runs={runs}
+              onRun={runEval}
+              onOpenEval={onOpenEval}
+            />
           </div>
         </section>
       ) : null}

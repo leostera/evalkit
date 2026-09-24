@@ -222,6 +222,8 @@ describe('dashboard URL routing', () => {
                   {
                     id: '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
                     evalId: 'echo',
+                    matrixId: 'benchmark',
+                    parameters: { model: 'glm', mode: 'with-docs' },
                     status: 'running',
                     startedAt: new Date().toISOString(),
                     completedTrials: 0,
@@ -251,15 +253,35 @@ describe('dashboard URL routing', () => {
           (row) => row.textContent,
         ),
       ).toContain('Echo Worker');
-      const runButton = 'section[aria-label="Standalone evals"] button';
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(
+            'section[aria-label="Standalone evals"] tbody tr',
+          ).length === 4,
+      );
+      expect(
+        await page.$$('section[aria-label="Standalone evals"] select'),
+      ).toHaveLength(0);
+      const runButton =
+        'section[aria-label="Standalone evals"] tbody tr:first-child button';
       expect(
         await page.$eval(
-          runButton,
-          (button) => (button as HTMLButtonElement).disabled,
+          'section[aria-label="Standalone evals"] thead',
+          (head) => head.textContent,
         ),
-      ).toBe(true);
-      await page.select('select[aria-label="model"]', '0');
-      await page.select('select[aria-label="mode"]', '0');
+      ).toContain('model');
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] thead',
+          (head) => head.textContent,
+        ),
+      ).toContain('mode');
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr:first-child',
+          (row) => row.textContent,
+        ),
+      ).toContain('with-docs');
       expect(
         await page.$eval(
           runButton,
@@ -286,6 +308,97 @@ describe('dashboard URL routing', () => {
       );
       await page.click('section[aria-label="Standalone evals"] tbody tr');
       expect(new URL(page.url()).pathname).toBe('/evals/echo');
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
+
+  test('pages large matrices without rendering every cell and runs the selected row', async () => {
+    const page = await browser.newPage();
+    const submissions: unknown[] = [];
+    try {
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const pathname = new URL(request.url()).pathname;
+        if (!pathname.startsWith('/v1/')) {
+          void request.continue();
+          return;
+        }
+        if (pathname === '/v1/runs' && request.method() === 'POST') {
+          submissions.push(JSON.parse(request.postData() ?? '{}'));
+          void request.respond({
+            status: 202,
+            contentType: 'application/json',
+            body: '{}',
+          });
+          return;
+        }
+        const response: Record<string, unknown> = {
+          '/v1/matrix': {
+            matrix: {
+              id: 'benchmark',
+              parameters: {
+                model: Array.from(
+                  { length: 51 },
+                  (_, index) => `model-${index}`,
+                ),
+                mode: ['with-docs', 'without-docs'],
+              },
+            },
+          },
+          '/v1/catalog': {
+            evals: [
+              {
+                id: 'echo',
+                path: 'echo',
+                trialCount: 3,
+                agent: { kind: 'worker', runtimes: [] },
+                fixtures: [],
+                scorers: [],
+              },
+            ],
+          },
+          '/v1/suites': { suites: [] },
+          '/v1/runs': { runs: [] },
+        };
+        void request.respond({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(response[pathname]),
+        });
+      });
+      await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(
+            'section[aria-label="Standalone evals"] tbody tr',
+          ).length === 50,
+      );
+      expect(
+        await page.$eval('.matrix-pages', (nav) => nav.textContent),
+      ).toContain('1–50 of 102');
+      await page.click('.matrix-pages button:last-child');
+      expect(
+        await page.$eval('.matrix-pages', (nav) => nav.textContent),
+      ).toContain('51–100 of 102');
+      expect(
+        await page.$eval(
+          'section[aria-label="Standalone evals"] tbody tr:first-child',
+          (row) => row.textContent,
+        ),
+      ).toContain('model-25');
+      const posted = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/runs' &&
+          response.request().method() === 'POST',
+      );
+      await page.click(
+        'section[aria-label="Standalone evals"] tbody tr:first-child button',
+      );
+      await posted;
+      expect(submissions).toEqual([
+        { path: 'echo', parameters: { model: 'model-25', mode: 'with-docs' } },
+      ]);
     } finally {
       await page.close();
     }

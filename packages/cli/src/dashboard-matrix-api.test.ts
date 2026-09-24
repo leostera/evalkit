@@ -17,7 +17,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
   await mkdir(join(root, 'evals'));
   await writeFile(
     join(root, 'evalkit.config.js'),
-    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] } } };\n",
+    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] } }, execution: { trials: 3 } };\n",
   );
   await writeFile(
     join(root, 'evals', 'echo.eval.js'),
@@ -62,6 +62,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
           model: ['glm', 'scout'],
           mode: ['with-docs', 'without-docs'],
         },
+        trials: 3,
       },
     });
     for (const body of [
@@ -107,6 +108,13 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
       mode: 'with-docs',
     });
     expect(manifest.matrix?.id).toBe('benchmark');
+    const listed = (await (await fetch(`${url}/v1/runs`)).json()) as {
+      runs: Array<{ matrixId?: string; parameters?: Record<string, unknown> }>;
+    };
+    expect(listed.runs[0]).toMatchObject({
+      matrixId: 'benchmark',
+      parameters: { model: 'glm', mode: 'with-docs' },
+    });
   } finally {
     child.kill();
     await child.exited;

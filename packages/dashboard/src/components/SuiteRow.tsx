@@ -23,9 +23,7 @@ export function SuiteRow({
         <button
           disabled={!onRun}
           title={
-            onRun
-              ? undefined
-              : 'Run matrix evals individually after selecting a cell'
+            onRun ? undefined : 'Run matrix cells individually from their rows'
           }
           onClick={(event) => {
             event.stopPropagation();

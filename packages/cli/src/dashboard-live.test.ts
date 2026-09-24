@@ -50,20 +50,38 @@ test('dashboard API lists a run and trial before their summaries exist', async (
         schemaVersion: 2,
         runUri: `evalkit:run:${runId}`,
         evalId: 'echo',
+        matrix: { id: 'benchmark', cellKey: 'echo-glm-with' },
+        parameters: { model: 'glm', mode: 'with', turnBudget: 6 },
         startedAt: '2026-01-01T00:00:00.000Z',
       }),
     );
     await writeFile(
       join(trialDir, 'manifest.json'),
       JSON.stringify({
+        schemaVersion: 2,
+        runUri: `evalkit:run:${runId}`,
+        trialUri: `evalkit:trial:${trialId}`,
+        evalId: 'echo',
         trialIndex: 0,
         startedAt: '2026-01-01T00:00:01.000Z',
       }),
     );
     const runs = (await (await fetch(`${url}/v1/runs`)).json()) as {
-      runs: Array<{ id: string; status: string }>;
+      runs: Array<{
+        id: string;
+        status: string;
+        matrixId?: string;
+        parameters?: object;
+      }>;
     };
-    expect(runs.runs).toMatchObject([{ id: runId, status: 'running' }]);
+    expect(runs.runs).toMatchObject([
+      {
+        id: runId,
+        status: 'running',
+        matrixId: 'benchmark',
+        parameters: { model: 'glm', mode: 'with', turnBudget: 6 },
+      },
+    ]);
     const trials = (await (
       await fetch(`${url}/v1/runs/${runId}/trials`)
     ).json()) as { trials: Array<{ id: string; status: string }> };

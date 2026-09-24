@@ -24,6 +24,7 @@ export type CatalogEval = EvalSummary & {
 export type MatrixSummary = {
   id: string;
   parameters: Record<string, unknown[]>;
+  trials?: number;
 };
 export type SuiteSummary = {
   id: string;
@@ -36,6 +37,8 @@ export type RunSummary = {
   evalId: string;
   suiteId?: string;
   agent?: string;
+  matrixId?: string;
+  parameters?: Record<string, unknown>;
   /** Dashboard status: terminal runs are passed, failed, or errored. */
   status: 'running' | 'passed' | 'failed' | 'errored';
   startedAt: string;

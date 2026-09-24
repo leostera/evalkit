@@ -55,6 +55,8 @@ type LocalRun = {
   evalId: string;
   suiteId?: string;
   agent?: string;
+  matrixId?: string;
+  parameters?: JsonObject;
   status: 'running' | 'passed' | 'failed' | 'errored';
   startedAt: string;
   completedAt?: string;
@@ -314,6 +316,8 @@ async function listLocalRuns(): Promise<LocalRun[]> {
           id,
           evalId: manifest.evalId,
           ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
+          ...(manifest.matrix ? { matrixId: manifest.matrix.id } : {}),
+          ...(manifest.parameters ? { parameters: manifest.parameters } : {}),
           ...(manifest.aut
             ? {
                 agent: [
@@ -560,7 +564,13 @@ async function serveDashboard(): Promise<void> {
   app.get('/v1/matrix', (context) =>
     context.json({
       matrix: dashboardMatrix
-        ? { id: dashboardMatrix.id, parameters: dashboardMatrix.parameters }
+        ? {
+            id: dashboardMatrix.id,
+            parameters: dashboardMatrix.parameters,
+            ...(project?.config.execution?.trials
+              ? { trials: project.config.execution.trials }
+              : {}),
+          }
         : null,
     }),
   );

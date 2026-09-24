@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type {
   CatalogEval,
   DashboardApi,
+  MatrixSummary,
   RunSummary,
   SuiteSummary,
 } from '../api.js';
@@ -22,6 +23,8 @@ function render(
   suites: SuiteSummary[],
   catalog: CatalogEval[],
   runs: RunSummary[] = [],
+  matrix?: MatrixSummary | null,
+  selectedSuiteId?: string,
 ): string {
   return renderToStaticMarkup(
     <SuiteTable
@@ -29,6 +32,8 @@ function render(
       suites={suites}
       catalog={catalog}
       runs={runs}
+      matrix={matrix}
+      selectedSuiteId={selectedSuiteId}
       onOpenSuite={() => {}}
       onOpenEval={() => {}}
     />,
@@ -88,6 +93,64 @@ test('a standalone eval shows the latest run status', () => {
   );
   expect(html).toContain('class="status running"');
   expect(html).not.toContain('class="status passed"');
+});
+
+test('matrix cells are rows with a column per axis and no filter selects', () => {
+  const matrix = {
+    id: 'benchmark',
+    parameters: {
+      model: ['glm', 'scout'],
+      mode: ['with-docs', 'without-docs'],
+    },
+    trials: 3,
+  };
+  const runs: RunSummary[] = [
+    {
+      id: 'first',
+      evalId: 'echo',
+      matrixId: 'benchmark',
+      parameters: { model: 'glm', mode: 'with-docs', turnBudget: 6 },
+      status: 'passed',
+      startedAt: '2026-01-01',
+      completedTrials: 3,
+      requestedTrials: 3,
+    },
+    {
+      id: 'second',
+      evalId: 'echo',
+      matrixId: 'benchmark',
+      parameters: { model: 'scout', mode: 'without-docs' },
+      status: 'failed',
+      startedAt: '2026-01-02',
+      completedTrials: 3,
+      requestedTrials: 3,
+    },
+  ];
+  const html = render([], [standalone], runs, matrix);
+  expect(html).toContain('<th>model</th>');
+  expect(html).toContain('<th>mode</th>');
+  expect(html).not.toContain('<select');
+  expect(html.match(/Run eval/g)).toHaveLength(4);
+  expect(html).toContain('with-docs');
+  expect(html).toContain('without-docs');
+  expect(html.match(/<td>3<\/td>/g)).toHaveLength(4);
+  expect(html.match(/class="status passed"/g)).toHaveLength(1);
+  expect(html.match(/class="status failed"/g)).toHaveLength(1);
+  expect(html).not.toContain('disabled=""');
+});
+
+test('suite members also display one row per configured matrix cell', () => {
+  const html = render(
+    [{ id: 'starter', evalIds: ['echo'] }],
+    [{ ...standalone, suiteId: 'starter' }],
+    [],
+    { id: 'benchmark', parameters: { model: ['glm', 'scout'] } },
+    'starter',
+  );
+  expect(html).toContain('class="nested"');
+  expect(html).toContain('<th>model</th>');
+  expect(html.match(/Run eval/g)).toHaveLength(2);
+  expect(html).not.toContain('<select');
 });
 
 test('empty state is shown only when there are no evals and no suites', () => {
