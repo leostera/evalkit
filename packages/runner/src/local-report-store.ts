@@ -6,6 +6,9 @@ import {
   RunMetadataSchema,
   RunSummarySchema,
   TrialMetadataSchema,
+  TrialScoringSchema,
+  TrialSummarySchema,
+  TrajectoryEventSchema,
 } from '@evalkit/core';
 import type {
   ReportStore,
@@ -65,12 +68,15 @@ class LocalTrialWriter implements TrialWriter {
   appendEvent(event: TrajectoryEvent): Promise<void> {
     return appendFile(
       path.join(this.directory, 'trajectory.jsonl'),
-      `${JSON.stringify(event)}\n`,
+      `${JSON.stringify(Schema.encodeSync(TrajectoryEventSchema)(event))}\n`,
     );
   }
 
   writeScores(scoring: TrialScoring): Promise<void> {
-    return writeJson(path.join(this.directory, 'scoring.json'), scoring);
+    return writeJson(
+      path.join(this.directory, 'scoring.json'),
+      Schema.encodeSync(TrialScoringSchema)(scoring),
+    );
   }
 
   async writeArtifact(relativePath: string, data: Uint8Array): Promise<void> {
@@ -83,7 +89,10 @@ class LocalTrialWriter implements TrialWriter {
   }
 
   async finalize(summary: TrialSummary): Promise<void> {
-    await writeJson(path.join(this.directory, 'summary.json'), summary);
+    await writeJson(
+      path.join(this.directory, 'summary.json'),
+      Schema.encodeSync(TrialSummarySchema)(summary),
+    );
     await replaceJson(path.join(this.directory, MANIFEST_FILE), {
       ...Schema.encodeSync(TrialMetadataSchema)(this.metadata),
       status: summary.status,

@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import * as Schema from 'effect/Schema';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -12,6 +13,11 @@ import {
   inlineFile,
   predicate,
   user,
+  parseTrajectoryJsonl,
+  RunManifestSchema,
+  TrialManifestSchema,
+  TrialScoringSchema,
+  TrialSummarySchema,
 } from '@evalkit/core';
 import { localReportStore, runEval } from './index';
 
@@ -125,6 +131,12 @@ describe('runEval', () => {
       evalId: 'eval-01',
       status: 'completed',
     });
+    expect(
+      Schema.decodeUnknownSync(RunManifestSchema)(runManifest).status,
+    ).toBe('completed');
+    expect(
+      Schema.decodeUnknownSync(TrialManifestSchema)(trialManifest).status,
+    ).toBe('completed');
 
     const trajectory = await readFile(
       path.join(
@@ -138,6 +150,11 @@ describe('runEval', () => {
     );
     expect(trajectory).toContain('"role":"assistant"');
     expect(trajectory).toContain('"kind":"scorer-completed"');
+    expect(
+      parseTrajectoryJsonl(trajectory).some(
+        (event) => event.kind === 'scorer-completed',
+      ),
+    ).toBe(true);
 
     const scoring = JSON.parse(
       await readFile(
@@ -156,6 +173,24 @@ describe('runEval', () => {
       value: 1,
       passed: true,
     });
+    expect(Schema.decodeUnknownSync(TrialScoringSchema)(scoring).passed).toBe(
+      true,
+    );
+    const trialSummary = JSON.parse(
+      await readFile(
+        path.join(
+          root,
+          result.runId,
+          'trials',
+          result.trialId!,
+          'summary.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(
+      Schema.decodeUnknownSync(TrialSummarySchema)(trialSummary).status,
+    ).toBe('completed');
   });
 
   test('groups requested independent trials beneath one aggregate run', async () => {
