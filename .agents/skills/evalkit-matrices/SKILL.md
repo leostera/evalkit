@@ -5,7 +5,7 @@ description: Configure, run, or debug Evalkit parameter matrices and model sweep
 
 # Configure an Evalkit matrix
 
-Read `../evalkit/SKILL.md`, `../../../www/src/content/manual.md` (Configuration and discovery; Run from the CLI), the runnable `../../../examples/configured-matrix/`, `../../../packages/core/src/matrix.ts`, `../../../packages/cli/src/run-command.ts`, and `../../../packages/runner/src/matrix.ts`.
+Read `../evalkit/SKILL.md`, `../../../www/src/content/docs/manual/project-structure.md` and `../../../www/src/content/docs/manual/cli-and-matrices.md`, the runnable `../../../examples/configured-matrix/`, `../../../packages/core/src/matrix.ts`, `../../../packages/cli/src/run-command.ts`, and `../../../packages/runner/src/matrix.ts`.
 
 1. In a discovery-based project, default-export each eval from `evals/*.eval.ts` and configure `defineConfig({ matrix: { id: 'models', parameters: { model: ['a', 'b'] }, defaults? }, execution: { maxCells: 100 } })` in `evalkit.config.js`. The CLI loads the config and attaches all discovered evals. For an explicit registry instead, create `defineEvalMatrix({ id: 'models', evals: [myEval], parameters: { model: ['a', 'b'] }, defaults? })`. Axes must have JSON-serializable choices; `cells()` lazily expands the Cartesian product per eval.
 2. For an explicit registry, register the matrix with `registerEvals([myEval, matrix])` (or register `myEval` via a suite): a matrix **does not** register its evals for normal `run-evals`. Do not register an eval twice outside matrices. Use eval IDs with `--eval`.

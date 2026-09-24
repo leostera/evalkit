@@ -5,7 +5,7 @@ description: Add, adapt, or debug Evalkit Agents Under Test (AUTs). Use when con
 
 # Add an Evalkit agent
 
-Read `../evalkit/SKILL.md` for shared constraints and `../../../www/src/content/manual.md` (Add an agent). Inspect `../../../packages/core/src/index.ts` (`AutAdapter`, `AutContext`, `AutEvent`), `../../../examples/starter/agents/greeting-agent.ts`, and `../../../packages/agents/src/index.ts` before editing.
+Read `../evalkit/SKILL.md` for shared constraints and `../../../www/src/content/docs/manual/agents.md`. Inspect `../../../packages/core/src/index.ts` (`AutAdapter`, `AutContext`, `AutEvent`), `../../../examples/starter/agents/greeting-agent.ts`, and `../../../packages/agents/src/index.ts` before editing.
 
 1. Identify the **Agent Under Test (AUT)**: the assistant, process, or service whose behavior the eval measures, not the scorer that grades it. Its adapter starts a fresh session per trial, receives user messages, and emits the evidence scorers inspect. Decide whether to reuse `piAgent()` for the local Pi CLI or implement `defineAgent({ identity, runtimes, start })` for a different agent. `agentsSdk()` currently throws; do not claim it is a usable remote adapter.
 2. Give the new agent a stable, unique lowercase kebab-case `identity.id`, meaningful `name`/`kind` and optional version. A declared runtime has `kind` and optional serializable `configuration`; the local CLI selects the first declared runtime among local/remote/sandbox, or lets an adapter without runtimes use its default. Only declare a runtime your adapter really supports.

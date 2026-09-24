@@ -9,9 +9,8 @@
     "check": "astro check"
   },
   "dependencies": {
-    "astro": "^7.3.5",
-    "marked": "^18.0.14",
-    "shiki": "^4.2.1"
+    "@astrojs/starlight": "^0.42.4",
+    "astro": "^7.3.5"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.5",

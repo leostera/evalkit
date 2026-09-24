@@ -36,7 +36,7 @@ Artifact workspaces and concrete AUT transports remain in progress. The local CL
 
 ## User manual
 
-Start with the [getting-started guide](www/src/pages/docs/index.astro), then use the [Evalkit manual](www/src/content/manual.md) for details on adding agents, fixtures and evals, running suites and matrices, and inspecting or processing results. Agent-facing workflow skills live in [`.agents/skills/`](.agents/skills/), starting with [the Evalkit guide](.agents/skills/evalkit/SKILL.md).
+Start with the [getting-started guide](www/src/content/docs/index.md), then use the [multi-page Evalkit manual](www/src/content/docs/manual/) for details on adding agents, fixtures and evals, running suites and matrices, and inspecting or processing results. Agent-facing workflow skills live in [`.agents/skills/`](.agents/skills/), starting with [the Evalkit guide](.agents/skills/evalkit/SKILL.md).
 
 ## Development
 

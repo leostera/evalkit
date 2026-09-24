@@ -5,7 +5,7 @@ description: Write or debug Evalkit scoring rules and judges. Use for predicate 
 
 # Score Evalkit trials
 
-Read `../evalkit/SKILL.md`, `../../../www/src/content/manual.md` (Add a scorer and an eval, Read and process results), `../../../packages/runner/src/index.ts` (`normalizeScore`, `scoreSummary`, `runPredicate`), and `../../../examples/starter/judges/greeting.ts`.
+Read `../evalkit/SKILL.md`, `../../../www/src/content/docs/manual/scoring-and-evals.md` and `../../../www/src/content/docs/manual/results.md`, `../../../packages/runner/src/index.ts` (`normalizeScore`, `scoreSummary`, `runPredicate`), and `../../../examples/starter/judges/greeting.ts`.
 
 Despite the example directory name `judges/`, only `predicate(name, fn, options?)` scorers **execute** today. `judgeScorer(...)` is a declared but unimplemented API and produces a scorer error if run. Do not propose it as a working LLM judge; implement a predicate that calls the desired grader yourself if needed, with clear external dependencies, costs, and privacy protections.
 

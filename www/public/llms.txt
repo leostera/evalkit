@@ -4,8 +4,15 @@
 
 ## Documentation
 
-- [Complete manual](https://evalkit.leostera.dev/docs/manual/): Setup, agents, fixtures, eval definitions, suites, matrices, scoring, CLI, reports, and troubleshooting. Source of truth: [manual Markdown](https://github.com/leostera/evalkit/blob/main/www/src/content/manual.md).
-- [Get started](https://evalkit.leostera.dev/docs/): A shorter walkthrough for the included starter project.
+- [Manual overview](https://evalkit.leostera.dev/docs/manual/): Entry point to separate Markdown chapters for setup, agents, fixtures, scoring, CLI, reports, and troubleshooting. [Markdown sources](https://github.com/leostera/evalkit/tree/main/www/src/content/docs/manual).
+- [Get started](https://evalkit.leostera.dev/docs/): A walkthrough for the included starter project. [Markdown source](https://github.com/leostera/evalkit/blob/main/www/src/content/docs/index.md).
+- [Project structure and discovery](https://evalkit.leostera.dev/docs/manual/project-structure/): IDs, suites, config, and automatic discovery.
+- [Agents under test](https://evalkit.leostera.dev/docs/manual/agents/): AUT adapter and event contract.
+- [Fixtures](https://evalkit.leostera.dev/docs/manual/fixtures/): Candidate and evaluator workspace inputs.
+- [Scorers and evals](https://evalkit.leostera.dev/docs/manual/scoring-and-evals/): Predicates and eval definitions.
+- [CLI and matrices](https://evalkit.leostera.dev/docs/manual/cli-and-matrices/): Selection, runs, sweeps, and safety limits.
+- [Results and reports](https://evalkit.leostera.dev/docs/manual/results/): Local manifests, scoring, artifacts, and CI gates.
+- [Troubleshooting](https://evalkit.leostera.dev/docs/manual/troubleshooting/): Common issues and current limitations.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
 - [Single-package install and publishing](https://github.com/leostera/evalkit/tree/main/packages/evalkit): `@leostera/evalkit` includes the authoring API, CLI, and dashboard. GitHub Packages publication is manual and has not happened yet.
 - [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported eval discovery, no registry or config.

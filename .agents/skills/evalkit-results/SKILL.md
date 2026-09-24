@@ -5,7 +5,7 @@ description: Run Evalkit locally and interpret or process evaluation results. Us
 
 # Run and process Evalkit results
 
-Read `../evalkit/SKILL.md` and `../../../www/src/content/manual.md` (Start with the example, Run from the CLI, Read and process results). Verify report semantics in `../../../packages/runner/src/index.ts`, `../../../packages/runner/src/local-report-store.ts`, and `../../../packages/cli/src/index.ts` before automation.
+Read `../evalkit/SKILL.md` and `../../../www/src/content/docs/index.md` (First run) and `../../../www/src/content/docs/manual/cli-and-matrices.md` and `../../../www/src/content/docs/manual/results.md`. Verify report semantics in `../../../packages/runner/src/index.ts`, `../../../packages/runner/src/local-report-store.ts`, and `../../../packages/cli/src/index.ts` before automation.
 
 1. Run from the project root containing default-exported `evals/*.eval.ts` (as in `examples/starter`, or use an optional config as in `examples/configured-matrix`), not this skill directory. Start with `bun run evalkit run-evals <eval-id>`; run all evals only when intended (Pi-backed evals can cost tokens). `bun run evalkit run-suite <suite-id>`, `bun run evalkit run-matrix <matrix-id>`, and `bun run evalkit serve-dashboard` are also available. Set `EVALKIT_NO_OPEN=1` or `PORT=...` for dashboard behavior. `--concurrency` bounds cell parallelism.
 2. Each `_evalkit-results/<run-uuid>/` has `manifest.json`, `summary.json`, and `trials/<trial-uuid>/{manifest.json,trajectory.jsonl,scoring.json,summary.json,artifacts/candidate/...}`. `trajectory.jsonl` contains one JSON event per line; filter by `source` and `kind`. `scoring.json` records scorer values/explanations/errors; candidate snapshot files are report artifacts.

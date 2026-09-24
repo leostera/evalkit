@@ -16,19 +16,9 @@ import { heroDefinition } from '../content/snippets';
       </div>
       <div class="hero-note"><span class="note-line"></span> Your evals live in your repo. Your runs live on disk.</div>
     </div>
-    <div class="hero-visual" aria-label="Example of an evaluation run with three trials and a passing score">
-      <div class="visual-top"><span class="window-dots"><i></i><i></i><i></i></span><span>RUN / GREETING EVAL</span><span class="visual-id">01 — 03</span></div>
-      <div class="visual-inner">
-        <div class="visual-meta"><span class="mini-label">EVALUATION IN PROGRESS</span><span class="live-indicator">● COMPLETE</span></div>
-        <div class="visual-title">Polite greeting <span>↗</span></div>
-        <div class="visual-divider"></div>
-        <div class="visual-row"><span class="check">✓</span><span>Trial 01</span><span class="row-dots"></span><span class="row-score">1.00</span></div>
-        <div class="visual-row"><span class="check">✓</span><span>Trial 02</span><span class="row-dots"></span><span class="row-score">1.00</span></div>
-        <div class="visual-row"><span class="check">✓</span><span>Trial 03</span><span class="row-dots"></span><span class="row-score">1.00</span></div>
-        <div class="visual-summary"><div><span class="mini-label">PASS RATE</span><strong>3 / 3</strong></div><div class="summary-bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
-      </div>
-      <div class="visual-bottom"><span><span class="bottom-dot">◆</span> trajectory.jsonl</span><span>scoring.json <span class="arrow">↗</span></span></div>
-      <span class="visual-caption">EACH RUN LEAVES A TRAIL YOU CAN READ.</span>
+    <div class="hero-code">
+      <div class="code-card"><div class="code-header"><span class="file-icon">◇</span> greeting.eval.ts <span class="code-header-right">TYPESCRIPT</span></div><Code code={heroDefinition} lang="ts" theme="github-light" /><div class="code-footer"><span class="footer-check">✓</span> Typed definitions. Reusable parts. Reviewable changes.</div></div>
+      <a class="hero-code-source" href="https://github.com/leostera/evalkit/blob/main/examples/starter/evals/greeting.eval.ts">See the runnable starter source <span aria-hidden="true">↗</span></a>
     </div>
   </section>
 
@@ -43,9 +33,7 @@ import { heroDefinition } from '../content/snippets';
     </div>
   </section>
 
-  <section class="code-section"><div class="wrap code-grid"><div class="code-copy"><span class="section-kicker">THE DEFINITION <span>— 002</span></span><h2>Evals belong<br /><span class="text-accent">in your repo.</span></h2><p>One definition connects your agent, reusable fixtures, user messages, and scoring rules. Commit it, review it with your team, and rerun it by ID.</p><a class="text-link" href="/docs/#create-an-eval">Read the guide <span aria-hidden="true">↗</span></a></div><div class="code-card"><div class="code-header"><span class="file-icon">◇</span> greeting.eval.ts <span class="code-header-right">TYPESCRIPT</span></div><Code code={heroDefinition} lang="ts" theme="github-light" /><div class="code-footer"><span class="footer-check">✓</span> Typed definitions. Reusable parts. Reviewable changes.</div></div></div></section>
-
-  <section class="section wrap artifacts-section"><div class="section-intro"><span class="section-kicker">THE OUTPUT <span>— 003</span></span><h2>Version the definition. <span class="text-accent">Keep the result.</span></h2><p>Git tracks the eval code your team reviews. Each local run saves manifests, scores, trajectories, and candidate artifacts as files you can inspect, compare, or selectively archive for a history of results.</p></div><div class="artifact-grid"><div class="artifact-card"><span class="artifact-glyph">↳</span><div><strong>trajectory.jsonl</strong><span>Every recorded event, in order.</span></div></div><div class="artifact-card"><span class="artifact-glyph">◈</span><div><strong>scoring.json</strong><span>Values, explanations, and evidence.</span></div></div><div class="artifact-card"><span class="artifact-glyph">▥</span><div><strong>artifacts/candidate/</strong><span>The files the agent worked with.</span></div></div><div class="artifact-card"><span class="artifact-glyph">▣</span><div><strong>Local dashboard</strong><span>Browse runs and trial evidence.</span></div></div></div></section>
+  <section class="section wrap artifacts-section"><div class="section-intro"><span class="section-kicker">THE OUTPUT <span>— 002</span></span><h2>Version the definition. <span class="text-accent">Keep the result.</span></h2><p>Git tracks the eval code your team reviews. Each local run saves manifests, scores, trajectories, and candidate artifacts as files you can inspect, compare, or selectively archive for a history of results.</p></div><div class="artifact-grid"><div class="artifact-card"><span class="artifact-glyph">↳</span><div><strong>trajectory.jsonl</strong><span>Every recorded event, in order.</span></div></div><div class="artifact-card"><span class="artifact-glyph">◈</span><div><strong>scoring.json</strong><span>Values, explanations, and evidence.</span></div></div><div class="artifact-card"><span class="artifact-glyph">▥</span><div><strong>artifacts/candidate/</strong><span>The files the agent worked with.</span></div></div><div class="artifact-card"><span class="artifact-glyph">▣</span><div><strong>Local dashboard</strong><span>Browse runs and trial evidence.</span></div></div></div></section>
 
   <section class="cta-band"><div class="wrap cta-content"><div><span class="section-kicker">READY TO TRY IT?</span><h2>Write the eval once.<br /><em>Test the next change.</em></h2><p>Start locally with a runnable example. No hosted account required.</p></div><a class="button button-dark" href="/docs/">Open the getting started guide <span aria-hidden="true">↗</span></a></div></section>
 </Site>

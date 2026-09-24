@@ -5,7 +5,7 @@ description: Add or troubleshoot Evalkit input fixtures and trial workspaces. Us
 
 # Add Evalkit fixtures
 
-Read `../evalkit/SKILL.md` and `../../../www/src/content/manual.md` (Add fixtures). Check `../../../packages/core/src/index.ts` fixture helpers and `../../../packages/runner/src/workspace.ts` for current behavior.
+Read `../evalkit/SKILL.md` and `../../../www/src/content/docs/manual/fixtures.md`. Check `../../../packages/core/src/index.ts` fixture helpers and `../../../packages/runner/src/workspace.ts` for current behavior.
 
 1. Store inputs under the eval project (e.g. `examples/starter/fixtures/`). Source paths are resolved from the **invoking working directory**, not relative to the eval file. Register fixtures in the eval's `fixtures` array.
 2. Fixtures do not need IDs. Choose visibility deliberately: `candidate` files may be read by the agent/model and are snapshotted into reports; `evaluator` files are private to trusted adapter/scorer code, but still remain in local `_evalkit-sandbox/`.

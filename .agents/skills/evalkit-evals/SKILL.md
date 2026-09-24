@@ -5,7 +5,7 @@ description: Define, register, or modify Evalkit evaluations and suites. Use whe
 
 # Add an eval or suite
 
-Read `../evalkit/SKILL.md`, `../../../www/src/content/manual.md` (Project structure and Add a scorer and an eval), `../../../examples/starter/evals/greeting.eval.ts`, and `../../../examples/configured-matrix/evalkit.config.ts`.
+Read `../evalkit/SKILL.md`, `../../../www/src/content/docs/manual/project-structure.md` and `../../../www/src/content/docs/manual/scoring-and-evals.md`, `../../../examples/starter/evals/greeting.eval.ts`, and `../../../examples/configured-matrix/evalkit.config.ts`.
 
 1. Default-export an eval from `evals/*.eval.ts` using `defineEval({ id: 'my-eval', name, agent, transcript, scoring, fixtures?, policy? })`. The CLI discovers these files automatically; no `src/registry.ts` or config is required. Choose a stable lowercase kebab-case ID. `metadata` is optional; `name` is a display label. Reuse existing agents/scorers/fixtures where appropriate.
 2. Today, use only `user('message')` transcript steps. These call `session.send` in order on one session. `{{randomSeed}}` is replaced per trial; a fresh agent session and workspace are created for each trial. `agent(...)` and `judge(...)` transcript steps are _not executable_. `policy.trials` controls the number of independent trials (default 1, positive integer); `policy.timeoutMs` is not enforced.

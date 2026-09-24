@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root {
+  --sl-font: 'DM Sans';
+  --sl-font-mono: 'DM Mono';
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #eae9e2;
+  --sl-color-accent: #393833;
+  --sl-color-accent-high: #171717;
+  --sl-color-text-accent: #171717;
+  --sl-color-bg: #f5f4ef;
+  --sl-color-bg-nav: #f5f4ef;
+  --sl-color-bg-sidebar: #f5f4ef;
+  --sl-color-bg-inline-code: #eae9e2;
+}
+
+:root[data-theme='light'] .expressive-code {
+  --ec-codeBg: #faf9f5;
+}
+
+main h1,
+.sl-markdown-content h2 {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
+}
