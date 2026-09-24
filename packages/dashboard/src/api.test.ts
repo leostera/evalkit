@@ -14,8 +14,7 @@ describe('dashboard HTTP API', () => {
             ? {
                 evals: [
                   {
-                    uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b21',
-                    uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+                    id: 'eval-21',
                     name: 'Support',
                   },
                 ],
@@ -27,8 +26,7 @@ describe('dashboard HTTP API', () => {
 
     await expect(api.listEvals()).resolves.toEqual([
       {
-        uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b21',
-        uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b21',
+        id: 'eval-21',
         name: 'Support',
       },
     ]);

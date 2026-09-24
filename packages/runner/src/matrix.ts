@@ -20,7 +20,7 @@ export function runMatrix(matrix: EvalMatrix, options: Omit<RunEvalOptions, 'run
         const cell = next.value;
         const runtime = options.runtime ?? (['local', 'remote', 'sandbox'] as const).find(name => cell.eval.agent.runtimes?.[name]);
         const result = yield* runEval(cell.eval, { ...options, concurrency: 1, runtime,
-          parameters: cell.parameters, matrix: { uri: matrix.uri, cellKey: cell.key } });
+          parameters: cell.parameters, matrix: { id: matrix.id, cellKey: cell.key } });
         summary.cells++;
         if (result.status === 'completed' && (result.aggregateScoring?.passRate === 1 || result.scoring?.passed)) summary.passed++;
         else summary.failed++;

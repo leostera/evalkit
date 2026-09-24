@@ -25,7 +25,7 @@ export function piAgent(options: PiAutOptions = {}): AutAdapter {
     identity: {
       name: 'Pi Agent',
       kind: 'process',
-      uri: 'evalkit:agent:0197f17c-4d89-7f81-9d42-6c497e6f6b12',
+      id: 'pi-agent',
     },
     runtimes: { local: { kind: 'process', configuration: { command } } },
     async start({ context, onEvent }) {

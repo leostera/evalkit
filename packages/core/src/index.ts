@@ -1,4 +1,4 @@
-import { parseResourceUri, type ResourceUri, type Uuid } from './identity.js';
+import { authorId, type ResourceUri } from './identity.js';
 export { defineConfig, type EvalkitConfig } from './config.js';
 
 export type JsonPrimitive = boolean | number | string | null;
@@ -10,7 +10,7 @@ export type AutIdentity = {
   /** Human-readable logical agent name shown in catalogs and dashboards. */
   name?: string;
   kind: string;
-  uri: ResourceUri<'agent'>;
+  id: string;
   version?: string;
 };
 
@@ -142,6 +142,7 @@ export type AutSession<TMessage = string> = {
  * It preserves the adapter's concrete type for application-specific helpers.
  */
 export function defineAgent<const T extends AutAdapter>(agent: T): T {
+  if (agent.identity) authoringId(agent.identity);
   return agent;
 }
 
@@ -149,7 +150,7 @@ export type FixtureVisibility = 'candidate' | 'evaluator';
 
 export type DirectoryFixture = {
   kind: 'directory';
-  uri: ResourceUri<'fixture'>;
+  id: string;
   src: string;
   dst: string;
   visibility: FixtureVisibility;
@@ -157,7 +158,7 @@ export type DirectoryFixture = {
 
 export type FileFixture = {
   kind: 'file';
-  uri: ResourceUri<'fixture'>;
+  id: string;
   src: string;
   dst: string;
   visibility: FixtureVisibility;
@@ -165,7 +166,7 @@ export type FileFixture = {
 
 export type InlineFixture = {
   kind: 'inline';
-  uri: ResourceUri<'fixture'>;
+  id: string;
   file: string;
   data: string;
   visibility: FixtureVisibility;
@@ -173,7 +174,7 @@ export type InlineFixture = {
 
 export type DynamicFixture = {
   kind: 'dynamic';
-  uri: ResourceUri<'fixture'>;
+  id: string;
   create(
     context: FixtureContext,
   ): Fixture | Fixture[] | Promise<Fixture | Fixture[]>;
@@ -196,13 +197,13 @@ function defaultFixtureDestination(src: string): string {
  * The short form is candidate-visible and copies beneath the source basename.
  */
 export function directory(
-  uri: ResourceUri<'fixture'>,
+  id: string,
   src: string,
-  options: Partial<Omit<DirectoryFixture, 'kind' | 'uri' | 'src'>> = {},
+  options: Partial<Omit<DirectoryFixture, 'kind' | 'id' | 'src'>> = {},
 ): DirectoryFixture {
   return {
     kind: 'directory',
-    uri,
+    id: authorId(id),
     src,
     dst: options.dst ?? defaultFixtureDestination(src),
     visibility: options.visibility ?? 'candidate',
@@ -210,27 +211,27 @@ export function directory(
 }
 
 export function file(
-  uri: ResourceUri<'fixture'>,
+  id: string,
   src: string,
-  options: Omit<FileFixture, 'kind' | 'uri' | 'src'>,
+  options: Omit<FileFixture, 'kind' | 'id' | 'src'>,
 ): FileFixture {
-  return { kind: 'file', uri, src, ...options };
+  return { kind: 'file', id: authorId(id), src, ...options };
 }
 
 export function inlineFile(
-  uri: ResourceUri<'fixture'>,
+  id: string,
   file: string,
   data: string,
   visibility: FixtureVisibility,
 ): InlineFixture {
-  return { kind: 'inline', uri, file, data, visibility };
+  return { kind: 'inline', id: authorId(id), file, data, visibility };
 }
 
 export function dynamic(
-  uri: ResourceUri<'fixture'>,
+  id: string,
   create: DynamicFixture['create'],
 ): DynamicFixture {
-  return { kind: 'dynamic', uri, create };
+  return { kind: 'dynamic', id: authorId(id), create };
 }
 
 export type UserStep = {
@@ -331,8 +332,7 @@ export type EvalPolicy = {
 };
 
 export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
-  uri: ResourceUri<'eval'>;
-  slug?: string;
+  id: string;
   name?: string;
   agent: TAgent;
   fixtures?: Fixture[];
@@ -343,6 +343,13 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
 };
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
+  authoringId(definition);
+  const fixtureIds = new Set<string>();
+  for (const fixture of definition.fixtures ?? []) {
+    authorId(fixture.id);
+    if (fixtureIds.has(fixture.id)) throw new Error(`Duplicate fixture ID: ${fixture.id}`);
+    fixtureIds.add(fixture.id);
+  }
   return definition;
 }
 
@@ -353,8 +360,7 @@ import type { EvalMatrix } from './matrix.js';
 export type EvalSuite<
   TEvals extends readonly EvalDefinition[] = readonly EvalDefinition[],
 > = {
-  uri: ResourceUri<'suite'>;
-  slug?: string;
+  id: string;
   name?: string;
   evals: TEvals;
 };
@@ -362,10 +368,17 @@ export type EvalSuite<
 export function defineSuite<const TSuite extends EvalSuite>(
   suite: TSuite,
 ): TSuite {
+  authoringId(suite);
   return suite;
 }
 
 export type EvalRegistration = EvalDefinition | EvalSuite | EvalMatrix;
+
+export function authoringId(value: { id: string }): string {
+  if ('uri' in value || 'uuid' in value || 'slug' in value)
+    throw new Error('Authored resources use id, not uri, uuid, or slug');
+  return authorId(value.id);
+}
 
 function isEvalMatrix(
   registration: EvalRegistration,
@@ -392,20 +405,19 @@ export type EvalRegistry = {
 };
 
 export type EvalRegistryMetadata = {
-  uri: ResourceUri<'eval'>;
-  uuid: Uuid;
+  id: string;
   name?: string;
-  suiteUri?: ResourceUri<'suite'>;
+  suiteId?: string;
 };
 
 export type EvalSuiteMetadata = {
-  uri: ResourceUri<'suite'>;
-  uuid: Uuid;
+  id: string;
   name?: string;
-  evalUris: ResourceUri<'eval'>[];
+  evalIds: string[];
 };
 
 export type EvalCatalogFixture = {
+  id: string;
   kind: Fixture['kind'];
   source: string;
   destination?: string;
@@ -413,16 +425,14 @@ export type EvalCatalogFixture = {
 };
 
 export type EvalCatalogEntry = {
-  uri: ResourceUri<'eval'>;
-  uuid: Uuid;
+  id: string;
   path: string;
-  slug?: string;
   name?: string;
-  suiteUri?: ResourceUri<'suite'>;
+  suiteId?: string;
   agent: {
     name?: string;
     kind: string;
-    uri?: ResourceUri<'agent'>;
+    id?: string;
     version?: string;
     runtimes: Array<{ name: AgentRuntimeName; kind: string }>;
   };
@@ -438,87 +448,76 @@ export type EvalCatalogEntry = {
 export function registerEvals<
   const TRegistrations extends readonly EvalRegistration[],
 >(registrations: TRegistrations): EvalRegistry {
-  const byUri = new Map<string, EvalDefinition>();
-  const suiteByUri = new Map<string, EvalSuite>();
-  const suiteUriByEvalUri = new Map<string, ResourceUri<'suite'>>();
+  const byId = new Map<string, EvalDefinition>();
+  const suiteById = new Map<string, EvalSuite>();
+  const suiteIdByEvalId = new Map<string, EvalSuite>();
   const standalone: EvalDefinition[] = [];
   const matrices: EvalMatrix[] = [];
 
   for (const registration of registrations) {
     if (isEvalMatrix(registration)) {
-      if (!registration.uri.trim())
-        throw new Error('Eval registry contains a matrix with an empty URI');
-      if (matrices.some((matrix) => matrix.uri === registration.uri))
-        throw new Error(`Eval registry contains duplicate matrix URI: ${registration.uri}`);
+      const id = authoringId(registration);
+      if (matrices.some((matrix) => authoringId(matrix) === id))
+        throw new Error(`Eval registry contains duplicate matrix ID: ${id}`);
       matrices.push(registration);
       continue;
     }
     const suite = isEvalSuite(registration) ? registration : undefined;
     if (suite) {
-      if (!suite.uri.trim())
-        throw new Error('Eval registry contains a suite with an empty URI');
-      if (suiteByUri.has(suite.uri))
-        throw new Error(
-          `Eval registry contains duplicate suite URI: ${suite.uri}`,
-        );
-      suiteByUri.set(suite.uri, suite);
+      const id = authoringId(suite);
+      if (suiteById.has(id)) throw new Error(`Eval registry contains duplicate suite ID: ${id}`);
+      suiteById.set(id, suite);
     }
     const evaluations: readonly EvalDefinition[] = suite
       ? suite.evals
       : [registration as EvalDefinition];
     for (const evaluation of evaluations) {
-      if (!evaluation.uri.trim())
-        throw new Error('Eval registry contains an eval with an empty URI');
-      if (byUri.has(evaluation.uri))
-        throw new Error(
-          `Eval registry contains duplicate eval URI: ${evaluation.uri}`,
-        );
-      byUri.set(evaluation.uri, evaluation);
-      if (suite) suiteUriByEvalUri.set(evaluation.uri, suite.uri);
+      const id = authoringId(evaluation);
+      if (byId.has(id)) throw new Error(`Eval registry contains duplicate eval ID: ${id}`);
+      byId.set(id, evaluation);
+      if (suite) suiteIdByEvalId.set(id, suite);
       else standalone.push(evaluation);
     }
   }
 
   const evals = [
     ...standalone,
-    ...Array.from(suiteByUri.values()).flatMap((suite) => suite.evals),
+    ...Array.from(suiteById.values()).flatMap((suite) => suite.evals),
   ];
   return {
     evals,
-    suites: [...suiteByUri.values()],
+    suites: [...suiteById.values()],
     matrices,
-    get: (uri) => byUri.get(uri),
-    getSuite: (uri) => suiteByUri.get(uri),
+    get: (id) => byId.get(id),
+    getSuite: (id) => suiteById.get(id),
     metadata: () =>
-      evals.map(({ uri, name }) => ({
-        uri,
-        uuid: parseResourceUri(uri, 'eval').uuid,
-        ...(name ? { name } : {}),
-        ...(suiteUriByEvalUri.has(uri)
-          ? { suiteUri: suiteUriByEvalUri.get(uri)! }
-          : {}),
-      })),
+      evals.map((evaluation) => {
+        const suite = suiteIdByEvalId.get(authoringId(evaluation));
+        return {
+          id: evaluation.id,
+          ...(evaluation.name ? { name: evaluation.name } : {}),
+          ...(suite ? { suiteId: suite.id } : {}),
+        };
+      }),
     suiteMetadata: () =>
-      [...suiteByUri.values()].map(({ uri, name, evals }) => ({
-        uri,
-        uuid: parseResourceUri(uri, 'suite').uuid,
-        ...(name ? { name } : {}),
-        evalUris: evals.map((evaluation) => evaluation.uri),
+      [...suiteById.values()].map((suite) => ({
+        id: suite.id,
+        evalIds: suite.evals.map(authoringId),
+        ...(suite.name ? { name: suite.name } : {}),
       })),
     catalog: () =>
       evals.map((evaluation) => {
-        const suiteUri = suiteUriByEvalUri.get(evaluation.uri);
+        const suite = suiteIdByEvalId.get(authoringId(evaluation));
         const identity = evaluation.agent.identity;
         return {
-          uri: evaluation.uri,
-          uuid: parseResourceUri(evaluation.uri, 'eval').uuid,
-          path: suiteUri ? `${suiteUri}#${evaluation.uri}` : evaluation.uri,
+          id: evaluation.id,
+          path: suite ? `${suite.id}#${evaluation.id}` : evaluation.id,
           ...(evaluation.name ? { name: evaluation.name } : {}),
-          ...(suiteUri ? { suiteUri } : {}),
+          ...(suite ? { suiteId: suite.id } : {}),
           agent: {
             ...(identity?.name ? { name: identity.name } : {}),
             kind: identity?.kind ?? 'adapter',
-            ...(identity?.uri ? { uri: identity.uri } : {}),
+            ...(identity?.id ? { id: identity.id } : {}),
             ...(identity?.version ? { version: identity.version } : {}),
             runtimes: Object.entries(evaluation.agent.runtimes ?? {}).map(
               ([name, runtime]) => ({
@@ -529,15 +528,17 @@ export function registerEvals<
           },
           fixtures: (evaluation.fixtures ?? []).map((fixture) =>
             fixture.kind === 'dynamic'
-              ? { kind: 'dynamic', source: 'dynamic' }
+              ? { id: fixture.id, kind: 'dynamic', source: 'dynamic' }
               : fixture.kind === 'inline'
                 ? {
+                    id: fixture.id,
                     kind: 'inline',
                     source: fixture.file,
                     destination: fixture.file,
                     visibility: fixture.visibility,
                   }
                 : {
+                    id: fixture.id,
                     kind: fixture.kind,
                     source: fixture.src,
                     destination: fixture.dst,
@@ -554,31 +555,27 @@ export function registerEvals<
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type RunMetadata = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
-  evalUri: ResourceUri<'eval'>;
-  /** Canonical suite membership when this eval was invoked through a suite. */
   suiteId?: string;
-  suiteUri?: ResourceUri<'suite'>;
   parameters?: JsonObject;
-  matrix?: { uri: ResourceUri<'matrix'>; cellKey: string };
+  matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
 };
 
 export type TrialMetadata = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   runId: string;
   runUri: ResourceUri<'run'>;
   trialId: string;
   trialUri: ResourceUri<'trial'>;
   trialIndex: number;
   evalId: string;
-  evalUri: ResourceUri<'eval'>;
   parameters?: JsonObject;
-  matrix?: { uri: ResourceUri<'matrix'>; cellKey: string };
+  matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
 };
@@ -639,7 +636,7 @@ export type TrialResult = {
   trialId: string;
   trialUri: ResourceUri<'trial'>;
   trialIndex: number;
-  evalUri: ResourceUri<'eval'>;
+  evalId: string;
   status: RunStatus;
   reportLocation: string;
   durationMs?: number;
@@ -656,7 +653,6 @@ export type AggregateScoring = {
 
 export type RunResult = TrialResult & {
   runId: string;
-  evalId?: string;
   trialCount?: number;
   passed?: number;
   failed?: number;

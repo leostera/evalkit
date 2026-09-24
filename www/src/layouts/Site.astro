@@ -1,0 +1,46 @@
+---
+import '../styles/site.css';
+
+interface Props {
+  title: string;
+  description: string;
+  active?: 'home' | 'docs' | 'manual';
+}
+
+const { title, description, active } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f4ef" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="text/plain" title="LLM guide" href="/llms.txt" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header wrap">
+        <a class="wordmark" href="/" aria-label="Evalkit home">
+          <span class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+          <span>evalkit<span class="wordmark-dot">.</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a class:list={[{ selected: active === 'home' }]} href="/">Overview</a>
+          <a class:list={[{ selected: active === 'docs' }]} href="/docs/">Get started</a>
+          <a class:list={[{ selected: active === 'manual' }]} href="/docs/manual/">Manual</a>
+          <a class="nav-github" href="https://github.com/leostera/evalkit" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </nav>
+      </header>
+      <main><slot /></main>
+      <footer class="site-footer wrap">
+        <div class="footer-brand"><span class="footer-symbol" aria-hidden="true">◆</span> evalkit <span class="footer-muted">/ know what your agent actually did.</span></div>
+        <div class="footer-links"><a href="/docs/">Get started</a><a href="/docs/manual/">Manual</a><a href="https://github.com/leostera/evalkit">Source code ↗</a></div>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -54,7 +54,7 @@ export function DashboardRoutes({
         }
       />
       <Route
-        path="/suites/:suiteUuid"
+        path="/suites/:suiteId"
         element={<SuiteRoute api={api} suites={suites} catalog={catalog} />}
       />
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
@@ -117,12 +117,12 @@ function SuiteRoute(props: {
   suites: SuiteSummary[];
   catalog: CatalogEval[];
 }) {
-  const { suiteUuid } = useParams();
+  const { suiteId } = useParams();
   const navigate = useNavigate();
   return (
     <SuiteTable
       {...props}
-      selectedSuiteId={suiteUuid}
+      selectedSuiteId={suiteId}
       onOpenSuite={() => undefined}
       onOpenEval={(entry) =>
         navigate(`/evals/${encodeURIComponent(entry.path)}`)
@@ -174,8 +174,8 @@ function TrialDetailRoute({
     <TrialDetail
       api={api}
       evalName={
-        catalog.find((entry) => entry.uri === selected?.run.evalId)?.name ??
-        catalog.find((entry) => entry.uri === selected?.run.evalId)?.slug
+        catalog.find((entry) => entry.id === selected?.run.evalId)?.name ??
+        selected?.run.evalId
       }
       selected={selected}
       onWorkspace={() =>

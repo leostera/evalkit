@@ -10,7 +10,7 @@ export type EvalkitConfig = {
   evals?: readonly EvalDefinition[];
   registry?: EvalRegistry;
   /** Applied to every discovered eval. Values are forwarded, never provider-interpreted. */
-  matrix?: Omit<EvalMatrixDefinition, 'evals' | 'uri'> & { uri?: EvalMatrixDefinition['uri'] };
+  matrix?: Omit<EvalMatrixDefinition, 'evals' | 'id'> & { id?: string };
   execution?: { concurrency?: number; trials?: number; maxCells?: number };
   reportDir?: string;
   sandboxDir?: string;

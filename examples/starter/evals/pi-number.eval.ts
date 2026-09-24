@@ -6,7 +6,7 @@ import {
 } from '../judges/pi-number-judges.js';
 
 export const piNumberEval = defineEval({
-  uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b03',
+  id: 'pi-number',
   name: 'Pi random number',
   agent: localPiAgent,
   transcript: [

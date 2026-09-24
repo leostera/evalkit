@@ -1,5 +1,4 @@
-import { parseResourceUri, type ResourceUri } from './identity.js';
-import type { EvalDefinition, JsonObject, JsonValue } from './index.js';
+import { authoringId, type EvalDefinition, type JsonObject, type JsonValue } from './index.js';
 
 /** Canonical JSON: keys sorted recursively, array order preserved. Rejects non-JSON inputs. */
 export function canonicalParameters(value: JsonValue): string {
@@ -13,7 +12,7 @@ export function canonicalParameters(value: JsonValue): string {
 }
 
 export type MatrixSelection = {
-  /** Base eval URIs or slugs. Unknown values fail before any dispatch. */
+  /** Base eval IDs. Unknown values fail before dispatch. */
   evals?: readonly string[];
   /** Select existing axis values, rather than overwriting every cell with the same value. */
   parameters?: Readonly<Record<string, readonly JsonValue[]>>;
@@ -21,15 +20,14 @@ export type MatrixSelection = {
   overrides?: JsonObject;
 };
 export type EvalMatrixCell = {
-  matrixUri: ResourceUri<'matrix'>;
+  matrixId: string;
   /** Stable canonical key including matrix, base eval and effective parameters. */
   key: string;
   eval: EvalDefinition;
   parameters: JsonObject;
 };
 export type EvalMatrixDefinition = {
-  uri: ResourceUri<'matrix'>;
-  slug?: string;
+  id: string;
   name?: string;
   evals: readonly EvalDefinition[];
   parameters: Readonly<Record<string, readonly JsonValue[]>>;
@@ -42,11 +40,12 @@ export type EvalMatrix = EvalMatrixDefinition & {
 };
 
 export function defineEvalMatrix<const T extends EvalMatrixDefinition>(definition: T): EvalMatrix & T {
-  parseResourceUri(definition.uri, 'matrix');
+  authoringId(definition);
   const identities = new Set<string>();
   for (const evaluation of definition.evals) {
-    if (identities.has(evaluation.uri)) throw new Error(`Duplicate matrix eval: ${evaluation.uri}`);
-    identities.add(evaluation.uri);
+    const id = authoringId(evaluation);
+    if (identities.has(id)) throw new Error(`Duplicate matrix eval: ${id}`);
+    identities.add(id);
   }
   const axes = Object.entries(definition.parameters).sort(([a], [b]) => a.localeCompare(b));
   for (const [axis, choices] of axes) {
@@ -64,9 +63,9 @@ export function defineEvalMatrix<const T extends EvalMatrixDefinition>(definitio
     }
     canonicalParameters(selection.overrides ?? {});
     for (const name of selection.evals ?? []) {
-      if (!definition.evals.some(e => e.uri === name || e.slug === name)) throw new Error(`Unknown matrix eval: ${name}`);
+      if (!definition.evals.some(e => e.id === name)) throw new Error(`Unknown matrix eval: ${name}`);
     }
-    const evals = definition.evals.filter(e => !selection.evals || selection.evals.includes(e.uri) || (e.slug && selection.evals.includes(e.slug)));
+    const evals = definition.evals.filter(e => !selection.evals || selection.evals.includes(e.id));
     const selectedAxes = axes.map(([axis, choices]) => {
       const selected = selection.parameters?.[axis];
       if (!selected) return [axis, choices] as const;
@@ -94,8 +93,8 @@ export function defineEvalMatrix<const T extends EvalMatrixDefinition>(definitio
       }
       for (const evaluation of selected.evals) {
         for (const parameters of expand(0, selected.defaults)) {
-          yield { matrixUri: definition.uri, eval: evaluation, parameters,
-            key: canonicalParameters({ matrix: definition.uri, eval: evaluation.uri, parameters }) };
+          yield { matrixId: definition.id, eval: evaluation, parameters,
+            key: canonicalParameters({ matrix: authoringId(definition), eval: authoringId(evaluation), parameters }) };
         }
       }
     },

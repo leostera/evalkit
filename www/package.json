@@ -1,0 +1,21 @@
+{
+  "name": "@evalkit/www",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "astro": "^7.3.5",
+    "marked": "^18.0.14",
+    "shiki": "^4.2.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.5",
+    "typescript": "^6.0.0",
+    "wrangler": "^4.138.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { CatalogEval, DashboardApi, SuiteSummary } from '../api.js';
 import { Empty } from './Empty.js';
 import { EvalRow } from './EvalRow.js';
@@ -34,20 +34,20 @@ export function SuiteTable({
         </thead>
         <tbody>
           {suites.map((suite) => (
-            <>
+            <Fragment key={suite.id}>
               <SuiteRow
                 suite={suite}
-                expanded={expandedSuite === suite.uuid}
+                expanded={expandedSuite === suite.id}
                 onToggle={() => {
                   setExpanded(
-                    expandedSuite === suite.uuid ? undefined : suite.uuid,
+                    expandedSuite === suite.id ? undefined : suite.id,
                   );
-                  onOpenSuite(suite.uuid);
+                  onOpenSuite(suite.id);
                 }}
-                onRun={() => void api.runSuite(suite.uri)}
+                onRun={() => void api.runSuite(suite.id)}
               />
-              {expandedSuite === suite.uuid ? (
-                <tr key={`${suite.uuid}-evals`}>
+              {expandedSuite === suite.id ? (
+                <tr key={`${suite.id}-evals`}>
                   <td colSpan={3}>
                     <table className="nested">
                       <thead>
@@ -60,9 +60,9 @@ export function SuiteTable({
                         </tr>
                       </thead>
                       <tbody>
-                        {suite.evalUris.map((id) => {
+                        {suite.evalIds.map((id) => {
                           const evaluation = catalog.find(
-                            (entry) => entry.uri === id,
+                            (entry) => entry.id === id,
                           );
                           return (
                             <EvalRow
@@ -87,7 +87,7 @@ export function SuiteTable({
                   </td>
                 </tr>
               ) : null}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

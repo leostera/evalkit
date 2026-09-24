@@ -7,8 +7,8 @@ export function AgentTable({ catalog }: { catalog: CatalogEval[] }) {
   const agents = useMemo(() => {
     const groups = new Map<string, CatalogEval[]>();
     for (const entry of catalog) {
-      const name = agentName(entry);
-      groups.set(name, [...(groups.get(name) ?? []), entry]);
+      const key = entry.agent.id ?? agentName(entry);
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
     }
     return [...groups.values()];
   }, [catalog]);
@@ -18,6 +18,7 @@ export function AgentTable({ catalog }: { catalog: CatalogEval[] }) {
       <table>
         <thead>
           <tr>
+            <th>ID</th>
             <th>Agent</th>
             <th>Kind</th>
             <th>Runtimes</th>
@@ -26,7 +27,7 @@ export function AgentTable({ catalog }: { catalog: CatalogEval[] }) {
         </thead>
         <tbody>
           {agents.map((entries) => (
-            <AgentRow key={agentName(entries[0])} entries={entries} />
+            <AgentRow key={entries[0]!.agent.id ?? agentName(entries[0])} entries={entries} />
           ))}
         </tbody>
       </table>

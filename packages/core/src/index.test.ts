@@ -26,12 +26,12 @@ describe('core definitions', () => {
   test('defaults shorthand directory fixtures to their candidate basename', () => {
     expect(
       directory(
-        'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b14',
+        'fixture-14',
         '../shared-fixtures/starter',
       ),
     ).toEqual({
       kind: 'directory',
-      uri: 'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b14',
+      id: 'fixture-14',
       src: '../shared-fixtures/starter',
       dst: 'starter',
       visibility: 'candidate',
@@ -40,12 +40,12 @@ describe('core definitions', () => {
 
   test('preserves declarative evaluation values', () => {
     const definition = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b03',
+      id: 'eval-03',
       agent: aut,
       fixtures: [
-        dynamic('evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b15', () =>
+        dynamic('fixture-15', () =>
           inlineFile(
-            'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b16',
+            'fixture-16',
             'input.txt',
             'hello',
             'candidate',
@@ -60,8 +60,8 @@ describe('core definitions', () => {
       scoring: [predicate('score', () => 1)],
     });
 
-    expect(definition.uri).toBe(
-      'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b03',
+    expect(definition.id).toBe(
+      'eval-03',
     );
     expect(definition.transcript).toHaveLength(3);
     expect(definition.scoring[0]?.kind).toBe('predicate');
@@ -69,7 +69,7 @@ describe('core definitions', () => {
 
   test('builds an explicit eval registry', () => {
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b04',
+      id: 'eval-04',
       name: 'Registered eval',
       agent: aut,
       transcript: [],
@@ -78,12 +78,11 @@ describe('core definitions', () => {
     const registry = registerEvals([evaluation]);
 
     expect(
-      registry.get('evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b04'),
+      registry.get('eval-04'),
     ).toBe(evaluation);
     expect(registry.metadata()).toEqual([
       {
-        uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b04',
-        uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b04',
+        id: 'eval-04',
         name: 'Registered eval',
       },
     ]);
@@ -91,56 +90,53 @@ describe('core definitions', () => {
 
   test('flattens suites and preserves suite membership', () => {
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b05',
+      id: 'eval-05',
       agent: aut,
       transcript: [],
       scoring: [],
     });
     const registry = registerEvals([
       defineSuite({
-        uri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b17',
+        id: 'suite-17',
         name: 'Shipwright journeys',
         evals: [evaluation],
       }),
     ]);
 
     expect(
-      registry.get('evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b05'),
+      registry.get('eval-05'),
     ).toBe(evaluation);
+    expect(registry.getSuite('suite-17')?.evals).toEqual([evaluation]);
     expect(registry.suiteMetadata()).toEqual([
       {
-        uri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b17',
-        uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b17',
+        id: 'suite-17',
         name: 'Shipwright journeys',
-        evalUris: ['evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b05'],
+        evalIds: ['eval-05'],
       },
     ]);
     expect(registry.metadata()).toEqual([
       {
-        uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b05',
-        uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b05',
-        suiteUri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b17',
+        id: 'eval-05',
+        suiteId: 'suite-17',
       },
     ]);
   });
 
   test('expands eval matrices lazily into parameterized cells', () => {
     const first = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b11',
-      slug: 'first',
+      id: 'eval-11',
       agent: { start: async () => ({ send: async () => {}, close: async () => {} }) },
       transcript: [],
       scoring: [],
     });
     const second = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b12',
-      slug: 'second',
+      id: 'eval-12',
       agent: first.agent,
       transcript: [],
       scoring: [],
     });
     const matrix = defineEvalMatrix({
-      uri: 'evalkit:matrix:0197f17c-4d89-7f81-9d42-6c497e6f6b13',
+      id: 'matrix-13',
       evals: [first, second],
       parameters: { model: ['a', 'b'], mode: ['without-docs', 'with-docs'] },
     });
@@ -152,16 +148,22 @@ describe('core definitions', () => {
     });
   });
 
+  test('validates human-defined IDs', () => {
+    expect(() => defineEval({ id: 'Bad ID', agent: aut, transcript: [], scoring: [] })).toThrow('lowercase kebab-case');
+    expect(() => directory('evalkit:fixture:fake', 'fixtures/example')).toThrow('lowercase kebab-case');
+    expect(() => defineEval({ id: 'good', uri: 'old', agent: aut, transcript: [], scoring: [] })).toThrow('use id');
+  });
+
   test('rejects duplicate registry IDs', () => {
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b06',
+      id: 'eval-06',
       agent: aut,
       transcript: [],
       scoring: [],
     });
 
     expect(() => registerEvals([evaluation, { ...evaluation }])).toThrow(
-      'duplicate eval URI',
+      'duplicate eval ID',
     );
   });
 });

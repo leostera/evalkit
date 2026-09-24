@@ -14,7 +14,7 @@ async function project() {
   return root;
 }
 const evaluation = (id: number) => `export default {
-  uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0${id}', slug: 'task-${id}',
+  id: 'task-${id}',
   agent: { async start({context}) { if (context.parameters?.maxTokens !== 10000) throw new Error('missing override'); return { async send() {}, async close() {} }; } },
   transcript: [], scoring: []
 };`;
@@ -27,7 +27,7 @@ test('discovers sorted eval modules without importing helpers or excluded files'
   await writeFile(join(root, 'evals/skip.eval.ts'), 'throw new Error("excluded imported")');
   await writeFile(join(root, 'evalkit.config.js'), `export default {exclude:['skip.eval.ts'], matrix:{parameters:{model:['a','b']}}};`);
   const loaded = await loadProject(root);
-  expect(loaded.registry.evals.map(e => e.slug)).toEqual(['task-1', 'task-2']);
+  expect(loaded.registry.evals.map(e => e.id)).toEqual(['task-1', 'task-2']);
   expect(loaded.registry.matrices[0]!.count()).toBe(4);
   expect(loaded.registry.matrices[0]!.count({parameters:{model:['a']}})).toBe(2);
 });
@@ -38,7 +38,7 @@ test('config-relative discovery, duplicate IDs, and ambiguous configs fail clear
   await writeFile(join(root, 'evals/a.eval.ts'), evaluation(1));
   expect((await loadProject(tmpdir(), join(root, 'evalkit.config.ts'))).root).toBe(root);
   await writeFile(join(root, 'evals/b.eval.ts'), evaluation(1));
-  await expect(loadProject(root)).rejects.toThrow('duplicate eval URI');
+  await expect(loadProject(root)).rejects.toThrow('duplicate eval ID');
   await writeFile(join(root, 'evalkit.config.js'), 'export default {};');
   await expect(loadProject(root)).rejects.toThrow('Multiple Evalkit configs');
 });
@@ -54,23 +54,35 @@ test('parser handles values before positionals and rejects unknown or invalid fl
 test('CLI dry-run is side-effect free; execution persists matrix parameters in manifests', async () => {
   const root = await project();
   await writeFile(join(root, 'evals/a.eval.ts'), evaluation(1));
-  await writeFile(join(root, 'evalkit.config.js'), `export default {matrix:{parameters:{model:['a','b'],mode:['without-docs','with-docs']}},execution:{maxCells:1}};`);
+  await writeFile(join(root, 'evalkit.config.js'), `export default {matrix:{id:'models',parameters:{model:['a','b'],mode:['without-docs','with-docs']}},execution:{maxCells:1}};`);
   const cli = resolve(import.meta.dir, 'index.ts');
-  const invoke = async (args: string[]) => {
-    const child = Bun.spawn(['bun', cli, 'run-evals', ...args], {cwd:root, stdout:'pipe', stderr:'pipe'});
+  const invoke = async (args: string[], command = 'run-evals') => {
+    const child = Bun.spawn(['bun', cli, command, ...args], {cwd:root, stdout:'pipe', stderr:'pipe'});
     const [out, err, status] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return {out, err, status};
   };
   const dry = await invoke(['--dry-run']);
   expect(dry.status).toBe(0);
   expect(JSON.parse(dry.out).cells).toBe(4);
+  const byId = await invoke(['task-1', '--dry-run']);
+  expect(byId.status).toBe(0);
+  expect(JSON.parse(byId.out).evals).toEqual(['task-1']);
+  expect(JSON.parse(byId.out).cells).toBe(4);
+  const matrix = await invoke(['models', '--eval', 'task-1', '--model', 'a', '--mode', 'with-docs', '--dry-run'], 'run-matrix');
+  expect(matrix.status).toBe(0);
+  expect(JSON.parse(matrix.out).matrix).toBe('models');
+  expect(JSON.parse(matrix.out).cells).toBe(1);
   expect(await readdir(root)).not.toContain('_evalkit-results');
   expect((await invoke([])).err).toContain('Selected 4 cells');
-  const run = await invoke(['--model','a','--mode','with-docs','--max-tokens','10000']);
+  const run = await invoke(['task-1','--model','a','--mode','with-docs','--max-tokens','10000']);
   expect(run.status).toBe(0);
   const runs = await readdir(join(root,'_evalkit-results'));
   expect(runs).toHaveLength(1);
   const manifest = JSON.parse(await readFile(join(root,'_evalkit-results',runs[0]!,'manifest.json'),'utf8'));
+  expect(manifest.schemaVersion).toBe(2);
+  expect(manifest.evalId).toBe('task-1');
+  expect(manifest.evalUri).toBeUndefined();
   expect(manifest.parameters).toEqual({model:'a',mode:'with-docs',maxTokens:10000});
+  expect(manifest.matrix.id).toBe('models');
   expect(manifest.matrix.cellKey).toContain('with-docs');
 });

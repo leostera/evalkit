@@ -9,6 +9,7 @@ import { Effect } from 'effect';
 import {
   recordError,
   resourceUri,
+  authoringId,
   type AgentRuntimeName,
   type JsonObject,
   type ArtifactEntry,
@@ -71,7 +72,7 @@ export function runEval(
   return Effect.gen(function* () {
     yield* Effect.logInfo('eval run started').pipe(
       Effect.annotateLogs({
-        evalId: definition.uri,
+        evalId: authoringId(definition),
         ...(options.runId ? { runId: options.runId } : {}),
         ...(options.suiteId ? { suiteId: options.suiteId } : {}),
       }),
@@ -82,7 +83,7 @@ export function runEval(
     });
     yield* Effect.logInfo('eval run finished').pipe(
       Effect.annotateLogs({
-        evalId: definition.uri,
+        evalId: authoringId(definition),
         runId: result.runId,
         status: result.status,
       }),
@@ -96,10 +97,7 @@ function createId(_kind: 'run' | 'trial'): string {
 }
 
 function canonicalId<K extends ResourceKind>(kind: K, id: string) {
-  const prefix = `evalkit:${kind}:`;
-  return (
-    id.startsWith(prefix) ? id : resourceUri(kind, id as Uuid)
-  ) as `evalkit:${K}:${string}`;
+  return resourceUri(kind, id as Uuid);
 }
 
 function assertUuid(value: string, label: string): void {
@@ -183,17 +181,11 @@ async function executeRun(
   const aggregateStartedAt = now();
   const runId = options.runId ?? createId('run');
   const runWriter = await options.report.startRun({
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId,
     runUri: canonicalId('run', runId),
-    evalId: definition.uri,
-    evalUri: definition.uri,
-    ...(options.suiteId
-      ? {
-          suiteId: options.suiteId,
-          suiteUri: canonicalId('suite', options.suiteId),
-        }
-      : {}),
+    evalId: definition.id,
+    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     parameters: options.parameters,
     matrix: options.matrix,
@@ -245,7 +237,7 @@ async function executeRun(
   return {
     ...trials[0]!,
     runId,
-    evalId: definition.uri,
+    evalId: authoringId(definition),
     status,
     trialCount: trials.length,
     passed: trials.length - failed,
@@ -287,7 +279,7 @@ async function runTrial(
   const randomSeed = crypto.getRandomValues(new Uint32Array(1))[0]!;
   const fixtureContext = {
     runId,
-    evalId: definition.uri,
+    evalId: authoringId(definition),
     trialId,
     trialIndex: options.trialIndex ?? 0,
     metadata: {
@@ -301,31 +293,24 @@ async function runTrial(
   const runWriter =
     options.runWriter ??
     (await options.report.startRun({
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId,
       runUri: canonicalId('run', runId),
-      evalId: definition.uri,
-      evalUri: definition.uri,
-      ...(options.suiteId
-        ? {
-            suiteId: options.suiteId,
-            suiteUri: canonicalId('suite', options.suiteId),
-          }
-        : {}),
+      evalId: definition.id,
+      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
       ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
       parameters: options.parameters,
       matrix: options.matrix,
       startedAt,
     }));
   const trialWriter = await runWriter.startTrial({
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId,
     runUri: canonicalId('run', runId),
     trialId,
     trialUri: canonicalId('trial', trialId),
     trialIndex: options.trialIndex ?? 0,
-    evalId: definition.uri,
-    evalUri: definition.uri,
+    evalId: definition.id,
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     parameters: options.parameters,
     matrix: options.matrix,
@@ -531,8 +516,7 @@ async function runTrial(
     trialId,
     trialUri: canonicalId('trial', trialId),
     trialIndex: options.trialIndex ?? 0,
-    evalId: definition.uri,
-    evalUri: definition.uri,
+    evalId: definition.id,
     status,
     reportLocation: runWriter.location,
     durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),

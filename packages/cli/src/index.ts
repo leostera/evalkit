@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import {
   RunMetadataSchema,
   RunSummarySchema,
+  authoringId,
   type EvalDefinition,
   type EvalRegistry,
   type JsonObject,
@@ -132,7 +133,7 @@ function agentLabel(evaluation: EvalDefinition): string {
   if (!identity) return 'unidentified agent';
   return [
     identity.kind,
-    identity.uri,
+    identity.id,
     identity.version && `v${identity.version}`,
   ]
     .filter(Boolean)
@@ -179,9 +180,9 @@ async function measureTrajectory(
 
 function printEvalStart(evaluation: EvalDefinition): void {
   console.log(
-    `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? evaluation.uri)}`,
+    `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? authoringId(evaluation))}`,
   );
-  console.log(`  ${paint.blue('eval')}     ${paint.dim(evaluation.uri)}`);
+  console.log(`  ${paint.blue('eval')}     ${paint.dim(authoringId(evaluation))}`);
   console.log(
     `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
   );
@@ -284,7 +285,7 @@ async function listLocalRuns(): Promise<LocalRun[]> {
             ? {
                 agent: [
                   manifest.aut.kind,
-                  manifest.aut.uri,
+                  manifest.aut.id,
                   manifest.aut.version,
                 ]
                   .filter(Boolean)
@@ -516,7 +517,7 @@ async function serveDashboard(): Promise<void> {
     )
       return context.text('Unknown eval', 404);
     void runEvals({
-      evalIds: [evaluation.uri],
+      evalIds: [authoringId(evaluation)],
       suiteId,
       concurrency: 32,
     });
@@ -526,8 +527,8 @@ async function serveDashboard(): Promise<void> {
     const suite = registry.getSuite(context.req.param('suiteId'));
     if (!suite) return context.text('Unknown suite', 404);
     void runEvals({
-      evalIds: suite.evals.map((evaluation) => evaluation.uri),
-      suiteId: suite.uri,
+      evalIds: suite.evals.map(authoringId),
+      suiteId: authoringId(suite),
       concurrency: 32,
     });
     return context.json({ accepted: true }, 202);
@@ -685,15 +686,15 @@ try {
     console.log(`evalkit
 
 Commands:
-  run-evals [eval-slug-or-uri,...]
-  run-matrix <matrix-slug-or-uri>
-  run-suite <suite-slug-or-uri>
+  run-evals [eval-id,...]
+  run-matrix <matrix-id>
+  run-suite <suite-id>
   serve-dashboard
 
 Project: evalkit.config.js / .ts, with default discovery in evals/**/*.eval.{ts,js}
 Run options:
   --config <file>               Select project configuration
-  --eval <slug,...>             Select tasks
+  --eval <eval-id,...>             Select tasks
   --model <key,...> --mode <key,...>  Select matrix values
   --select <axis=value>         Select any custom axis (repeatable)
   --param <name=JSON>           Override non-axis agent parameters

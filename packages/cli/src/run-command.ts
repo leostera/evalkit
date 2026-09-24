@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { Effect } from 'effect';
-import { defineEvalMatrix, type JsonObject, type JsonValue, type MatrixSelection } from '@evalkit/core';
+import { authoringId, defineEvalMatrix, type JsonObject, type JsonValue, type MatrixSelection } from '@evalkit/core';
 import { localReportStore, runMatrix } from '@evalkit/runner';
 import { loadProject } from './project.js';
 
@@ -54,19 +54,21 @@ export async function runProjectCommand(command: string, args: string[], cwd = p
   const registry = project.registry;
   const requestedEvals = values.eval?.flatMap(value => value.split(',')) ?? [];
   let matrix;
+  let suiteId: string | undefined;
   if (command === 'run-matrix') {
-    if (positionals.length !== 1) throw new Error('run-matrix requires one matrix URI or slug');
-    matrix = registry.matrices.find(m => m.uri === positionals[0] || m.slug === positionals[0]);
+    if (positionals.length !== 1) throw new Error('run-matrix requires one matrix ID');
+    matrix = registry.matrices.find(m => m.id === positionals[0]);
     if (!matrix) throw new Error(`Unknown matrix: ${positionals[0]}`);
   } else if (command === 'run-suite') {
-    if (positionals.length !== 1) throw new Error('run-suite requires one suite URI or slug');
-    const suite = registry.suites.find(s => s.uri === positionals[0] || s.slug === positionals[0]);
+    if (positionals.length !== 1) throw new Error('run-suite requires one suite ID');
+    const suite = registry.suites.find(s => s.id === positionals[0]);
     if (!suite) throw new Error(`Unknown suite: ${positionals[0]}`);
-    matrix = defineEvalMatrix({ uri: 'evalkit:matrix:0197f17c-4d89-7f81-9d42-6c497e6f6bff', evals: suite.evals, parameters: project.config.matrix?.parameters ?? {}, defaults: project.config.matrix?.defaults });
+    suiteId = authoringId(suite);
+    matrix = defineEvalMatrix({ id: 'default', evals: suite.evals, parameters: project.config.matrix?.parameters ?? {}, defaults: project.config.matrix?.defaults });
   } else {
     requestedEvals.push(...positionals.flatMap(value => value.split(',')));
     matrix = project.config.matrix ? registry.matrices.at(-1)! :
-      defineEvalMatrix({ uri: 'evalkit:matrix:0197f17c-4d89-7f81-9d42-6c497e6f6bff', evals: registry.evals, parameters: {} });
+      defineEvalMatrix({ id: 'default', evals: registry.evals, parameters: {} });
   }
   const selection: MatrixSelection = { parameters: {}, overrides: { ...parameters }, ...(requestedEvals.length ? { evals: requestedEvals } : {}) };
   for (const [axis, choices] of Object.entries(parsed.selection)) {
@@ -77,7 +79,7 @@ export async function runProjectCommand(command: string, args: string[], cwd = p
   const cells = matrix.count(selection);
   if (!cells) throw new Error('Selection contains no cells');
   const trials = parsed.trials ?? project.config.execution?.trials;
-  const plan = { matrix: matrix.slug ?? matrix.uri, evals: requestedEvals, cells, parameters: selection.parameters, overrides: selection.overrides, trials: trials ?? 'eval policy' };
+  const plan = { matrix: authoringId(matrix), evals: requestedEvals, cells, parameters: selection.parameters, overrides: selection.overrides, trials: trials ?? 'eval policy' };
   if (values['dry-run']) { console.log(JSON.stringify(plan, null, 2)); return; }
   if (cells > (project.config.execution?.maxCells ?? 100) && !values.all) throw new Error(`Selected ${cells} cells. Narrow the selection, inspect --dry-run, or pass --all.`);
   if (!values.json) console.log(`Running ${cells} cell(s) from ${plan.matrix}`);
@@ -85,14 +87,15 @@ export async function runProjectCommand(command: string, args: string[], cwd = p
     selection,
     concurrency: parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
     trials,
+    ...(suiteId ? { suiteId } : {}),
     ...(values.local ? { runtime: 'local' as const } : {}),
     report: localReportStore(resolve(project.root, project.config.reportDir ?? '_evalkit-results')),
     workspaceRoot: resolve(project.root, project.config.sandboxDir ?? '_evalkit-sandbox'),
     onResult: (cell, result) => {
-      if (values.json) console.log(JSON.stringify({ cell: { key: cell.key, eval: cell.eval.uri, parameters: cell.parameters }, result }));
+      if (values.json) console.log(JSON.stringify({ cell: { key: cell.key, eval: authoringId(cell.eval), parameters: cell.parameters }, result }));
       else {
         const passed = result.status === 'completed' && (result.aggregateScoring?.passRate === 1 || result.scoring?.passed);
-        console.log(`${passed ? 'PASS' : 'FAIL'} ${cell.eval.slug ?? cell.eval.name} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`);
+        console.log(`${passed ? 'PASS' : 'FAIL'} ${cell.eval.name ?? authoringId(cell.eval)} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`);
         for (const trial of result.trials ?? [result]) for (const score of trial.scoring?.results ?? []) console.log(`  ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`);
       }
     },

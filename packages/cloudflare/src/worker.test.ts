@@ -5,7 +5,7 @@ import { createControlApi } from './worker.js';
 
 const registry = registerEvals([
   defineEval({
-    uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0e',
+    id: 'eval-0e',
     name: 'Hello eval',
     agent: defineAgent({
       async start() {
@@ -42,8 +42,7 @@ describe('control API', () => {
     expect(await response.json()).toEqual({
       evals: [
         {
-          uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0e',
-          uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b0e',
+          id: 'eval-0e',
           name: 'Hello eval',
         },
       ],

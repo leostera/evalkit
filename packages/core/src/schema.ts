@@ -18,21 +18,18 @@ export const RecordedErrorSchema = Schema.Struct({
 export const AutIdentitySchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   kind: Schema.String,
-  uri: Schema.String,
+  id: Schema.String,
   version: Schema.optional(Schema.String),
 });
 
 const ParametersSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown });
-const MatrixCellSchema = Schema.Struct({ uri: resourceUriSchema('matrix'), cellKey: Schema.String });
+const MatrixCellSchema = Schema.Struct({ id: Schema.String, cellKey: Schema.String });
 
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
-  runId: Schema.String,
+  schemaVersion: Schema.Literal(2),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
-  evalUri: resourceUriSchema('eval'),
   suiteId: Schema.optional(Schema.String),
-  suiteUri: Schema.optional(resourceUriSchema('suite')),
   parameters: Schema.optional(ParametersSchema),
   matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
@@ -40,14 +37,11 @@ export const RunMetadataSchema = Schema.Struct({
 });
 
 export const TrialMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
-  runId: Schema.String,
+  schemaVersion: Schema.Literal(2),
   runUri: resourceUriSchema('run'),
-  trialId: Schema.String,
   trialUri: resourceUriSchema('trial'),
   trialIndex: Schema.Number,
   evalId: Schema.String,
-  evalUri: resourceUriSchema('eval'),
   parameters: Schema.optional(ParametersSchema),
   matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),

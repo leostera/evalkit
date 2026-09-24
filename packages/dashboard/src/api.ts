@@ -1,9 +1,7 @@
 export type EvalSummary = {
-  uri: string;
-  uuid: string;
-  slug?: string;
+  id: string;
   name?: string;
-  suiteUri?: string;
+  suiteId?: string;
 };
 export type CatalogEval = EvalSummary & {
   path: string;
@@ -11,11 +9,12 @@ export type CatalogEval = EvalSummary & {
   agent: {
     name?: string;
     kind: string;
-    uri?: string;
+    id?: string;
     version?: string;
     runtimes: Array<{ name: string; kind: string }>;
   };
   fixtures: Array<{
+    id: string;
     kind: string;
     source: string;
     destination?: string;
@@ -24,10 +23,9 @@ export type CatalogEval = EvalSummary & {
   scorers: Array<{ name: string; kind: string }>;
 };
 export type SuiteSummary = {
-  uri: string;
-  uuid: string;
+  id: string;
   name?: string;
-  evalUris: string[];
+  evalIds: string[];
 };
 
 export type RunSummary = {

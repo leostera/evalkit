@@ -69,8 +69,7 @@ describe('control API (Miniflare E2E)', () => {
     expect(await authorized.json()).toEqual({
       evals: [
         {
-          uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0f',
-          uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b0f',
+          id: 'eval-0f',
         },
       ],
     });

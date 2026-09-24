@@ -18,6 +18,7 @@ describe('canonical resource URIs', () => {
 
   test('rejects malformed UUIDs and wrong resource kinds', () => {
     expect(() => parseResourceUri('evalkit:trial:not-a-uuid')).toThrow();
+    expect(() => parseResourceUri(`evalkit:eval:${uuid}`)).toThrow();
     expect(() => parseResourceUri(`evalkit:run:${uuid}`, 'trial')).toThrow(
       'Expected an Evalkit trial URI',
     );

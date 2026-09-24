@@ -48,8 +48,8 @@ describe('dashboard URL routing', () => {
         '/v1/catalog': {
           evals: [
             {
-              uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
-              path: 'examples.starter#greeting',
+              id: 'greeting',
+              path: 'starter#greeting',
               name: 'Greeting',
               trialCount: 2,
               agent: { kind: 'test', runtimes: [] },
@@ -61,20 +61,18 @@ describe('dashboard URL routing', () => {
         '/v1/evals': {
           evals: [
             {
-              uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
-              uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b01',
+              id: 'greeting',
               name: 'Greeting',
-              suiteUri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+              suiteId: 'starter',
             },
           ],
         },
         '/v1/suites': {
           suites: [
             {
-              uri: 'evalkit:suite:0197f17c-4d89-7f81-9d42-6c497e6f6b10',
-              uuid: '0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+              id: 'starter',
               name: 'Starter',
-              evalUris: ['evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01'],
+              evalIds: ['greeting'],
             },
           ],
         },
@@ -136,16 +134,16 @@ describe('dashboard URL routing', () => {
     await page.waitForSelector('tbody tr button');
     await page.click('tbody tr button');
     expect(new URL(page.url()).pathname).toBe(
-      '/suites/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+      '/suites/starter',
     );
     await page.waitForSelector('.nested tbody tr');
     await page.click('.nested tbody tr');
     expect(new URL(page.url()).pathname).toBe(
-      '/evals/examples.starter%23greeting',
+      '/evals/starter%23greeting',
     );
     await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe(
-      '/suites/0197f17c-4d89-7f81-9d42-6c497e6f6b10',
+      '/suites/starter',
     );
 
     await page.evaluate(() => {

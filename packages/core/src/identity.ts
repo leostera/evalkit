@@ -1,16 +1,14 @@
 import * as Schema from 'effect/Schema';
 
-export const ResourceKindSchema = Schema.Literal(
-  'suite',
-  'eval',
-  'agent',
-  'fixture',
-  'run',
-  'trial',
-  'artifact',
-  'matrix',
-);
+export const ResourceKindSchema = Schema.Literal('run', 'trial', 'artifact');
 export type ResourceKind = typeof ResourceKindSchema.Type;
+
+/** Human-authored project-local identifier; never a generated resource URI. */
+export function authorId(value: string): string {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))
+    throw new Error(`ID must be lowercase kebab-case: ${value}`);
+  return value;
+}
 
 /** RFC 4122 textual UUID. Evalkit accepts v4/v7 and other valid UUID versions. */
 export const UuidSchema = Schema.String.pipe(
@@ -25,7 +23,7 @@ export type ResourceUri<TKind extends ResourceKind = ResourceKind> =
 
 export const ResourceUriSchema = Schema.String.pipe(
   Schema.pattern(
-    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact|matrix):[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    /^evalkit:(run|trial|artifact):[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   ),
 );
 
@@ -52,7 +50,7 @@ export function parseResourceUri<TKind extends ResourceKind>(
   expectedKind?: TKind,
 ): { kind: TKind; uuid: Uuid; uri: ResourceUri<TKind> } {
   const match =
-    /^evalkit:(suite|eval|agent|fixture|run|trial|artifact|matrix):(.+)$/.exec(value);
+    /^evalkit:(run|trial|artifact):(.+)$/.exec(value);
   if (!match) throw new Error(`Invalid Evalkit resource URI: ${value}`);
   const kind = match[1] as TKind;
   if (expectedKind && kind !== expectedKind)

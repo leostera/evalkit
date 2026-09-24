@@ -37,16 +37,16 @@ export function RunTable({
     direction: 'desc',
   });
   const evalFor = (run: RunSummary) =>
-    catalog.find((entry) => entry.uri === run.evalId);
+    catalog.find((entry) => entry.id === run.evalId);
   const sortedRuns = useSortedRows(runs, sort, (run, key) => {
     const evaluation = evalFor(run);
     return (
       {
         run: run.id,
         suite:
-          suites.find((suite) => suite.uri === run.suiteId)?.name ??
+          suites.find((suite) => suite.id === run.suiteId)?.name ??
           run.suiteId,
-        eval: evaluation?.name ?? evaluation?.slug ?? run.evalId,
+        eval: evaluation?.name ?? run.evalId,
         agent:
           evaluation?.agent.name ?? evaluation?.agent.kind ?? 'Unnamed agent',
         status: run.status,
@@ -155,11 +155,11 @@ export function RunTable({
                     </button>
                   </td>
                   <td>
-                    {suites.find((suite) => suite.uri === run.suiteId)?.name ??
+                    {suites.find((suite) => suite.id === run.suiteId)?.name ??
                       '—'}
                   </td>
                   <td>
-                    {evaluation?.name ?? evaluation?.slug ?? 'Unnamed eval'}
+                    {evaluation?.name ?? run.evalId}
                   </td>
                   <td>
                     {evaluation?.agent.name ??

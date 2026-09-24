@@ -40,7 +40,7 @@ function testAgent(response: string | (() => Promise<string>)) {
   return defineAgent({
     identity: {
       kind: 'test-agent',
-      uri: 'evalkit:agent:0197f17c-4d89-7f81-9d42-6c497e6f6b18',
+      id: 'agent-18',
     },
     async start({ onEvent }) {
       await onEvent({ kind: 'started', timestamp: new Date().toISOString() });
@@ -76,7 +76,7 @@ describe('runEval', () => {
   test('streams a trajectory, scores it, and writes a hierarchical report', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b01',
+      id: 'eval-01',
       agent: testAgent('Hello back!'),
       transcript: [user('Hello')],
       scoring: [
@@ -138,7 +138,7 @@ describe('runEval', () => {
   test('groups requested independent trials beneath one aggregate run', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b07',
+      id: 'eval-07',
       agent: testAgent('Aye!'),
       transcript: [user('Hello')],
       scoring: [predicate('responded', () => 1)],
@@ -181,7 +181,7 @@ describe('runEval', () => {
     const root = await reportDirectory();
     let selectedRuntime: string | undefined;
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b08',
+      id: 'eval-08',
       agent: defineAgent({
         runtimes: {
           local: {
@@ -216,7 +216,7 @@ describe('runEval', () => {
   test('rejects an undeclared AUT runtime', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b09',
+      id: 'eval-09',
       agent: testAgent('unused'),
       transcript: [],
       scoring: [],
@@ -237,7 +237,7 @@ describe('runEval', () => {
     let candidateRoot = '';
     await writeFile(path.join(source, 'starter.txt'), 'candidate fixture');
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0a',
+      id: 'eval-0a',
       agent: defineAgent({
         async start({ context, onEvent }) {
           return {
@@ -270,12 +270,12 @@ describe('runEval', () => {
       }),
       fixtures: [
         directory(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b19',
+          'fixture-19',
           source,
           { dst: 'project', visibility: 'candidate' },
         ),
         file(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1a',
+          'fixture-1a',
           path.join(source, 'starter.txt'),
           {
             dst: 'copied.txt',
@@ -283,14 +283,14 @@ describe('runEval', () => {
           },
         ),
         inlineFile(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1b',
+          'fixture-1b',
           'hidden.txt',
           'evaluator fixture',
           'evaluator',
         ),
-        dynamic('evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1c', () =>
+        dynamic('fixture-1c', () =>
           inlineFile(
-            'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1d',
+            'fixture-1d',
             'generated.txt',
             'dynamic fixture',
             'candidate',
@@ -353,11 +353,11 @@ describe('runEval', () => {
   test('fails safely when fixture destinations escape the workspace', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0b',
+      id: 'eval-0b',
       agent: testAgent('unused'),
       fixtures: [
         inlineFile(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1e',
+          'fixture-1e',
           '../outside.txt',
           'nope',
           'candidate',
@@ -380,17 +380,17 @@ describe('runEval', () => {
   test('fails safely for duplicate fixture destinations', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0c',
+      id: 'eval-0c',
       agent: testAgent('unused'),
       fixtures: [
         inlineFile(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b1f',
+          'fixture-1f',
           'same.txt',
           'first',
           'candidate',
         ),
         inlineFile(
-          'evalkit:fixture:0197f17c-4d89-7f81-9d42-6c497e6f6b20',
+          'fixture-20',
           'same.txt',
           'second',
           'candidate',
@@ -415,7 +415,7 @@ describe('runEval', () => {
   test('persists a partial trajectory when the AUT fails', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
-      uri: 'evalkit:eval:0197f17c-4d89-7f81-9d42-6c497e6f6b0d',
+      id: 'eval-0d',
       agent: testAgent(async () => {
         throw new Error('boom');
       }),

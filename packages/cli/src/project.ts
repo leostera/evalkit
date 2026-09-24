@@ -1,8 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { resolve, dirname, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createHash } from 'node:crypto';
-import { defineEvalMatrix, registerEvals, parseResourceUri, type EvalDefinition, type EvalkitConfig, type EvalRegistry } from '@evalkit/core';
+import { defineEvalMatrix, registerEvals, authoringId, type EvalDefinition, type EvalkitConfig, type EvalRegistry } from '@evalkit/core';
 
 const defaultInclude = ['**/*.eval.ts', '**/*.eval.js'];
 const defaultExclude = ['**/node_modules/**', '**/.git/**', '**/_evalkit-*/**'];
@@ -15,7 +14,7 @@ async function exists(file: string) {
 function evaluation(value: unknown, source: string): EvalDefinition {
   if (!value || typeof value !== 'object') throw new Error(`${source} must default-export defineEval(...) or an array of evals`);
   const candidate = value as EvalDefinition;
-  parseResourceUri(candidate.uri, 'eval');
+  authoringId(candidate);
   if (typeof candidate.agent?.start !== 'function' || !Array.isArray(candidate.transcript) || !Array.isArray(candidate.scoring))
     throw new Error(`Invalid eval exported by ${source}`);
   return candidate;
@@ -70,16 +69,15 @@ export async function loadProject(cwd: string, configPath?: string): Promise<Loa
   }
   if (!registry) registry = registerEvals(config.evals ?? await discover(root, config));
   if (!registry?.evals || !registry.get) throw new Error('Invalid explicit eval registry');
-  const slugs = new Set<string>();
+  const ids = new Set<string>();
   for (const e of registry.evals) {
-    if (e.slug && slugs.has(e.slug)) throw new Error(`Duplicate eval slug: ${e.slug}`);
-    if (e.slug) slugs.add(e.slug);
+    const id = authoringId(e);
+    if (ids.has(id)) throw new Error(`Duplicate eval ID: ${id}`);
+    ids.add(id);
   }
   if (config.matrix) {
-    const hex = createHash('sha256').update(JSON.stringify([config.matrix.slug ?? 'default', registry.evals.map(e => e.uri).sort()])).digest('hex');
-    const uri = config.matrix.uri ?? `evalkit:matrix:${hex.slice(0,8)}-${hex.slice(8,12)}-8${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
-    const matrix = defineEvalMatrix({ ...config.matrix, uri, slug: config.matrix.slug ?? 'default', evals: registry.evals });
-    if (registry.matrices.some(m => m.uri === uri)) throw new Error(`Duplicate matrix URI: ${uri}`);
+    const matrix = defineEvalMatrix({ ...config.matrix, id: config.matrix.id ?? 'default', evals: registry.evals });
+    if (registry.matrices.some(m => authoringId(m) === authoringId(matrix))) throw new Error(`Duplicate matrix ID: ${authoringId(matrix)}`);
     registry = { ...registry, matrices: [...registry.matrices, matrix] };
   }
   return { root, config, registry };

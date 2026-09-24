@@ -13,7 +13,7 @@ export function EvalDetail({
   return (
     <section className="card">
       <p className="mono">{evaluation.path}</p>
-      <h2>{evaluation.name ?? evaluation.slug ?? 'Unnamed eval'}</h2>
+      <h2>{evaluation.name ?? evaluation.id}</h2>
       <table className="event-fields">
         <tbody>
           <tr>

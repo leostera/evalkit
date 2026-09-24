@@ -1,0 +1,20 @@
+# Evalkit
+
+> Evalkit is a local-first Bun workspace for defining, running, and inspecting evaluations of agents. This site is a static guide, not a hosted evaluation service.
+
+## Documentation
+
+- [Complete manual](https://evalkit.leostera.dev/docs/manual/): Setup, agents, fixtures, eval definitions, suites, matrices, scoring, CLI, reports, and troubleshooting. Source of truth: [manual Markdown](https://github.com/leostera/evalkit/blob/main/www/src/content/manual.md).
+- [Get started](https://evalkit.leostera.dev/docs/): A shorter walkthrough for the included starter project.
+- [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
+- [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with an explicit eval registry.
+
+## Implementation notes
+
+- Start with `bun create github.com/leostera/evalkit` to copy the monorepo (Bun installs its dependencies); then enter `evalkit/examples/starter` to run the self-contained greeting eval.
+- Authored suites, evals, agents, matrices, and fixtures use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Only runs and trials have generated URIs.
+- The local CLI loads `evalkit.config.js`/`.ts`/`.mjs` if present; otherwise it uses an explicit `src/registry.ts` or discovers default-exported `evals/**/*.eval.ts`/`.js`. Reports are saved under `_evalkit-results/`.
+- Config can define a parameter matrix with `id`, axes, defaults, and execution safety limits. Matrices expand lazily; select by ID with `run-matrix <matrix-id> --eval <eval-id>` and inspect a plan with `--dry-run`.
+- Today, only `user(...)` transcript steps and `predicate(...)` scoring rules execute. Judge scorers, remote Agents SDK transport, enforced timeout policies, and a dedicated Evalkit project scaffold are not available.
+- Run completion is not the same as a scoring pass: consult the run summary's `failed` count for trial outcomes.
+- The website is static Astro served as Cloudflare Workers Static Assets. It does not run evaluations or expose an evaluation API.
