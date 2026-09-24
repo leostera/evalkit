@@ -269,13 +269,8 @@ describe('runEval', () => {
         },
       }),
       fixtures: [
-        directory(
-          'fixture-19',
-          source,
-          { dst: 'project', visibility: 'candidate' },
-        ),
+        directory(source, { dst: 'project', visibility: 'candidate' }),
         file(
-          'fixture-1a',
           path.join(source, 'starter.txt'),
           {
             dst: 'copied.txt',
@@ -283,14 +278,12 @@ describe('runEval', () => {
           },
         ),
         inlineFile(
-          'fixture-1b',
           'hidden.txt',
           'evaluator fixture',
           'evaluator',
         ),
-        dynamic('fixture-1c', () =>
+        dynamic(() =>
           inlineFile(
-            'fixture-1d',
             'generated.txt',
             'dynamic fixture',
             'candidate',
@@ -357,7 +350,6 @@ describe('runEval', () => {
       agent: testAgent('unused'),
       fixtures: [
         inlineFile(
-          'fixture-1e',
           '../outside.txt',
           'nope',
           'candidate',
@@ -384,13 +376,11 @@ describe('runEval', () => {
       agent: testAgent('unused'),
       fixtures: [
         inlineFile(
-          'fixture-1f',
           'same.txt',
           'first',
           'candidate',
         ),
         inlineFile(
-          'fixture-20',
           'same.txt',
           'second',
           'candidate',

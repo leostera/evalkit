@@ -14,7 +14,6 @@ export function FixtureTable({ catalog }: { catalog: CatalogEval[] }) {
       <table>
         <thead>
           <tr>
-            <th>ID</th>
             <th>Source</th>
             <th>Destination</th>
             <th>Visibility</th>
@@ -23,7 +22,7 @@ export function FixtureTable({ catalog }: { catalog: CatalogEval[] }) {
         </thead>
         <tbody>
           {fixtures.map((fixture, index) => (
-            <FixtureRow key={`${fixture.path}-${fixture.id}-${index}`} fixture={fixture} />
+            <FixtureRow key={`${fixture.path}-${index}`} fixture={fixture} />
           ))}
         </tbody>
       </table>

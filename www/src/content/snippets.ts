@@ -43,11 +43,11 @@ export const greetingAgent = defineAgent({
 export const fixtureDefinition = `import { directory, file, inlineFile } from '@evalkit/core';
 
 const fixtures = [
-  directory('starter-files', 'fixtures/starter'),
-  file('answer-file', 'fixtures/answer.txt', {
+  directory('fixtures/starter'),
+  file('fixtures/answer.txt', {
     dst: 'answer.txt', visibility: 'evaluator',
   }),
-  inlineFile('prompt-file', 'prompt.txt',
+  inlineFile('prompt.txt',
     'Say hello.', 'candidate'),
 ];`;
 

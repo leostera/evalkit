@@ -50,7 +50,7 @@ export default registerEvals([
 ]);
 ```
 
-Choose a stable, unique lowercase kebab-case `id` for each suite, eval, agent, matrix, and fixture. Authored `uri`, `uuid`, and `slug` fields are not supported. IDs are exact-match selectors in the CLI and dashboard; `name` is only a display label. Run and trial IDs/URIs are generated at execution time. See [`packages/core/src/identity.ts`](../../../packages/core/src/identity.ts).
+Choose a stable, unique lowercase kebab-case `id` for suites, evals, agents, and matrices. Fixtures have no IDs: their destination and visibility within an eval determine where they materialize. Authored `uri`, `uuid`, and `slug` fields are not supported. IDs are exact-match selectors in the CLI and dashboard; `name` is only a display label. Run and trial IDs/URIs are generated at execution time. See [`packages/core/src/identity.ts`](../../../packages/core/src/identity.ts).
 
 ### Configuration and discovery
 
@@ -133,12 +133,8 @@ import { directory, file, inlineFile, dynamic } from '@evalkit/core';
 
 const inputs = [
   // Copies fixtures/my-case/ to candidate/my-case/ by default.
-  directory(
-    'my-case',
-    'fixtures/my-case',
-  ),
+  directory('fixtures/my-case'),
   file(
-    'answer-file',
     'fixtures/answer.txt',
     {
       dst: 'answer.txt',
@@ -146,14 +142,12 @@ const inputs = [
     },
   ),
   inlineFile(
-    'instructions',
     'instructions.txt',
     'Summarize the input.',
     'candidate',
   ),
-  dynamic('generated-seed', (context) =>
+  dynamic((context) =>
     inlineFile(
-      'seed-file',
       'seed.txt',
       String(context.metadata.randomSeed),
       'candidate',
@@ -162,7 +156,7 @@ const inputs = [
 ];
 ```
 
-`directory(fixtureId, src, { dst?, visibility? })` defaults to the source basename and candidate visibility. `file(fixtureId, src, { dst, visibility })` and `inlineFile(fixtureId, path, contents, visibility)` require explicit visibility. `dynamic(fixtureId, create)` can return one fixture or an array (and may be async); use it to generate per-trial inputs. Destinations must be relative, cannot escape the workspace, and cannot duplicate another fixture's destination within the same visibility. Candidate files at the end of a trial are copied into the report; evaluator files are **not** included in that snapshot. Local sandbox directories, however, retain **both** workspaces, so treat them as sensitive.
+`directory(src, { dst?, visibility? })` defaults to the source basename and candidate visibility. `file(src, { dst, visibility })` and `inlineFile(path, contents, visibility)` require explicit visibility. `dynamic(create)` can return one fixture or an array (and may be async); use it to generate per-trial inputs. No fixture ID is required; repeating the same destination in different evals is fine. Destinations must be relative, cannot escape the workspace, and cannot duplicate another fixture's destination within the same visibility. Candidate files at the end of a trial are copied into the report; evaluator files are **not** included in that snapshot. Local sandbox directories, however, retain **both** workspaces, so treat them as sensitive.
 
 ## Add a scorer and an eval
 

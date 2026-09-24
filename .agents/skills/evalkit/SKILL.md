@@ -23,7 +23,7 @@ For a cross-cutting change, use all relevant subskills; for a focused task, load
 ## Invariants
 
 - Work from the eval project's directory (for the included project, `examples/starter`). The starter uses an explicit `src/registry.ts`; config-based projects load `evalkit.config.js`/`.ts` and discover default-exported `evals/*.eval.ts` unless a registry/eval list is supplied. Fixture source paths and `_evalkit-results` / `_evalkit-sandbox` resolve relative to the project config.
-- Authored suites, evals, agents, matrices, and fixtures use stable lowercase kebab-case IDs. Only runs and trials receive generated runtime URIs.
+- Authored suites, evals, agents, and matrices use stable lowercase kebab-case IDs. Fixtures have no IDs; destination conflicts are checked within each trial workspace. Only runs and trials receive generated runtime URIs.
 - Keep evaluator fixtures/answers private from the agent and model. Local sandboxes retain evaluator files: review before sharing.
 - Only `user(...)` transcript steps and `predicate(...)` scorers execute today. `agentsSdk()` remote transport, `judgeScorer(...)`, `agent(...)`/`judge(...)` steps, and enforced `policy.timeoutMs` are not available. Do not suggest them as a working solution.
 - Prefer a narrow greeting eval run for a smoke test before running all registered Pi-backed evals, which may incur provider costs. Run `bun run check` and relevant `bun test` suites when changing code.

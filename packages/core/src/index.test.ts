@@ -25,16 +25,31 @@ const aut = {
 describe('core definitions', () => {
   test('defaults shorthand directory fixtures to their candidate basename', () => {
     expect(
-      directory(
-        'fixture-14',
-        '../shared-fixtures/starter',
-      ),
+      directory('../shared-fixtures/starter'),
     ).toEqual({
       kind: 'directory',
-      id: 'fixture-14',
       src: '../shared-fixtures/starter',
       dst: 'starter',
       visibility: 'candidate',
+    });
+  });
+
+  test('scopes fixture destinations to each eval without naming fixtures', () => {
+    const first = defineEval({
+      id: 'first', agent: aut,
+      fixtures: [directory('fixtures/first/original', { dst: 'original', visibility: 'evaluator' })],
+      transcript: [], scoring: [],
+    });
+    const second = defineEval({
+      id: 'second', agent: aut,
+      fixtures: [directory('fixtures/second/original', { dst: 'original', visibility: 'evaluator' })],
+      transcript: [], scoring: [],
+    });
+    const catalog = registerEvals([first, second]).catalog();
+    expect(catalog.map(entry => entry.fixtures[0]?.destination)).toEqual(['original', 'original']);
+    expect(catalog[0]?.fixtures[0]).toEqual({
+      kind: 'directory', source: 'fixtures/first/original',
+      destination: 'original', visibility: 'evaluator',
     });
   });
 
@@ -43,14 +58,7 @@ describe('core definitions', () => {
       id: 'eval-03',
       agent: aut,
       fixtures: [
-        dynamic('fixture-15', () =>
-          inlineFile(
-            'fixture-16',
-            'input.txt',
-            'hello',
-            'candidate',
-          ),
-        ),
+        dynamic(() => inlineFile('input.txt', 'hello', 'candidate')),
       ],
       transcript: [
         user('hello'),
@@ -150,7 +158,6 @@ describe('core definitions', () => {
 
   test('validates human-defined IDs', () => {
     expect(() => defineEval({ id: 'Bad ID', agent: aut, transcript: [], scoring: [] })).toThrow('lowercase kebab-case');
-    expect(() => directory('evalkit:fixture:fake', 'fixtures/example')).toThrow('lowercase kebab-case');
     expect(() => defineEval({ id: 'good', uri: 'old', agent: aut, transcript: [], scoring: [] })).toThrow('use id');
   });
 

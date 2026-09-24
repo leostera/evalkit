@@ -14,7 +14,6 @@ export type CatalogEval = EvalSummary & {
     runtimes: Array<{ name: string; kind: string }>;
   };
   fixtures: Array<{
-    id: string;
     kind: string;
     source: string;
     destination?: string;

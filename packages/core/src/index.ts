@@ -150,7 +150,6 @@ export type FixtureVisibility = 'candidate' | 'evaluator';
 
 export type DirectoryFixture = {
   kind: 'directory';
-  id: string;
   src: string;
   dst: string;
   visibility: FixtureVisibility;
@@ -158,7 +157,6 @@ export type DirectoryFixture = {
 
 export type FileFixture = {
   kind: 'file';
-  id: string;
   src: string;
   dst: string;
   visibility: FixtureVisibility;
@@ -166,7 +164,6 @@ export type FileFixture = {
 
 export type InlineFixture = {
   kind: 'inline';
-  id: string;
   file: string;
   data: string;
   visibility: FixtureVisibility;
@@ -174,7 +171,6 @@ export type InlineFixture = {
 
 export type DynamicFixture = {
   kind: 'dynamic';
-  id: string;
   create(
     context: FixtureContext,
   ): Fixture | Fixture[] | Promise<Fixture | Fixture[]>;
@@ -197,13 +193,11 @@ function defaultFixtureDestination(src: string): string {
  * The short form is candidate-visible and copies beneath the source basename.
  */
 export function directory(
-  id: string,
   src: string,
-  options: Partial<Omit<DirectoryFixture, 'kind' | 'id' | 'src'>> = {},
+  options: Partial<Omit<DirectoryFixture, 'kind' | 'src'>> = {},
 ): DirectoryFixture {
   return {
     kind: 'directory',
-    id: authorId(id),
     src,
     dst: options.dst ?? defaultFixtureDestination(src),
     visibility: options.visibility ?? 'candidate',
@@ -211,27 +205,22 @@ export function directory(
 }
 
 export function file(
-  id: string,
   src: string,
-  options: Omit<FileFixture, 'kind' | 'id' | 'src'>,
+  options: Omit<FileFixture, 'kind' | 'src'>,
 ): FileFixture {
-  return { kind: 'file', id: authorId(id), src, ...options };
+  return { kind: 'file', src, ...options };
 }
 
 export function inlineFile(
-  id: string,
   file: string,
   data: string,
   visibility: FixtureVisibility,
 ): InlineFixture {
-  return { kind: 'inline', id: authorId(id), file, data, visibility };
+  return { kind: 'inline', file, data, visibility };
 }
 
-export function dynamic(
-  id: string,
-  create: DynamicFixture['create'],
-): DynamicFixture {
-  return { kind: 'dynamic', id: authorId(id), create };
+export function dynamic(create: DynamicFixture['create']): DynamicFixture {
+  return { kind: 'dynamic', create };
 }
 
 export type UserStep = {
@@ -344,12 +333,6 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
   authoringId(definition);
-  const fixtureIds = new Set<string>();
-  for (const fixture of definition.fixtures ?? []) {
-    authorId(fixture.id);
-    if (fixtureIds.has(fixture.id)) throw new Error(`Duplicate fixture ID: ${fixture.id}`);
-    fixtureIds.add(fixture.id);
-  }
   return definition;
 }
 
@@ -417,7 +400,6 @@ export type EvalSuiteMetadata = {
 };
 
 export type EvalCatalogFixture = {
-  id: string;
   kind: Fixture['kind'];
   source: string;
   destination?: string;
@@ -528,17 +510,15 @@ export function registerEvals<
           },
           fixtures: (evaluation.fixtures ?? []).map((fixture) =>
             fixture.kind === 'dynamic'
-              ? { id: fixture.id, kind: 'dynamic', source: 'dynamic' }
+              ? { kind: 'dynamic', source: 'dynamic' }
               : fixture.kind === 'inline'
                 ? {
-                    id: fixture.id,
                     kind: 'inline',
                     source: fixture.file,
                     destination: fixture.file,
                     visibility: fixture.visibility,
                   }
                 : {
-                    id: fixture.id,
                     kind: fixture.kind,
                     source: fixture.src,
                     destination: fixture.dst,

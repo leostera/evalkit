@@ -12,7 +12,7 @@
 ## Implementation notes
 
 - Start with `bun create github.com/leostera/evalkit` to copy the monorepo (Bun installs its dependencies); then enter `evalkit/examples/starter` to run the self-contained greeting eval.
-- Authored suites, evals, agents, matrices, and fixtures use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Only runs and trials have generated URIs.
+- Authored suites, evals, agents, and matrices use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Fixtures have no ID: their destinations are scoped to an eval's trial workspace. Only runs and trials have generated URIs.
 - The local CLI loads `evalkit.config.js`/`.ts`/`.mjs` if present; otherwise it uses an explicit `src/registry.ts` or discovers default-exported `evals/**/*.eval.ts`/`.js`. Reports are saved under `_evalkit-results/`.
 - Config can define a parameter matrix with `id`, axes, defaults, and execution safety limits. Matrices expand lazily; select by ID with `run-matrix <matrix-id> --eval <eval-id>` and inspect a plan with `--dry-run`.
 - Today, only `user(...)` transcript steps and `predicate(...)` scoring rules execute. Judge scorers, remote Agents SDK transport, enforced timeout policies, and a dedicated Evalkit project scaffold are not available.

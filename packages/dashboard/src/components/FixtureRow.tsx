@@ -6,7 +6,6 @@ export function FixtureRow({
 }) {
   return (
     <tr>
-      <td className="mono">{fixture.id}</td>
       <td>{fixture.source}</td>
       <td>{fixture.destination ?? '—'}</td>
       <td>{fixture.visibility ?? 'dynamic'}</td>
