@@ -27,7 +27,10 @@ export function AgentTable({ catalog }: { catalog: CatalogEval[] }) {
         </thead>
         <tbody>
           {agents.map((entries) => (
-            <AgentRow key={entries[0]!.agent.id ?? agentName(entries[0])} entries={entries} />
+            <AgentRow
+              key={entries[0]!.agent.id ?? agentName(entries[0])}
+              entries={entries}
+            />
           ))}
         </tbody>
       </table>

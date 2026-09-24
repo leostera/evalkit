@@ -2,7 +2,10 @@
   "name": "@evalkit/cli",
   "version": "0.0.1",
   "type": "module",
-  "exports": { "./bin": "./src/index.ts", "./project": "./src/project.ts" },
+  "exports": {
+    "./bin": "./src/index.ts",
+    "./project": "./src/project.ts"
+  },
   "bin": {
     "evalkit": "./src/index.ts"
   },
@@ -15,8 +18,12 @@
     "@evalkit/runner": "*"
   },
   "peerDependenciesMeta": {
-    "@evalkit/core": { "optional": true },
-    "@evalkit/runner": { "optional": true }
+    "@evalkit/core": {
+      "optional": true
+    },
+    "@evalkit/runner": {
+      "optional": true
+    }
   },
   "scripts": {
     "build": "tsc --noEmit",

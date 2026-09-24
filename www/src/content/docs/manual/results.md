@@ -1,33 +1,89 @@
 ---
 title: Results and reports
-description: Inspect local reports, scores, trajectories, and trial workspaces.
+description: Interpret local v2 manifests, trial scoring, trajectories, artifacts, and CI gates.
 ---
 
-The CLI writes v2 manifests with human `evalId`/`suiteId`/matrix IDs and generated run/trial URIs. Older v1 manifests with authored resource URIs are not migrated or listed by the v2 dashboard; their files remain on disk. The CLI writes the following tree under the current project directory:
+Eval definitions can live in Git, but run output is **local evidence**, not automatically committed, uploaded, or shared. The Bun CLI writes one report tree per eval run under the project's `reportDir` (default `_evalkit-results/`). A matrix cell creates its own run; several trials of one eval share that run's ID.
+
+## Files on disk
 
 ```text
 _evalkit-results/<run-uuid>/
-├── manifest.json                # eval/suite/agent identity, start time
-├── summary.json                 # run status, trialCount, passed, failed
+├── manifest.json                 # v2 run identity, parameters, start time, status
+├── summary.json                  # run status and passed/failed trial counts
 └── trials/<trial-uuid>/
-    ├── manifest.json            # trialIndex (zero-based), identity
-    ├── trajectory.jsonl         # one timestamped event per line
-    ├── scoring.json             # scorer results, overall, passed
-    ├── summary.json             # execution status, scoring, error, artifacts
-    └── artifacts/candidate/...  # candidate workspace snapshot, if files exist
+    ├── manifest.json             # v2 trial identity and zero-based trialIndex
+    ├── trajectory.jsonl          # AUT + runner events, one JSON object per line
+    ├── scoring.json              # individual score results, overall, passed
+    ├── summary.json              # execution status, scoring, error, artifacts
+    └── artifacts/candidate/...   # end-of-trial candidate file snapshot, if any
 ```
 
-`_evalkit-sandbox/<trial-uuid>/{candidate,evaluator}/` preserves the actual local workspaces for debugging. Both directories are ignored by Git in this repository's example and can be deleted when no longer needed; apply equivalent ignore/retention rules in your own project. Avoid sharing raw reports or sandboxes before checking for sensitive data in messages and candidate files.
+A run/trial manifest has `schemaVersion: 2`, human-authored `evalId` (and optional `suiteId`), generated UUID-based `runUri`/`trialUri`, optional agent identity (`aut`), optional effective `parameters` and `matrix: { id, cellKey }`, and `startedAt`. Directory names are the UUIDs; an eval ID is **not** a directory name. Manifests start with `status: "running"` and are updated when finalized. Run and trial summaries are written at finalization; a live or interrupted run may not yet have one. These are v2 files: older v1 authored-resource-URI manifests are not migrated or listed by the current dashboard, though they remain on disk.
 
-Open the dashboard to navigate suites/evals, start runs, inspect trials and event timelines, see scorer values and candidate files. For automation, read the report files directly (requires `jq`):
+`scoring.json` contains `results` with each scorer's `name`, `kind`, duration, optional `value`/`passed`, explanation, JSON evidence, or recorded error. `summary.json` for a trial repeats the scoring, records execution `status`, duration and ending time, and lists snapshotted artifact paths/sizes or an error. `trajectory.jsonl` includes `source: "aut"` messages/tool events and `source: "runner"` steps/scorer events, all with timestamps. `turn-completed` events carry latency/token usage **only if the adapter emitted it**; Evalkit does not measure provider usage automatically.
+
+The CLI also retains `_evalkit-sandbox/<trial-uuid>/{candidate,evaluator}/` for local debugging. These are the **actual** workspaces; the report artifact directory is a separate snapshot of candidate files at the end of execution. Evaluator files are not included in the report snapshot, but remain in the sandbox. A low-level runner call without `workspaceRoot` instead uses a temporary workspace that is removed after its trial.
+
+## Understanding status and scores
+
+There are two independent questions: did execution complete, and did its scorers pass?
+
+| Field                           | Meaning                                                                                                                                                                                                           |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trial `summary.status`          | `completed` if the runner finished the AUT/workspace lifecycle; `failed` for an execution, close, snapshot, or cleanup error. It does **not** turn into `failed` just because a predicate returns zero or throws. |
+| Trial `scoring.passed`          | All recorded scorers passed and none errored. A failed execution still fails the run gate, even if a partial scorer passed.                                                                                       |
+| Trial `scoring.overall`         | Arithmetic mean of valid numeric scorer values, **not** pass rate. Absent if no scorer returned a valid value.                                                                                                    |
+| Run `summary.status`            | `completed` unless an execution trial failed. A scoring-only failure can still leave this as `completed`.                                                                                                         |
+| Run `summary.passed` / `failed` | Counts of trials that completed **and** passed scoring vs all other trials. Use these for aggregate gates.                                                                                                        |
+
+A predicate value is between 0 and 1; without an explicit `passed` flag, only `1` passes. A trial with no scorers has no overall score and `scoring.passed: true`, so do not treat that as proof of quality. In a multi-trial run, compare `passed` and `failed` rather than inferring success from the first trial or a mean score. The CLI returns a nonzero exit code if a cell did not pass all its trials, even when run execution is `completed`.
+
+## Inspect or gate a run
+
+The commands below expect `jq` and an **actual** UUID from your project; `<run-uuid>` is a placeholder, not an example result.
 
 ```sh
-# Replace with an actual run UUID from _evalkit-results/.
 RUN="_evalkit-results/<run-uuid>"
 jq '{status, trialCount, passed, failed}' "$RUN/summary.json"
 jq '{status, scoring, error}' "$RUN"/trials/*/summary.json
 jq -r '.results[] | [.name, (.value // "error"), .passed] | @tsv' "$RUN"/trials/*/scoring.json
-jq -s 'map(select(.source == "aut" and .kind == "message"))' "$RUN"/trials/*/trajectory.jsonl
+# Collect assistant messages across this run's trials.
+jq -s 'map(select(.source == "aut" and .kind == "message" and .role == "assistant"))' "$RUN"/trials/*/trajectory.jsonl
+# CI gate for a finalized run; jq -e exits nonzero when the condition is false.
+jq -e '.trialCount > 0 and .failed == 0' "$RUN/summary.json"
 ```
 
-`scoring.overall` is the **unweighted mean of valid scorer values**, not a pass percentage; it may be absent if no valid score exists. A trial passes only when execution completed **and** all scorers passed without errors. `summary.json` at run level counts passed/failed trials; compare those counts across repeated runs rather than treating `status: "completed"` alone as a pass. The CLI returns a nonzero exit code when any matrix cell fails; use run-level `failed` in `summary.json` for detailed CI gates (for example, `jq -e '.failed == 0 and .trialCount > 0' "$RUN/summary.json"`). A scorer returning zero can leave execution `status: "completed"` while run summary reports a failed trial. Adapters may include usage and latency in `turn-completed` trajectory events; read `trajectory.jsonl` for those details.
+For a whole CLI invocation, use its exit status as well as the individual report summaries; it evaluates every selected cell. `--json` prints a JSON object per completed cell for automation (see [CLI and matrices](/docs/manual/cli-and-matrices/#execution-options)).
+
+## Run from code
+
+The local runner also exposes `runEval`, `runMatrix`, and `localReportStore` from `@evalkit/runner` in this monorepo or `@leostera/evalkit/runner` after publication. Both runner functions return **Effect** values; creating one does not start an eval. Execute it with `Effect.runPromise(...)`:
+
+```ts
+// From a Bun project rooted beside evals/greeting.eval.ts
+import { Effect } from 'effect';
+import { localReportStore, runEval } from '@evalkit/runner';
+import greetingEval from './evals/greeting.eval.js';
+
+const result = await Effect.runPromise(
+  runEval(greetingEval, {
+    report: localReportStore('_evalkit-results'),
+    workspaceRoot: '_evalkit-sandbox', // omit for cleaned-up temporary workspaces
+    runtime: 'local', // only if the agent declares this runtime
+    trials: 1, // overrides policy.trials
+  }),
+);
+const passed = result.status === 'completed' && result.scoring?.passed === true;
+console.log({ passed, report: result.reportLocation });
+```
+
+For multiple trials, inspect `result.aggregateScoring` (`passed`, `failed`, `passRate`, optional mean `overall`) or the persisted run summary instead of just the first trial's `result.scoring`. `runMatrix(matrix, { report, selection?, concurrency?, trials?, onResult?, ... })` runs a `defineEvalMatrix(...)` definition and returns cell-level `{ cells, passed, failed }` counts. You can supply `parameters` directly to `runEval`; an adapter still has to consume them. Execution errors in a trial are normally recorded as failed results; configuration or report I/O failures can reject the Effect. The CLI sets a persistent workspace root and handles exit codes for you.
+
+## Dashboard and privacy
+
+`bun run evalkit serve-dashboard` loads definitions from this project and lists compatible **v2** reports from its report directory. Browse runs and their trials, view scorer results and the event timeline, and inspect candidate workspace files and artifacts. Its display statuses (`passed`, `failed`, `errored`) combine report execution and scoring: they are not literal values from the `summary.json` `status` field. An incomplete run may show as running until a summary exists. The dashboard is a local viewer and launcher, not an automatic report sync or Git integration.
+
+### Privacy and retention
+
+Candidate files, assistant/user message events, scorer explanations/evidence, and errors may include sensitive data. The sandbox retains **evaluator** files as well. Ignore `_evalkit-results/` and `_evalkit-sandbox/` in your own Git project, choose retention rules, and inspect contents before copying a report or exposing the local dashboard to others. The example projects already ignore those generated paths; those ignore rules do not automatically apply to every new project. Removing unwanted local runs and retained workspaces is your responsibility.

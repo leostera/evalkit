@@ -135,7 +135,9 @@ export async function createTrialWorkspace(
     return {
       artifacts,
       // Persistent local workspaces are intentionally retained for debugging.
-      cleanup: persistent ? async () => {} : () => rm(root, { recursive: true, force: true }),
+      cleanup: persistent
+        ? async () => {}
+        : () => rm(root, { recursive: true, force: true }),
     };
   } catch (error) {
     await rm(root, { recursive: true, force: true });

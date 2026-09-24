@@ -24,9 +24,7 @@ const aut = {
 
 describe('core definitions', () => {
   test('defaults shorthand directory fixtures to their candidate basename', () => {
-    expect(
-      directory('../shared-fixtures/starter'),
-    ).toEqual({
+    expect(directory('../shared-fixtures/starter')).toEqual({
       kind: 'directory',
       src: '../shared-fixtures/starter',
       dst: 'starter',
@@ -36,20 +34,39 @@ describe('core definitions', () => {
 
   test('scopes fixture destinations to each eval without naming fixtures', () => {
     const first = defineEval({
-      id: 'first', agent: aut,
-      fixtures: [directory('fixtures/first/original', { dst: 'original', visibility: 'evaluator' })],
-      transcript: [], scoring: [],
+      id: 'first',
+      agent: aut,
+      fixtures: [
+        directory('fixtures/first/original', {
+          dst: 'original',
+          visibility: 'evaluator',
+        }),
+      ],
+      transcript: [],
+      scoring: [],
     });
     const second = defineEval({
-      id: 'second', agent: aut,
-      fixtures: [directory('fixtures/second/original', { dst: 'original', visibility: 'evaluator' })],
-      transcript: [], scoring: [],
+      id: 'second',
+      agent: aut,
+      fixtures: [
+        directory('fixtures/second/original', {
+          dst: 'original',
+          visibility: 'evaluator',
+        }),
+      ],
+      transcript: [],
+      scoring: [],
     });
     const catalog = registerEvals([first, second]).catalog();
-    expect(catalog.map(entry => entry.fixtures[0]?.destination)).toEqual(['original', 'original']);
+    expect(catalog.map((entry) => entry.fixtures[0]?.destination)).toEqual([
+      'original',
+      'original',
+    ]);
     expect(catalog[0]?.fixtures[0]).toEqual({
-      kind: 'directory', source: 'fixtures/first/original',
-      destination: 'original', visibility: 'evaluator',
+      kind: 'directory',
+      source: 'fixtures/first/original',
+      destination: 'original',
+      visibility: 'evaluator',
     });
   });
 
@@ -57,9 +74,7 @@ describe('core definitions', () => {
     const definition = defineEval({
       id: 'eval-03',
       agent: aut,
-      fixtures: [
-        dynamic(() => inlineFile('input.txt', 'hello', 'candidate')),
-      ],
+      fixtures: [dynamic(() => inlineFile('input.txt', 'hello', 'candidate'))],
       transcript: [
         user('hello'),
         agent({ contains: ['hello'] }),
@@ -68,9 +83,7 @@ describe('core definitions', () => {
       scoring: [predicate('score', () => 1)],
     });
 
-    expect(definition.id).toBe(
-      'eval-03',
-    );
+    expect(definition.id).toBe('eval-03');
     expect(definition.transcript).toHaveLength(3);
     expect(definition.scoring[0]?.kind).toBe('predicate');
   });
@@ -85,9 +98,7 @@ describe('core definitions', () => {
     });
     const registry = registerEvals([evaluation]);
 
-    expect(
-      registry.get('eval-04'),
-    ).toBe(evaluation);
+    expect(registry.get('eval-04')).toBe(evaluation);
     expect(registry.metadata()).toEqual([
       {
         id: 'eval-04',
@@ -111,9 +122,7 @@ describe('core definitions', () => {
       }),
     ]);
 
-    expect(
-      registry.get('eval-05'),
-    ).toBe(evaluation);
+    expect(registry.get('eval-05')).toBe(evaluation);
     expect(registry.getSuite('suite-17')?.evals).toEqual([evaluation]);
     expect(registry.suiteMetadata()).toEqual([
       {
@@ -133,7 +142,9 @@ describe('core definitions', () => {
   test('expands eval matrices lazily into parameterized cells', () => {
     const first = defineEval({
       id: 'eval-11',
-      agent: { start: async () => ({ send: async () => {}, close: async () => {} }) },
+      agent: {
+        start: async () => ({ send: async () => {}, close: async () => {} }),
+      },
       transcript: [],
       scoring: [],
     });
@@ -157,8 +168,18 @@ describe('core definitions', () => {
   });
 
   test('validates human-defined IDs', () => {
-    expect(() => defineEval({ id: 'Bad ID', agent: aut, transcript: [], scoring: [] })).toThrow('lowercase kebab-case');
-    expect(() => defineEval({ id: 'good', uri: 'old', agent: aut, transcript: [], scoring: [] })).toThrow('use id');
+    expect(() =>
+      defineEval({ id: 'Bad ID', agent: aut, transcript: [], scoring: [] }),
+    ).toThrow('lowercase kebab-case');
+    expect(() =>
+      defineEval({
+        id: 'good',
+        uri: 'old',
+        agent: aut,
+        transcript: [],
+        scoring: [],
+      }),
+    ).toThrow('use id');
   });
 
   test('rejects duplicate registry IDs', () => {

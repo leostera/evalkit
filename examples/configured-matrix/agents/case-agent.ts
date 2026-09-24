@@ -13,17 +13,29 @@ export const caseAgent = defineAgent({
         const style = context.parameters?.style;
         if (style !== 'lower' && style !== 'upper')
           throw new Error(`Unknown style: ${String(style)}`);
-        await onEvent({ kind: 'turn-started', turn, timestamp: new Date().toISOString() });
+        await onEvent({
+          kind: 'turn-started',
+          turn,
+          timestamp: new Date().toISOString(),
+        });
         await onEvent({
           kind: 'message',
           role: 'assistant',
-          content: style === 'upper' ? message.toUpperCase() : message.toLowerCase(),
+          content:
+            style === 'upper' ? message.toUpperCase() : message.toLowerCase(),
           timestamp: new Date().toISOString(),
         });
-        await onEvent({ kind: 'turn-completed', turn, timestamp: new Date().toISOString() });
+        await onEvent({
+          kind: 'turn-completed',
+          turn,
+          timestamp: new Date().toISOString(),
+        });
       },
       async close() {
-        await onEvent({ kind: 'completed', timestamp: new Date().toISOString() });
+        await onEvent({
+          kind: 'completed',
+          timestamp: new Date().toISOString(),
+        });
       },
     };
   },

@@ -776,18 +776,15 @@ async function serveDashboard(): Promise<void> {
 
 const [command = 'help', ...arguments_] = process.argv.slice(2);
 try {
-  if (['run-evals', 'run-matrix', 'run-suite'].includes(command)) {
-    await runProjectCommand(command, arguments_);
-  } else if (command === 'serve-dashboard') {
-    const { values } = parseRunArgs(arguments_);
-    project = await loadProject(projectRoot, values.config);
-    projectRoot = project.root;
-    reportRoot = resolve(
-      projectRoot,
-      project.config.reportDir ?? '_evalkit-results',
-    );
-    await serveDashboard();
-  } else if (command === 'help' || command === '--help') {
+  // Help must not load a project or parse run flags: it works even in an empty directory.
+  if (
+    command === 'help' ||
+    command === '--help' ||
+    (['run-evals', 'run-matrix', 'run-suite', 'serve-dashboard'].includes(
+      command,
+    ) &&
+      arguments_.some((arg) => arg === '--help' || arg === '-h'))
+  ) {
     console.log(`evalkit
 
 Commands:
@@ -808,7 +805,20 @@ Run options:
   --dry-run                    Show plan without starting agents
   --all                        Permit plans above the safety limit
   --json                       Emit results as JSON
+  --local                      Use a declared local AUT runtime
+  -h, --help                   Show this help without loading the project
 `);
+  } else if (['run-evals', 'run-matrix', 'run-suite'].includes(command)) {
+    await runProjectCommand(command, arguments_);
+  } else if (command === 'serve-dashboard') {
+    const { values } = parseRunArgs(arguments_);
+    project = await loadProject(projectRoot, values.config);
+    projectRoot = project.root;
+    reportRoot = resolve(
+      projectRoot,
+      project.config.reportDir ?? '_evalkit-results',
+    );
+    await serveDashboard();
   } else throw new Error(`Unknown command: ${command}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

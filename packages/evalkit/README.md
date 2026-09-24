@@ -30,10 +30,15 @@ export default defineEval({
   id: 'greeting',
   agent: piAgent(),
   transcript: [user('Say hello')],
-  scoring: [predicate('responds', ({ trajectory }) =>
-    Number(trajectory.events.some((event) =>
-      event.kind === 'message' && event.role === 'assistant',
-    )))],
+  scoring: [
+    predicate('responds', ({ trajectory }) =>
+      Number(
+        trajectory.events.some(
+          (event) => event.kind === 'message' && event.role === 'assistant',
+        ),
+      ),
+    ),
+  ],
 });
 ```
 

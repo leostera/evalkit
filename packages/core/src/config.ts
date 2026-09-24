@@ -17,6 +17,8 @@ export type EvalkitConfig = {
 };
 
 /** Pure, typed project configuration. Loading/discovery belongs to the CLI. */
-export function defineConfig<const T extends EvalkitConfig>(configuration: T): T {
+export function defineConfig<const T extends EvalkitConfig>(
+  configuration: T,
+): T {
   return configuration;
 }

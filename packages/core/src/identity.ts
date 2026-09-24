@@ -49,8 +49,7 @@ export function parseResourceUri<TKind extends ResourceKind>(
   value: string,
   expectedKind?: TKind,
 ): { kind: TKind; uuid: Uuid; uri: ResourceUri<TKind> } {
-  const match =
-    /^evalkit:(run|trial|artifact):(.+)$/.exec(value);
+  const match = /^evalkit:(run|trial|artifact):(.+)$/.exec(value);
   if (!match) throw new Error(`Invalid Evalkit resource URI: ${value}`);
   const kind = match[1] as TKind;
   if (expectedKind && kind !== expectedKind)

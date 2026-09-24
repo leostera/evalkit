@@ -18,7 +18,7 @@ bun run evalkit serve-dashboard
 
 Run the dashboard command in a second terminal if you want to keep using the first one. **Run commands from your eval project directory**: Evalkit discovers eval files, resolves fixtures, and writes reports there. The starter works without a config or registry.
 
-> **Note:** `bun run evals` runs *all* discovered starter evals, including Pi-backed ones. Those require a working `pi` command and configured model access.
+> **Note:** `bun run evals` runs _all_ discovered starter evals, including Pi-backed ones. Those require a working `pi` command and configured model access.
 
 Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
@@ -65,7 +65,8 @@ export const greetingAgent = defineAgent({
     return {
       async send(message: string) {
         await onEvent({
-          kind: 'message', role: 'assistant',
+          kind: 'message',
+          role: 'assistant',
           content: `Hello, ${message}`,
           timestamp: new Date().toISOString(),
         });
@@ -90,7 +91,8 @@ import { directory, file, inlineFile } from '@evalkit/core';
 const fixtures = [
   directory('fixtures/starter'),
   file('fixtures/answer.txt', {
-    dst: 'answer.txt', visibility: 'evaluator',
+    dst: 'answer.txt',
+    visibility: 'evaluator',
   }),
   inlineFile('prompt.txt', 'Say hello.', 'candidate'),
 ];
@@ -111,15 +113,18 @@ import { predicate } from '@evalkit/core';
 export const greetingIsReturned = predicate(
   'returns a greeting',
   ({ trajectory }) => {
-    const reply = trajectory.events.find(event =>
-      event.source === 'aut' &&
-      event.kind === 'message' &&
-      event.role === 'assistant'
+    const reply = trajectory.events.find(
+      (event) =>
+        event.source === 'aut' &&
+        event.kind === 'message' &&
+        event.role === 'assistant',
     );
-    const passed = reply?.kind === 'message' &&
-      reply.content === 'Hello, Ada';
-    return { value: passed ? 1 : 0, passed,
-      explanation: 'Expected the greeting for Ada.' };
+    const passed = reply?.kind === 'message' && reply.content === 'Hello, Ada';
+    return {
+      value: passed ? 1 : 0,
+      passed,
+      explanation: 'Expected the greeting for Ada.',
+    };
   },
 );
 ```
@@ -138,7 +143,7 @@ jq '{trialCount, passed, failed}' "$RUN/summary.json"
 jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN"/trials/*/scoring.json
 ```
 
-> **Important:** Execution status `completed` does not mean the scores passed. Use the run-level `failed` count for a CI gate. Local `_evalkit-sandbox/` directories retain *both* candidate and evaluator workspaces; review them for sensitive data before sharing.
+> **Important:** Execution status `completed` does not mean the scores passed. Use the run-level `failed` count for a CI gate. Local `_evalkit-sandbox/` directories retain _both_ candidate and evaluator workspaces; review them for sensitive data before sharing.
 
 Learn more: [Results and reports](/docs/manual/results/).
 

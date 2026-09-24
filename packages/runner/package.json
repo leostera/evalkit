@@ -12,7 +12,9 @@
     "@evalkit/core": "*"
   },
   "peerDependenciesMeta": {
-    "@evalkit/core": { "optional": true }
+    "@evalkit/core": {
+      "optional": true
+    }
   },
   "scripts": {
     "build": "tsc --noEmit",

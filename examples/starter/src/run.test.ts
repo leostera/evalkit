@@ -16,7 +16,9 @@ test('discovers and runs the starter eval without a config or registry', async (
   const { config, registry } = await loadProject(process.cwd());
   expect(config).toEqual({});
   expect(registry.evals.map((evaluation) => evaluation.id)).toEqual([
-    'greeting', 'pi-greeting', 'pi-number',
+    'greeting',
+    'pi-greeting',
+    'pi-number',
   ]);
   const evaluation = registry.get('greeting');
   if (!evaluation) throw new Error('Starter eval was not discovered');

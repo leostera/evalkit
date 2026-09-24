@@ -12,7 +12,11 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -23,7 +27,9 @@
       "import": "./dist/runner.mjs"
     }
   },
-  "bin": { "evalkit": "./dist/cli.mjs" },
+  "bin": {
+    "evalkit": "./dist/cli.mjs"
+  },
   "dependencies": {
     "effect": "^3.19.0",
     "hono": "^4.11.6"
