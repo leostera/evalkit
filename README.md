@@ -13,13 +13,14 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 - `packages/evalkit` — single installable `@leostera/evalkit` package with API, CLI, and dashboard ([install/publish instructions](packages/evalkit/README.md))
 - `examples/starter` — runnable zero-config eval discovery and CLI integration target
 - `examples/configured-matrix` — runnable, provider-free parameter sweep with `evalkit.config.ts`
+- `examples/interleaved-scenario` — runnable, provider-free passing and failfast checkpoint scenarios
 - `examples/agents-sdk` — planned remote transport example (not runnable yet)
 - `www` — Astro website, built as Cloudflare Workers Static Assets (not deployed)
 - `docs/rfds` — design records
 
-## First vertical slice
+## Local execution
 
-The implemented first slice runs a single trial against an AUT defined by the eval author, streams normalized events into an append-only `trajectory.jsonl`, runs deterministic predicates, and writes a local report tree:
+The local runner supports independent trials against an AUT defined by the eval author, interleaves deterministic checkpoints with user turns, streams normalized events into an append-only `trajectory.jsonl`, runs final predicates, and writes a local report tree:
 
 ```text
 _evalkit-results/<run-id>/
@@ -32,7 +33,7 @@ _evalkit-results/<run-id>/
     └── summary.json
 ```
 
-Artifact workspaces and concrete AUT transports remain in progress. The local CLI discovers default-exported `evals/*.eval.ts` by default (or loads an explicit registry for suites) with `evalkit run-evals`, writes reports to `_evalkit-results/`, and preserves candidate/evaluator workspaces under `_evalkit-sandbox/<trial-id>/` for local inspection.
+The local CLI discovers default-exported `evals/*.eval.ts` by default (or loads an explicit registry for suites) with `evalkit run-evals`, writes reports to `_evalkit-results/`, and preserves candidate/evaluator workspaces under `_evalkit-sandbox/<trial-id>/` for local inspection.
 
 ## User manual
 

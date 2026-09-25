@@ -76,6 +76,25 @@ export type RunnerEvent =
   | { kind: 'trial-started'; timestamp: string }
   | { kind: 'transcript-step-started'; step: number; timestamp: string }
   | { kind: 'transcript-step-completed'; step: number; timestamp: string }
+  | { kind: 'transcript-step-skipped'; step: number; timestamp: string }
+  | {
+      kind: 'checkpoint-started';
+      step: number;
+      name: string;
+      timestamp: string;
+    }
+  | {
+      kind: 'checkpoint-completed';
+      step: number;
+      status: 'passed' | 'failed';
+      timestamp: string;
+    }
+  | {
+      kind: 'checkpoint-error';
+      step: number;
+      error: RecordedError;
+      timestamp: string;
+    }
   | { kind: 'scorer-started'; scorer: string; timestamp: string }
   | {
       kind: 'scorer-completed';
@@ -241,7 +260,53 @@ export type JudgeStep = {
   rubric: string;
 };
 
-export type TranscriptStep = UserStep | AgentStep | JudgeStep;
+export type TurnView = {
+  userStepIndex: number;
+  events: readonly (AutEvent & { source: 'aut' })[];
+  assistantMessages: readonly (Extract<AutEvent, { kind: 'message' }> & {
+    role: 'assistant';
+    source: 'aut';
+  })[];
+  toolCalls: readonly {
+    eventIndex: number;
+    id: string;
+    name: string;
+    arguments: JsonValue;
+    resultObservation: 'observed' | 'absent' | 'ambiguous';
+    result?: JsonValue;
+  }[];
+  lastAssistantText?: string;
+};
+
+export type CheckpointContext = ScoringContext & { turn: TurnView };
+export type CheckStep = {
+  kind: 'check';
+  name: string;
+  run(
+    ctx: CheckpointContext,
+  ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
+};
+export type ExpectToolCallStep = {
+  kind: 'expect-tool-call';
+  name: string;
+  expected: { name: string; arguments?: JsonValue };
+};
+export type TranscriptStep =
+  UserStep | AgentStep | JudgeStep | CheckStep | ExpectToolCallStep;
+
+export function check(name: string, run: CheckStep['run']): CheckStep {
+  if (!name.trim()) throw new Error('Checkpoint name must not be empty');
+  return { kind: 'check', name, run };
+}
+
+/** Observes a tool call in the preceding turn; never invokes a tool. */
+export function expectToolCall(
+  expected: ExpectToolCallStep['expected'],
+): ExpectToolCallStep {
+  if (!expected.name.trim())
+    throw new Error('Expected tool name must not be empty');
+  return { kind: 'expect-tool-call', name: expected.name, expected };
+}
 
 export function user(message: string): UserStep {
   return { kind: 'user', message };
@@ -319,6 +384,8 @@ export function judgeScorer(
 
 export type EvalPolicy = {
   timeoutMs?: number;
+  /** Stop later transcript steps after a failed checkpoint assertion. Default false. */
+  failfast?: boolean;
   /** Number of independent trials requested by local and hosted runners. */
   trials?: number;
 };
@@ -336,6 +403,15 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
   authoringId(definition);
+  let hasUser = false;
+  for (const step of definition.transcript) {
+    if (step.kind === 'user') hasUser = true;
+    else if (
+      (step.kind === 'check' || step.kind === 'expect-tool-call') &&
+      !hasUser
+    )
+      throw new Error('Checkpoint requires a preceding user step');
+  }
   return definition;
 }
 
@@ -540,7 +616,7 @@ export function registerEvals<
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type RunMetadata = {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -552,7 +628,7 @@ export type RunMetadata = {
 };
 
 export type TrialMetadata = {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   runId: string;
   runUri: ResourceUri<'run'>;
   trialId: string;
@@ -565,8 +641,24 @@ export type TrialMetadata = {
   startedAt: string;
 };
 
+export type CheckpointResult = {
+  step: number;
+  kind: 'check' | 'expect-tool-call';
+  name: string;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
+  value?: number;
+  passed?: boolean;
+  explanation?: string;
+  evidence?: JsonValue;
+  durationMs?: number;
+  error?: RecordedError;
+  matchedToolCall?: { eventIndex: number; id: string };
+};
+
 export type TrialScoring = {
   results: ScoreResult[];
+  checkpoints?: CheckpointResult[];
+  skippedScorers?: string[];
   overall?: number;
   passed: boolean;
 };

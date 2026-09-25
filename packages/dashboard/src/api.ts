@@ -55,6 +55,18 @@ export type WorkspaceEntry = {
   size?: number;
 };
 
+export type CheckpointResult = {
+  step: number;
+  kind: 'check' | 'expect-tool-call';
+  name: string;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
+  value?: number;
+  passed?: boolean;
+  explanation?: string;
+  error?: { name: string; message: string };
+  matchedToolCall?: { eventIndex: number; id: string };
+};
+
 export type TrialSummary = {
   id: string;
   index: number;
@@ -66,10 +78,12 @@ export type TrialSummary = {
   scores: Array<{
     name: string;
     value?: number;
-    passed: boolean;
+    passed?: boolean;
     explanation?: string;
     durationMs: number;
   }>;
+  checkpoints?: CheckpointResult[];
+  skippedScorers?: string[];
 };
 
 export type TrajectoryEvent = {

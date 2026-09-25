@@ -453,6 +453,10 @@ describe('runEval', () => {
     });
 
     expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      name: 'AutExecutionError',
+      message: 'boom',
+    });
     const runManifest = JSON.parse(
       await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
     );

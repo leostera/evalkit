@@ -151,7 +151,7 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
       'utf8',
     ),
   );
-  expect(manifest.schemaVersion).toBe(2);
+  expect(manifest.schemaVersion).toBe(3);
   expect(manifest.evalId).toBe('task-1');
   expect(manifest.evalUri).toBeUndefined();
   expect(manifest.parameters).toEqual({

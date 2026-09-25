@@ -3,19 +3,21 @@ export {
   FixtureError,
   ReportError,
   ScoringError,
+  CheckpointExecutionError,
 } from './errors.js';
 
-import { Effect } from 'effect';
+import { Effect, Exit, Scope } from 'effect';
 import {
   recordError,
   resourceUri,
   authoringId,
   type AgentRuntimeName,
+  type CheckpointResult,
+  type TurnView,
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
   type AutEvent,
-  type AutSession,
   type EvalDefinition,
   type PredicateScorer,
   type ReportStore,
@@ -27,14 +29,24 @@ import {
   type RunMetadata,
   type ScoreResult,
   type Uuid,
-  type ScoreValue,
   type TrialScoring,
   type TrajectoryEvent,
 } from '@evalkit/core';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
+import { turnView } from './turn.js';
+import { evaluateCheckpoint } from './checkpoint.js';
+import {
+  AutExecutionError,
+  FixtureError,
+  ReportError,
+  ScoringError,
+} from './errors.js';
+import { normalizeScore } from './score.js';
+import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
+export * from './local-report-reader.js';
 export { runMatrix } from './matrix.js';
 
 export type RunEvalOptions = {
@@ -110,35 +122,17 @@ function assertUuid(value: string, label: string): void {
   }
 }
 
-function normalizeScore(
-  value: ScoreValue,
-): Omit<ScoreResult, 'name' | 'kind' | 'durationMs'> {
-  const normalized = typeof value === 'number' ? { value } : value;
-  if (
-    !Number.isFinite(normalized.value) ||
-    normalized.value < 0 ||
-    normalized.value > 1
-  ) {
-    throw new Error(
-      `Score value must be a finite number from 0 to 1; received ${normalized.value}`,
-    );
-  }
-
-  return {
-    value: normalized.value,
-    passed: normalized.passed ?? normalized.value === 1,
-    ...(normalized.explanation ? { explanation: normalized.explanation } : {}),
-    ...(normalized.evidence === undefined
-      ? {}
-      : { evidence: normalized.evidence }),
-  };
-}
-
-function scoreSummary(results: ScoreResult[]): TrialScoring {
+function scoreSummary(
+  results: ScoreResult[],
+  checkpoints: CheckpointResult[],
+  skippedScorers: string[],
+): TrialScoring {
   const valid = results.filter((result) => result.value !== undefined);
   const hasError = results.some((result) => result.error !== undefined);
   return {
     results,
+    ...(checkpoints.length ? { checkpoints } : {}),
+    ...(skippedScorers.length ? { skippedScorers } : {}),
     ...(valid.length === 0
       ? {}
       : {
@@ -146,20 +140,12 @@ function scoreSummary(results: ScoreResult[]): TrialScoring {
             valid.reduce((sum, result) => sum + (result.value ?? 0), 0) /
             valid.length,
         }),
-    passed: !hasError && results.every((result) => result.passed === true),
+    passed:
+      !hasError &&
+      results.every((result) => result.passed === true) &&
+      checkpoints.every((result) => result.status === 'passed') &&
+      !skippedScorers.length,
   };
-}
-
-async function closeSession(
-  session: AutSession | undefined,
-): Promise<unknown | undefined> {
-  if (!session) return undefined;
-  try {
-    await session.close();
-    return undefined;
-  } catch (error) {
-    return error;
-  }
 }
 
 /** Executes one aggregate eval run and its requested isolated trials. */
@@ -167,6 +153,15 @@ async function executeRun(
   definition: EvalDefinition,
   options: RunEvalOptions,
 ): Promise<RunResult> {
+  let hasUser = false;
+  for (const step of definition.transcript) {
+    if (step.kind === 'user') hasUser = true;
+    else if (
+      (step.kind === 'check' || step.kind === 'expect-tool-call') &&
+      !hasUser
+    )
+      throw new Error('Checkpoint requires a preceding user step');
+  }
   if (options.runId) assertUuid(options.runId, 'runId');
   if (options.trialId) assertUuid(options.trialId, 'trialId');
   const requestedTrials = options.trials ?? definition.policy?.trials ?? 1;
@@ -181,7 +176,7 @@ async function executeRun(
   const aggregateStartedAt = now();
   const runId = options.runId ?? createId('run');
   const runWriter = await options.report.startRun({
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
@@ -293,7 +288,7 @@ async function runTrial(
   const runWriter =
     options.runWriter ??
     (await options.report.startRun({
-      schemaVersion: 2,
+      schemaVersion: 3,
       runId,
       runUri: canonicalId('run', runId),
       evalId: definition.id,
@@ -304,7 +299,7 @@ async function runTrial(
       startedAt,
     }));
   const trialWriter = await runWriter.startTrial({
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId,
     runUri: canonicalId('run', runId),
     trialId,
@@ -318,176 +313,411 @@ async function runTrial(
   });
 
   let writeChain = Promise.resolve();
+  let reportingFailed = false;
   const append = async (event: TrajectoryEvent): Promise<void> => {
     events.push(event);
     writeChain = writeChain.then(() => trialWriter.appendEvent(event));
-    await writeChain;
+    try {
+      await writeChain;
+    } catch (cause) {
+      reportingFailed = true;
+      throw new ReportError({
+        cause,
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
   };
   const emitRunner = (event: RunnerEvent) =>
     append({ ...event, source: 'runner' });
   const onAutEvent = (event: AutEvent) => append({ ...event, source: 'aut' });
 
-  let session: AutSession | undefined;
   let workspace: TrialWorkspace | undefined;
   let context: AutContext | undefined;
   let primaryError: unknown;
+  let closeError: unknown;
   let scoring: TrialScoring | undefined;
   let artifacts: ArtifactEntry[] | undefined;
   let status: RunStatus = 'running';
+  const checkpoints: CheckpointResult[] = [];
+  let stoppedEarly = false;
+  let cleanupError: unknown;
+  const workspaceScope = await Effect.runPromise(Scope.make());
 
   try {
     await emitRunner({ kind: 'trial-started', timestamp: now().toISOString() });
-    workspace = await createTrialWorkspace(
-      fixtureContext,
-      definition.fixtures,
-      options.workspaceRoot,
+    workspace = await runBoundary(
+      Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () =>
+            createTrialWorkspace(
+              fixtureContext,
+              definition.fixtures,
+              options.workspaceRoot,
+            ),
+          catch: (cause) =>
+            new FixtureError({
+              cause,
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        }),
+        (created) =>
+          Effect.tryPromise({
+            try: () => created.cleanup(),
+            catch: (cause) =>
+              new FixtureError({
+                cause,
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          }).pipe(
+            Effect.catchAll((error) =>
+              Effect.sync(() => {
+                cleanupError = error;
+              }).pipe(
+                Effect.tap(() =>
+                  Effect.logError('trial workspace cleanup failed'),
+                ),
+              ),
+            ),
+          ),
+      ).pipe(Effect.provideService(Scope.Scope, workspaceScope)),
     );
-    context = {
+    const trialWorkspace = workspace;
+    const trialContext: AutContext = {
       ...fixtureContext,
-      workspace: workspace.artifacts.candidate,
-      evaluatorWorkspace: workspace.artifacts.evaluator,
+      workspace: trialWorkspace.artifacts.candidate,
+      evaluatorWorkspace: trialWorkspace.artifacts.evaluator,
     };
-    session = await definition.agent.start({
-      context,
-      ...(runtime ? { runtime } : {}),
-      onEvent: onAutEvent,
-    });
-
-    for (const [step, index] of definition.transcript.map(
-      (step, index) => [step, index] as const,
-    )) {
-      await emitRunner({
-        kind: 'transcript-step-started',
-        step: index,
-        timestamp: now().toISOString(),
-      });
-      if (step.kind !== 'user') {
-        throw new Error(
-          `Transcript step kind "${step.kind}" is not executable yet`,
-        );
-      }
-      await session.send(
-        step.message.replaceAll('{{randomSeed}}', String(randomSeed)),
-      );
-      await emitRunner({
-        kind: 'transcript-step-completed',
-        step: index,
-        timestamp: now().toISOString(),
-      });
-    }
+    context = trialContext;
+    // The Effect bracket closes the AUT even when a step or report append fails.
+    await runBoundary(
+      Effect.acquireUseRelease(
+        Effect.tryPromise({
+          try: () =>
+            definition.agent.start({
+              context: trialContext,
+              ...(runtime ? { runtime } : {}),
+              onEvent: onAutEvent,
+            }),
+          catch: (cause) =>
+            new AutExecutionError({
+              cause,
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        }),
+        (session) =>
+          Effect.tryPromise({
+            try: async () => {
+              let lastTurn: TurnView | undefined;
+              for (const [index, step] of definition.transcript.entries()) {
+                await emitRunner({
+                  kind: 'transcript-step-started',
+                  step: index,
+                  timestamp: now().toISOString(),
+                });
+                if (step.kind === 'user') {
+                  const cursor = events.length;
+                  await runBoundary(
+                    Effect.tryPromise({
+                      try: () =>
+                        session.send(
+                          step.message.replaceAll(
+                            '{{randomSeed}}',
+                            String(randomSeed),
+                          ),
+                        ),
+                      catch: (cause) =>
+                        cause instanceof ReportError
+                          ? cause
+                          : new AutExecutionError({
+                              cause,
+                              message:
+                                cause instanceof Error
+                                  ? cause.message
+                                  : String(cause),
+                            }),
+                    }),
+                  );
+                  lastTurn = turnView(events, cursor, events.length, index);
+                } else if (
+                  step.kind === 'check' ||
+                  step.kind === 'expect-tool-call'
+                ) {
+                  if (!lastTurn)
+                    throw new Error(
+                      'Checkpoint requires a preceding user step',
+                    );
+                  const started = now();
+                  await emitRunner({
+                    kind: 'checkpoint-started',
+                    step: index,
+                    name: step.name,
+                    timestamp: started.toISOString(),
+                  });
+                  const result = await runBoundary(
+                    evaluateCheckpoint(
+                      step,
+                      index,
+                      {
+                        context: trialContext,
+                        artifacts: trialWorkspace.artifacts,
+                        trajectory: { events },
+                        turn: lastTurn,
+                      },
+                      now,
+                    ),
+                  ).catch(async (error: unknown) => {
+                    const recorded = recordError(error);
+                    checkpoints.push({
+                      step: index,
+                      kind: step.kind,
+                      name: step.name,
+                      status: 'error',
+                      durationMs: now().getTime() - started.getTime(),
+                      error: recorded,
+                    });
+                    try {
+                      await emitRunner({
+                        kind: 'checkpoint-error',
+                        step: index,
+                        error: recorded,
+                        timestamp: now().toISOString(),
+                      });
+                    } catch {
+                      /* Preserve the checkpoint error if the writer also fails. */
+                    }
+                    throw error;
+                  });
+                  checkpoints.push(result);
+                  await emitRunner({
+                    kind: 'checkpoint-completed',
+                    step: index,
+                    status: result.status,
+                    timestamp: now().toISOString(),
+                  });
+                  await emitRunner({
+                    kind: 'transcript-step-completed',
+                    step: index,
+                    timestamp: now().toISOString(),
+                  });
+                  if (!result.passed && definition.policy?.failfast) {
+                    stoppedEarly = true;
+                    for (
+                      let skipped = index + 1;
+                      skipped < definition.transcript.length;
+                      skipped++
+                    ) {
+                      await emitRunner({
+                        kind: 'transcript-step-skipped',
+                        step: skipped,
+                        timestamp: now().toISOString(),
+                      });
+                      const remaining = definition.transcript[skipped]!;
+                      if (
+                        remaining.kind === 'check' ||
+                        remaining.kind === 'expect-tool-call'
+                      )
+                        checkpoints.push({
+                          step: skipped,
+                          kind: remaining.kind,
+                          name: remaining.name,
+                          status: 'skipped',
+                        });
+                    }
+                    break;
+                  }
+                  continue;
+                } else {
+                  throw new Error(
+                    `Transcript step kind "${step.kind}" is not executable yet`,
+                  );
+                }
+                await emitRunner({
+                  kind: 'transcript-step-completed',
+                  step: index,
+                  timestamp: now().toISOString(),
+                });
+              }
+            },
+            catch: (cause) => cause,
+          }),
+        (opened) =>
+          Effect.tryPromise({
+            try: () => opened.close(),
+            catch: (cause) =>
+              new AutExecutionError({
+                cause,
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          }).pipe(
+            Effect.catchAll((error) =>
+              Effect.sync(() => {
+                closeError = error;
+              }).pipe(
+                Effect.tap(() => Effect.logError('AUT session close failed')),
+              ),
+            ),
+          ),
+      ).pipe(Effect.annotateLogs({ runId, trialId, evalId: definition.id })),
+    );
   } catch (error) {
     primaryError = error;
-    await emitRunner({
-      kind: 'error',
-      error: recordError(error),
-      timestamp: now().toISOString(),
-    });
+    try {
+      await emitRunner({
+        kind: 'error',
+        error: recordError(error),
+        timestamp: now().toISOString(),
+      });
+    } catch {
+      /* A failed report writer must not prevent closing the AUT. */
+    }
   }
 
-  const closeError = await closeSession(session);
-  if (!primaryError && closeError) {
-    primaryError = closeError;
-    await emitRunner({
-      kind: 'error',
-      error: recordError(closeError),
-      timestamp: now().toISOString(),
-    });
+  if (closeError) {
+    if (!primaryError) primaryError = closeError;
+    try {
+      await emitRunner({
+        kind: 'error',
+        error: recordError(closeError),
+        timestamp: now().toISOString(),
+      });
+    } catch {
+      /* Cleanup and finalization are still attempted. */
+    }
   }
 
   const scoreResults: ScoreResult[] = [];
-  for (const scorer of definition.scoring) {
-    if (
-      !context ||
-      !workspace ||
-      (primaryError &&
-        (!('supportsPartial' in scorer) || !scorer.supportsPartial))
-    )
-      continue;
-    const started = now();
-    await emitRunner({
-      kind: 'scorer-started',
-      scorer: scorer.name,
-      timestamp: started.toISOString(),
-    });
-    try {
-      if (scorer.kind !== 'predicate') {
-        throw new Error(`Judge scorer "${scorer.name}" is not executable yet`);
+  const skippedScorers: string[] = [];
+  try {
+    for (const scorer of definition.scoring) {
+      if (
+        reportingFailed ||
+        !context ||
+        !workspace ||
+        ((primaryError || stoppedEarly) &&
+          (!('supportsPartial' in scorer) || !scorer.supportsPartial))
+      ) {
+        skippedScorers.push(scorer.name);
+        continue;
       }
-      const score = await runPredicate(
-        scorer,
-        context,
-        workspace.artifacts,
-        events,
-      );
-      const result: ScoreResult = {
-        name: scorer.name,
-        kind: scorer.kind,
-        durationMs: now().getTime() - started.getTime(),
-        ...score,
-      };
-      scoreResults.push(result);
+      const started = now();
+      await emitRunner({
+        kind: 'scorer-started',
+        scorer: scorer.name,
+        timestamp: started.toISOString(),
+      });
+      let result: ScoreResult;
+      try {
+        if (scorer.kind !== 'predicate') {
+          throw new Error(
+            `Judge scorer "${scorer.name}" is not executable yet`,
+          );
+        }
+        const score = await runBoundary(
+          Effect.tryPromise({
+            try: () =>
+              runPredicate(scorer, context!, workspace!.artifacts, events),
+            catch: (cause) =>
+              new ScoringError({
+                cause,
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          }),
+        );
+        result = {
+          name: scorer.name,
+          kind: scorer.kind,
+          durationMs: now().getTime() - started.getTime(),
+          ...score,
+        };
+        scoreResults.push(result);
+      } catch (error) {
+        const recorded = recordError(error);
+        scoreResults.push({
+          name: scorer.name,
+          kind: scorer.kind,
+          durationMs: now().getTime() - started.getTime(),
+          error: recorded,
+          passed: false,
+        });
+        await emitRunner({
+          kind: 'scorer-failed',
+          scorer: scorer.name,
+          error: recorded,
+          timestamp: now().toISOString(),
+        });
+        continue;
+      }
       await emitRunner({
         kind: 'scorer-completed',
         scorer: scorer.name,
         value: result.value ?? 0,
         timestamp: now().toISOString(),
       });
-    } catch (error) {
-      const recorded = recordError(error);
-      scoreResults.push({
-        name: scorer.name,
-        kind: scorer.kind,
-        durationMs: now().getTime() - started.getTime(),
-        error: recorded,
-        passed: false,
-      });
-      await emitRunner({
-        kind: 'scorer-failed',
-        scorer: scorer.name,
-        error: recorded,
-        timestamp: now().toISOString(),
-      });
     }
-  }
 
-  scoring = scoreSummary(scoreResults);
-  await trialWriter.writeScores(scoring);
+    scoring = scoreSummary(scoreResults, checkpoints, skippedScorers);
+    await trialWriter.writeScores(scoring);
 
-  if (workspace) {
+    if (workspace) {
+      try {
+        artifacts = await snapshotCandidateWorkspace(
+          workspace.artifacts.candidate.root,
+          trialWriter,
+        );
+      } catch (captureError) {
+        if (!primaryError) primaryError = captureError;
+        try {
+          await emitRunner({
+            kind: 'error',
+            error: recordError(captureError),
+            timestamp: now().toISOString(),
+          });
+        } catch {
+          /* Preserve the snapshot error and continue cleanup. */
+        }
+      }
+    }
+  } catch (error) {
+    if (!primaryError) primaryError = error;
     try {
-      artifacts = await snapshotCandidateWorkspace(
-        workspace.artifacts.candidate.root,
-        trialWriter,
-      );
-    } catch (captureError) {
-      if (!primaryError) primaryError = captureError;
       await emitRunner({
         kind: 'error',
-        error: recordError(captureError),
+        error: recordError(error),
         timestamp: now().toISOString(),
       });
+    } catch {
+      /* Reporting is already unavailable; still release resources. */
     }
-  }
-
-  if (workspace) {
-    try {
-      await workspace.cleanup();
-    } catch (cleanupError) {
+  } finally {
+    await Effect.runPromise(
+      Scope.close(workspaceScope, Exit.succeed(undefined)),
+    );
+    if (cleanupError) {
       if (!primaryError) primaryError = cleanupError;
-      await emitRunner({
-        kind: 'error',
-        error: recordError(cleanupError),
-        timestamp: now().toISOString(),
-      });
+      try {
+        await emitRunner({
+          kind: 'error',
+          error: recordError(cleanupError),
+          timestamp: now().toISOString(),
+        });
+      } catch {
+        /* Keep the primary failure and continue finalization. */
+      }
     }
   }
 
+  scoring ??= scoreSummary(scoreResults, checkpoints, skippedScorers);
+  if (!primaryError) {
+    try {
+      await emitRunner({
+        kind: 'trial-completed',
+        timestamp: now().toISOString(),
+      });
+    } catch (error) {
+      primaryError = error;
+    }
+  }
   status = primaryError ? 'failed' : 'completed';
-  if (!primaryError)
-    await emitRunner({
-      kind: 'trial-completed',
-      timestamp: now().toISOString(),
-    });
 
   const error = primaryError ? recordError(primaryError) : undefined;
   const endedAt = now().toISOString();

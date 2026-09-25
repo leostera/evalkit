@@ -5,20 +5,27 @@ import { existsSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
-import * as Schema from 'effect/Schema';
 import { Hono } from 'hono';
 import {
-  RunMetadataSchema,
-  RunSummarySchema,
   authoringId,
   type EvalDefinition,
   type EvalRegistry,
   type JsonObject,
   type AgentRuntimeName,
+  type CheckpointResult,
   type TrajectoryEvent,
   type TrialResult,
 } from '@evalkit/core';
-import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
+import {
+  localReportStore,
+  runEval,
+  runMatrix,
+  readRunManifest,
+  readRunSummary,
+  readTrialManifest,
+  readTrialSummary,
+  readTrialEvents,
+} from '@evalkit/runner';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import { parseRunArgs, runProjectCommand } from './run-command.js';
@@ -69,7 +76,7 @@ type LocalRun = {
 type LocalScore = {
   name: string;
   value?: number;
-  passed: boolean;
+  passed?: boolean;
   explanation?: string;
   durationMs: number;
 };
@@ -82,6 +89,8 @@ type LocalTrial = {
   completedAt?: string;
   durationMs?: number;
   scores: LocalScore[];
+  checkpoints: CheckpointResult[];
+  skippedScorers?: string[];
 };
 
 type TrajectoryMeasurements = {
@@ -280,18 +289,14 @@ async function listLocalRuns(): Promise<LocalRun[]> {
     entries.map(async (id) => {
       const directory = resolve(reportRoot, id);
       try {
-        const manifest = await readSchema(
-          `${directory}/manifest.json`,
-          RunMetadataSchema,
+        const manifest = await readRunManifest(reportRoot, id);
+        const summary = await readRunSummary(reportRoot, id).catch(
+          (error: unknown) => {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+              return undefined;
+            throw error;
+          },
         );
-        const summary = await readSchema(
-          `${directory}/summary.json`,
-          RunSummarySchema,
-        ).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-            return undefined;
-          throw error;
-        });
         const trialIds = await readdir(`${directory}/trials`).catch(
           (error: unknown): string[] => {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -300,13 +305,13 @@ async function listLocalRuns(): Promise<LocalRun[]> {
         );
         const trials = await Promise.all(
           trialIds.map((trialId) =>
-            readJson<{ durationMs?: number; scoring?: { overall?: number } }>(
-              `${directory}/trials/${trialId}/summary.json`,
-            ).catch((error: unknown) => {
-              if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-                return undefined;
-              throw error;
-            }),
+            readTrialSummary(reportRoot, id, trialId).catch(
+              (error: unknown) => {
+                if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+                  return undefined;
+                throw error;
+              },
+            ),
           ),
         );
         const scores = trials.flatMap((trial) =>
@@ -367,20 +372,14 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
   }
   const trials = await Promise.all(
     trialIds.map(async (id) => {
-      const manifest = await readJson<{
-        trialIndex: number;
-        startedAt: string;
-      }>(resolve(trialsRoot, id, 'manifest.json'));
-      const summary = await readJson<{
-        status: PersistedStatus;
-        endedAt?: string;
-        durationMs?: number;
-        scoring?: { overall?: number; passed?: boolean; results: LocalScore[] };
-      }>(resolve(trialsRoot, id, 'summary.json')).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-          return undefined;
-        throw error;
-      });
+      const manifest = await readTrialManifest(reportRoot, runId, id);
+      const summary = await readTrialSummary(reportRoot, runId, id).catch(
+        (error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+            return undefined;
+          throw error;
+        },
+      );
       return {
         id,
         index: manifest.trialIndex,
@@ -394,6 +393,10 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
           ? {}
           : { score: summary.scoring.overall }),
         scores: summary?.scoring?.results ?? [],
+        checkpoints: summary?.scoring?.checkpoints ?? [],
+        ...(summary?.scoring?.skippedScorers
+          ? { skippedScorers: summary.scoring.skippedScorers }
+          : {}),
       };
     }),
   );
@@ -403,10 +406,9 @@ async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
 async function readTrialDetail(runId: string, trialId: string) {
   assertUuid(runId, 'run ID');
   assertUuid(trialId, 'trial ID');
-  const root = resolve(reportRoot, runId, 'trials', trialId);
   return {
-    manifest: await readJson(resolve(root, 'manifest.json')),
-    summary: await readJson(resolve(root, 'summary.json')).catch(
+    manifest: await readTrialManifest(reportRoot, runId, trialId),
+    summary: await readTrialSummary(reportRoot, runId, trialId).catch(
       (error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT')
           return { status: 'running' };
@@ -515,31 +517,12 @@ async function readTrajectory(
 ): Promise<unknown[]> {
   assertUuid(runId, 'run ID');
   assertUuid(trialId, 'trial ID');
-  const contents = await readFile(
-    resolve(reportRoot, runId, 'trials', trialId, 'trajectory.jsonl'),
-    'utf8',
-  ).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+  return readTrialEvents(reportRoot, runId, trialId).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   });
-  return contents
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as unknown);
 }
 
-async function readJson<T>(file: string): Promise<T> {
-  return JSON.parse(await readFile(file, 'utf8')) as T;
-}
-
-async function readSchema<A, I>(
-  file: string,
-  schema: Schema.Schema<A, I>,
-): Promise<A> {
-  return Schema.decodeUnknownSync(schema)(
-    JSON.parse(await readFile(file, 'utf8')),
-  );
-}
 function contentType(file: string): string {
   return (
     { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript' }[

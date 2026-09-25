@@ -196,11 +196,16 @@ export async function runProjectCommand(
           console.log(
             `${passed ? 'PASS' : 'FAIL'} ${cell.eval.name ?? authoringId(cell.eval)} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`,
           );
-          for (const trial of result.trials ?? [result])
+          for (const trial of result.trials ?? [result]) {
+            for (const checkpoint of trial.scoring?.checkpoints ?? [])
+              console.log(
+                `  step ${checkpoint.step} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
+              );
             for (const score of trial.scoring?.results ?? [])
               console.log(
                 `  ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
               );
+          }
         }
       },
     }),

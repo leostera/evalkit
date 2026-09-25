@@ -63,7 +63,45 @@ export function TrialDetail({
           <dt>events</dt>
           <dd>{events.length}</dd>
         </dl>
-        <h3>Scoring</h3>
+        {selected.trial.checkpoints?.length ? (
+          <>
+            <h3>Checkpoints</h3>
+            <table className="compact-table">
+              <thead>
+                <tr>
+                  <th>Step</th>
+                  <th>Check</th>
+                  <th>Value</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selected.trial.checkpoints.map((check) => (
+                  <tr key={`${check.step}-${check.name}`}>
+                    <td>{check.step + 1}</td>
+                    <td>
+                      {check.name}
+                      {check.matchedToolCall
+                        ? ` (event ${check.matchedToolCall.eventIndex + 1})`
+                        : ''}
+                    </td>
+                    <td>{check.value ?? '—'}</td>
+                    <td>
+                      {check.status}
+                      {check.error ? `: ${check.error.message}` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : null}
+        {selected.trial.skippedScorers?.length ? (
+          <p>
+            Skipped final scorers: {selected.trial.skippedScorers.join(', ')}
+          </p>
+        ) : null}
+        <h3>Final scoring</h3>
         <table className="compact-table">
           <thead>
             <tr>

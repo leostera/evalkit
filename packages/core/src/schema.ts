@@ -45,7 +45,7 @@ const MatrixCellSchema = Schema.Struct({
 });
 
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2),
+  schemaVersion: Schema.Literal(2, 3),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -56,7 +56,7 @@ export const RunMetadataSchema = Schema.Struct({
 });
 
 export const TrialMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2),
+  schemaVersion: Schema.Literal(2, 3),
   runUri: resourceUriSchema('run'),
   trialUri: resourceUriSchema('trial'),
   trialIndex: Schema.Number,
@@ -87,8 +87,27 @@ export const ScoreResultSchema = Schema.Struct({
   durationMs: Schema.Number,
   error: Schema.optional(RecordedErrorSchema),
 });
+export const CheckpointResultSchema = Schema.Struct({
+  step: Schema.Number,
+  kind: Schema.Literal('check', 'expect-tool-call'),
+  name: Schema.String,
+  status: Schema.Literal('passed', 'failed', 'error', 'skipped'),
+  value: Schema.optional(Schema.Number),
+  passed: Schema.optional(Schema.Boolean),
+  explanation: Schema.optional(Schema.String),
+  evidence: Schema.optional(JsonValueSchema),
+  durationMs: Schema.optional(Schema.Number),
+  error: Schema.optional(RecordedErrorSchema),
+  matchedToolCall: Schema.optional(
+    Schema.Struct({ eventIndex: Schema.Number, id: Schema.String }),
+  ),
+});
 export const TrialScoringSchema = Schema.Struct({
   results: Schema.mutable(Schema.Array(ScoreResultSchema)),
+  checkpoints: Schema.optional(
+    Schema.mutable(Schema.Array(CheckpointResultSchema)),
+  ),
+  skippedScorers: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   overall: Schema.optional(Schema.Number),
   passed: Schema.Boolean,
 });
@@ -194,6 +213,33 @@ const runnerEvent = {
     source: Schema.Literal('runner'),
     kind: Schema.Literal('transcript-step-completed'),
     step: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  stepSkipped: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('transcript-step-skipped'),
+    step: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  checkpointStarted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-started'),
+    step: Schema.Number,
+    name: Schema.String,
+    timestamp: Schema.String,
+  }),
+  checkpointCompleted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-completed'),
+    step: Schema.Number,
+    status: Schema.Literal('passed', 'failed'),
+    timestamp: Schema.String,
+  }),
+  checkpointError: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-error'),
+    step: Schema.Number,
+    error: RecordedErrorSchema,
     timestamp: Schema.String,
   }),
   scorerStarted: Schema.Struct({
