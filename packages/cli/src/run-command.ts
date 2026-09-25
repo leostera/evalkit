@@ -34,6 +34,30 @@ export function parseRunArgs(args: string[]) {
       local: { type: 'boolean' },
     },
   });
+  return normalizeRunOptions(values, positionals);
+}
+
+/** Domain validation shared by the Effect CLI and programmatic argument parsing. */
+export function normalizeRunOptions(
+  values: {
+    config?: string;
+    eval?: string[];
+    model?: string[];
+    mode?: string[];
+    select?: string[];
+    param?: string[];
+    'max-tokens'?: string;
+    'chat-timeout-ms'?: string;
+    'turn-budget'?: string;
+    concurrency?: string;
+    trials?: string;
+    json?: boolean;
+    'dry-run'?: boolean;
+    all?: boolean;
+    local?: boolean;
+  },
+  positionals: string[],
+) {
   const parameters: JsonObject = {};
   function integer(name: keyof typeof values): number | undefined {
     const value = values[name];
@@ -53,7 +77,7 @@ export function parseRunArgs(args: string[]) {
   }
   const selection: Record<string, JsonValue[]> = {};
   for (const key of ['model', 'mode'] as const) {
-    if (values[key])
+    if (values[key]?.length)
       selection[key] = values[key].flatMap((value) => value.split(','));
   }
   for (const value of values.select ?? []) {
@@ -87,8 +111,8 @@ export async function runProjectCommand(
   command: string,
   args: string[],
   cwd = process.cwd(),
+  parsed = parseRunArgs(args),
 ): Promise<void> {
-  const parsed = parseRunArgs(args);
   const { values, positionals, parameters } = parsed;
   const project = await loadProject(cwd, values.config);
   // Fixture src paths are relative to the config project, even when invoked elsewhere.

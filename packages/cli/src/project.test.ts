@@ -63,7 +63,7 @@ test('config-relative discovery, duplicate IDs, and ambiguous configs fail clear
   await writeFile(join(root, 'evals/b.eval.ts'), evaluation(1));
   await expect(loadProject(root)).rejects.toThrow('duplicate eval ID');
   await writeFile(join(root, 'evalkit.config.js'), 'export default {};');
-  await expect(loadProject(root)).rejects.toThrow('Multiple Evalkit configs');
+  await expect(loadProject(root)).rejects.toThrow('Multiple EvalKit configs');
 });
 
 test('parser handles values before positionals and rejects unknown or invalid flags', () => {

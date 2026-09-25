@@ -31,7 +31,7 @@
     "evalkit": "./dist/cli.mjs"
   },
   "dependencies": {
-    "effect": "^3.19.0",
+    "effect": "^3.22.2",
     "hono": "^4.11.6"
   },
   "scripts": {

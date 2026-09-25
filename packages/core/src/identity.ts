@@ -10,7 +10,7 @@ export function authorId(value: string): string {
   return value;
 }
 
-/** RFC 4122 textual UUID. Evalkit accepts v4/v7 and other valid UUID versions. */
+/** RFC 4122 textual UUID. EvalKit accepts v4/v7 and other valid UUID versions. */
 export const UuidSchema = Schema.String.pipe(
   Schema.pattern(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -50,11 +50,11 @@ export function parseResourceUri<TKind extends ResourceKind>(
   expectedKind?: TKind,
 ): { kind: TKind; uuid: Uuid; uri: ResourceUri<TKind> } {
   const match = /^evalkit:(run|trial|artifact):(.+)$/.exec(value);
-  if (!match) throw new Error(`Invalid Evalkit resource URI: ${value}`);
+  if (!match) throw new Error(`Invalid EvalKit resource URI: ${value}`);
   const kind = match[1] as TKind;
   if (expectedKind && kind !== expectedKind)
     throw new Error(
-      `Expected an Evalkit ${expectedKind} URI; received ${value}`,
+      `Expected an EvalKit ${expectedKind} URI; received ${value}`,
     );
   const uuid = Schema.decodeUnknownSync(UuidSchema)(match[2]) as Uuid;
   return { kind, uuid, uri: resourceUri(kind, uuid) };

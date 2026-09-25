@@ -1,9 +1,9 @@
 ---
 title: Manual overview
-description: How Evalkit's local authoring, execution, and reports fit together.
+description: How EvalKit's local authoring, execution, and reports fit together.
 ---
 
-Evalkit is a local-first kit for **authoring agent evals as code**. Define tasks and scoring rules in TypeScript, review and version those definitions in Git, then run them against an **Agent Under Test (AUT)**. The AUT is the assistant, process, or service being measured; a scorer evaluates the evidence it produces. Evalkit does not automatically commit or share the resulting reports.
+EvalKit is a local-first kit for **authoring agent evals as code**. Define tasks and scoring rules in TypeScript, review and version those definitions in Git, then run them against an **Agent Under Test (AUT)**. The AUT is the assistant, process, or service being measured; a scorer evaluates the evidence it produces. EvalKit does not automatically commit or share the resulting reports.
 
 ## The execution model
 
@@ -27,6 +27,6 @@ For a first provider-free run, use the [getting-started guide](/docs/) or the [z
 
 ## What works today
 
-This manual describes the **local Bun CLI**. `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` with a separate eval-level `judge` agent, and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also work as final scoring rules. `agent(...)` remains an API declaration, not a working transcript feature. `policy.timeoutMs` is not enforced; `agentsSdk()` is not an implemented remote transport. There is no standalone project scaffolder. Parameter choices such as `model` and `maxTokens` only change an AUT if its adapter reads `context.parameters` and applies them. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
+This manual describes the **local Bun CLI**. `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` with a separate eval-level `judge` agent, and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also work as final scoring rules. `agent(...)` remains an API declaration, not a working transcript feature. `policy.timeoutMs` is not enforced; `agentsSdk()` is not an implemented remote transport. `evalkit new <directory>` generates a standalone project, but the `bunx @leostera/evalkit new` path needs the first package release. Parameter choices such as `model` and `maxTokens` only change an AUT if its adapter reads `context.parameters` and applies them. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
 
 Run the CLI from the eval project directory (or select a config with `--config`). The default report and retained-workspace directories are `_evalkit-results/` and `_evalkit-sandbox/` under that project. The definitions are suitable for Git; reports and workspaces are local evidence that you must explicitly archive or share. Both may contain sensitive data.

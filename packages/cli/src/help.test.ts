@@ -10,6 +10,7 @@ test('help for every CLI command works without a config, project discovery, or s
     for (const args of [
       ['--help'],
       ['help'],
+      ['new', '--help'],
       ['run-evals', '--help'],
       ['run-evals', '--', '--help'],
       ['run-evals', '-h'],
@@ -29,8 +30,8 @@ test('help for every CLI command works without a config, project discovery, or s
       ]);
       expect(status).toBe(0);
       expect(err).toBe('');
-      expect(out).toContain('run-evals [eval-id,...]');
-      expect(out).toContain('--dry-run');
+      expect(out).toContain('EvalKit');
+      expect(out).toContain('USAGE');
     }
     const invalid = Bun.spawn(['bun', cli, 'run-evals', '--not-an-option'], {
       cwd,

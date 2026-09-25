@@ -3,11 +3,11 @@ title: Get started
 description: Run a local agent eval, then learn how to author and score your own.
 ---
 
-An eval tells Evalkit what task to give your agent, which agent to run, and how to score what happened. Write it as TypeScript, keep definitions in Git, and inspect each run as local files. This guide follows the current Bun implementation; the [manual](/docs/manual/) covers the full contracts.
+An eval tells EvalKit what task to give your agent, which agent to run, and how to score what happened. Write it as TypeScript, keep definitions in Git, and inspect each run as local files. This guide follows the current Bun implementation; the [manual](/docs/manual/) covers the full contracts.
 
 ## First run
 
-`bun create` copies the repository and installs its workspace dependencies. Start with the self-contained greeting eval: it needs neither Pi nor a model provider.
+Until the first consumer package release, `bun create` copies the whole repository and installs its workspace dependencies. Start with the self-contained greeting eval: it needs neither Pi nor a model provider. The CLI now has `evalkit new <directory>`; after publication the standalone path will be `bunx @leostera/evalkit new my-evals`, after configuring the GitHub Packages registry in your user-level `~/.npmrc` and setting `GITHUB_PACKAGES_TOKEN` (with `read:packages`). Then run `bun install` and `bun run evals` from the new directory. `bunx github.com/leostera/evalkit new` is not a supported invocation of this monorepo.
 
 ```sh
 bun create github.com/leostera/evalkit
@@ -16,7 +16,7 @@ bun run evalkit run-evals greeting
 bun run evalkit serve-dashboard
 ```
 
-Run the dashboard command in a second terminal if you want to keep using the first one. **Run commands from your eval project directory**: Evalkit discovers eval files, resolves fixtures, and writes reports there. The starter works without a config or registry.
+Run the dashboard command in a second terminal if you want to keep using the first one. **Run commands from your eval project directory**: EvalKit discovers eval files, resolves fixtures, and writes reports there. The starter works without a config or registry.
 
 > **Note:** `bun run evals` runs _all_ discovered starter evals, including Pi-backed ones. Those require a working `pi` command and configured model access.
 
@@ -24,7 +24,7 @@ Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
 ## Define an eval
 
-An eval composes an Agent Under Test (AUT), user messages, optional fixtures, and scoring rules. Give it a stable lowercase kebab-case `id`; evals, suites, agents, and matrices use IDs, while fixtures do not. Evalkit generates run and trial identities.
+An eval composes an Agent Under Test (AUT), user messages, optional fixtures, and scoring rules. Give it a stable lowercase kebab-case `id`; evals, suites, agents, and matrices use IDs, while fixtures do not. EvalKit generates run and trial identities.
 
 ```ts
 // evals/greeting.eval.ts
@@ -50,7 +50,7 @@ Learn more: [Project structure and discovery](/docs/manual/project-structure/) �
 
 ## Connect an agent
 
-The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to Evalkit. For each trial, Evalkit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
+The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each trial, EvalKit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
 
 An adapter implements `start()`, returning a session with `send(message)` and `close()`. `send()` should resolve when the turn finishes; returning an answer alone does not record it. Emit assistant messages as events so they appear in the timeline and can be scored.
 
@@ -186,4 +186,4 @@ Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
 Use the sidebar to explore the [manual](/docs/manual/) for explicit suites, fixture visibility, scorer contracts, CLI selection, and report processing. The [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter) and [configured matrix](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix) are runnable references.
 
-Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport, enforced timeouts, and standalone project scaffolding are not yet available. The single package has an external build but its first GitHub Packages release has not yet happened; see [installation notes](/docs/manual/project-structure/).
+Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport and enforced timeouts are not available. The scaffold command is implemented but requires a package release for public `bunx` use. The single package has an external build but its first GitHub Packages release has not yet happened; see [installation notes](/docs/manual/project-structure/).

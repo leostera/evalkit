@@ -6,6 +6,6 @@ export default defineEval({
   id: 'case-transform',
   name: 'Apply the selected text style',
   agent: caseAgent,
-  transcript: [user('Hello Evalkit')],
+  transcript: [user('Hello EvalKit')],
   scoring: [matchesCase],
 });

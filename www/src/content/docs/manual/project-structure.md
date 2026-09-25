@@ -3,7 +3,7 @@ title: Project structure and discovery
 description: Set up an eval project, discover evals, configure execution, and organize suites and IDs.
 ---
 
-A local Evalkit project is a directory from which you run the CLI. No config or registry is required for a default-exported eval:
+A local EvalKit project is a directory from which you run the CLI. No config or registry is required for a default-exported eval:
 
 ```text
 my-project/
@@ -19,7 +19,7 @@ The CLI imports the eval module, so its agent and scorer imports must resolve in
 
 Inside this repository, `examples/starter` and `examples/configured-matrix` use internal `@evalkit/*` workspace packages. After `bun install` at the repository root, run their `bun run evalkit ...` commands from the example directory. The starter's `greeting` eval is provider-free; running _all_ its evals also runs Pi examples that need a working `pi` command and model access.
 
-For projects outside this monorepo, the prepared consumer package is **`@leostera/evalkit`**, containing the authoring API, CLI, Pi adapter, runner subpath, and dashboard. Its first GitHub Packages release **has not been published yet**. After publication, authenticate Bun to GitHub Packages and install it as described in the [package installation instructions](https://github.com/leostera/evalkit/blob/main/packages/evalkit/README.md#install-from-github-packages). Import authoring helpers from `@leostera/evalkit` and low-level runner helpers from `@leostera/evalkit/runner`, **not** the internal `@evalkit/*` names. The examples on this site use the repository's workspace imports unless otherwise noted. There is no `evalkit init` command; `bun create github.com/leostera/evalkit` copies the whole repository, not a standalone eval project.
+For projects outside this monorepo, the prepared consumer package is **`@leostera/evalkit`**, containing the authoring API, CLI, Pi adapter, runner subpath, and dashboard. Its first GitHub Packages release **has not been published yet**. After publication, authenticate Bun to GitHub Packages and install it as described in the [package installation instructions](https://github.com/leostera/evalkit/blob/main/packages/evalkit/README.md#install-from-github-packages). Import authoring helpers from `@leostera/evalkit` and low-level runner helpers from `@leostera/evalkit/runner`, **not** the internal `@evalkit/*` names. The examples on this site use the repository's workspace imports unless otherwise noted. There is no `evalkit init` command. The CLI implements `evalkit new <directory>` to generate a provider-free standalone project. After the first package release, configure the GitHub Packages registry in your user-level `~/.npmrc`, set `GITHUB_PACKAGES_TOKEN` with `read:packages` permission, then use `bunx @leostera/evalkit new my-evals` and run `bun install` inside it. Until then, `bun create github.com/leostera/evalkit` copies the whole repository; the bundled scaffold is tested locally with `bun run --cwd packages/evalkit pack:check`.
 
 ## Automatic discovery
 

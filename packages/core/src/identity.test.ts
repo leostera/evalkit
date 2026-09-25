@@ -20,7 +20,7 @@ describe('canonical resource URIs', () => {
     expect(() => parseResourceUri('evalkit:trial:not-a-uuid')).toThrow();
     expect(() => parseResourceUri(`evalkit:eval:${uuid}`)).toThrow();
     expect(() => parseResourceUri(`evalkit:run:${uuid}`, 'trial')).toThrow(
-      'Expected an Evalkit trial URI',
+      'Expected an EvalKit trial URI',
     );
   });
 });

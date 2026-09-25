@@ -1,6 +1,6 @@
 # Agents SDK transport (planned example)
 
-**Not runnable yet.** `agentsSdk(...)` currently throws `Agents SDK transport is not implemented yet` when called. This directory does not contain discoverable `evals/*.eval.ts` files or a `src/registry.ts`, so do not run the Evalkit CLI here expecting an eval.
+**Not runnable yet.** `agentsSdk(...)` currently throws `Agents SDK transport is not implemented yet` when called. This directory does not contain discoverable `evals/*.eval.ts` files or a `src/registry.ts`, so do not run the EvalKit CLI here expecting an eval.
 
 When the transport exists, an eval could default-export a definition like this from `evals/support.eval.ts` (the shape below is illustrative, **not** a working integration):
 

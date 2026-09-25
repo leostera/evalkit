@@ -7,7 +7,7 @@ export const greetingEval = defineEval({
   id: 'greeting',
   name: 'Starter greeting',
   agent: greetingAgent,
-  // Fixture paths are resolved from the project directory that invokes Evalkit.
+  // Fixture paths are resolved from the project directory that invokes EvalKit.
   fixtures: [directory('fixtures/starter')],
   transcript: [user('Ada')],
   scoring: [greetingIsReturned],

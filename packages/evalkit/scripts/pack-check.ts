@@ -125,8 +125,24 @@ export default defineEval({
     ),
   ) as { failed: number };
   if (summary.failed !== 0) throw new Error('The external eval failed');
+
+  run(['bun', 'run', 'evalkit', 'new', 'my-evals'], projectRoot);
+  const scaffold = join(projectRoot, 'my-evals');
+  const generated = JSON.parse(
+    await readFile(join(scaffold, 'package.json'), 'utf8'),
+  ) as {
+    dependencies: Record<string, string>;
+  };
+  // Exercise the generated project using this local tarball before publication.
+  generated.dependencies['@leostera/evalkit'] =
+    `file:${join(temporaryRoot, pack[0]!.filename)}`;
+  await writeFile(join(scaffold, 'package.json'), JSON.stringify(generated));
+  run(['bun', 'install'], scaffold);
+  const scaffoldOutput = run(['bun', 'run', 'evals'], scaffold);
+  if (!scaffoldOutput.includes('PASS hello'))
+    throw new Error(`Generated eval did not pass:\n${scaffoldOutput}`);
   console.log(
-    'Packed package: isolated TypeScript import, CLI run, and report passed.',
+    'Packed package: isolated import, CLI run, scaffold, and generated eval passed.',
   );
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });

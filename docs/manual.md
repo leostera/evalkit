@@ -1,4 +1,4 @@
-# Evalkit manual
+# EvalKit manual
 
 The manual is maintained as [separate Markdown pages](../www/src/content/docs/manual/) in Starlight, starting with the [overview](../www/src/content/docs/manual/index.md). The [getting-started guide](../www/src/content/docs/index.md) is also Markdown.
 

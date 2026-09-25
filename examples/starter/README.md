@@ -1,6 +1,6 @@
-# Evalkit starter example
+# EvalKit starter example
 
-A runnable, **zero-config** Evalkit project. The CLI discovers the default exports of `evals/*.eval.ts` automatically; there is no registry or `evalkit.config.js` to maintain. Each eval has a human-readable ID.
+A runnable, **zero-config** EvalKit project. The CLI discovers the default exports of `evals/*.eval.ts` automatically; there is no registry or `evalkit.config.js` to maintain. Each eval has a human-readable ID.
 
 From this repository, install workspace dependencies at the root and then:
 

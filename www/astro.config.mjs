@@ -8,7 +8,7 @@ export default defineConfig({
   output: 'static',
   integrations: [
     starlight({
-      title: 'Evalkit',
+      title: 'EvalKit',
       description: 'Write agent evals as code and inspect their results.',
       favicon: '/favicon.svg',
       disable404Route: true,

@@ -3,7 +3,7 @@ title: Agents under test
 description: Connect an AUT, implement a trial session, and emit scoreable evidence.
 ---
 
-The **Agent Under Test (AUT)** is the assistant, process, or service you want to measure. A _scorer_ decides whether its behavior was good; it is not the AUT. Evalkit knows only the adapter you provide, not your provider's chat or tool API. Each trial materializes its fixtures, then calls `agent.start(...)` to create a fresh session. The runner passes `user(...)` messages to `session.send(message)` in order, evaluates interleaved `predicate(...)`, `judge(...)`, and `expectToolCall(...)` steps against the completed turn, calls `session.close()`, and runs final predicates and judges over the recorded events and files.
+The **Agent Under Test (AUT)** is the assistant, process, or service you want to measure. A _scorer_ decides whether its behavior was good; it is not the AUT. EvalKit knows only the adapter you provide, not your provider's chat or tool API. Each trial materializes its fixtures, then calls `agent.start(...)` to create a fresh session. The runner passes `user(...)` messages to `session.send(message)` in order, evaluates interleaved `predicate(...)`, `judge(...)`, and `expectToolCall(...)` steps against the completed turn, calls `session.close()`, and runs final predicates and judges over the recorded events and files.
 
 ## Implement an adapter
 
@@ -54,7 +54,7 @@ export const greetingAgent = defineAgent({
 });
 ```
 
-The adapter owns the actual agent invocation and session isolation. For a multi-message conversation, keep conversation state in this per-trial session; Evalkit does not reconstruct it from events for you. Emit the **actual** tool calls, tool results, messages, and usage your integration observes, rather than claiming tool activity that did not happen.
+The adapter owns the actual agent invocation and session isolation. For a multi-message conversation, keep conversation state in this per-trial session; EvalKit does not reconstruct it from events for you. Emit the **actual** tool calls, tool results, messages, and usage your integration observes, rather than claiming tool activity that did not happen.
 
 ### Trial context and runtime
 
@@ -62,7 +62,7 @@ The adapter owns the actual agent invocation and session isolation. For a multi-
 
 `runtimes` advertises supported names (`local`, `remote`, `sandbox`) with `{ kind, configuration? }` metadata. A selected runtime is passed to `start()` both as `context.runtime` (its name) and as `runtime` (the declared object). The adapter interprets the declaration; merely declaring `remote` or `sandbox` does not provide a transport or isolation. A run requesting an undeclared runtime fails. Without an explicit choice, a direct runner call passes no selected runtime; CLI matrix execution chooses the first declared runtime in `local`, `remote`, `sandbox` order. `--local` explicitly requests `local`.
 
-Matrix axis values and CLI flags such as `--max-tokens` appear in `context.parameters`; Evalkit does **not** map them to provider settings. If your adapter offers model selection, read (and validate) `context.parameters?.model` and use it when invoking your provider. The [configured-matrix example](https://github.com/leostera/evalkit/blob/main/examples/configured-matrix/agents/case-agent.ts) shows this with a provider-free `style` axis.
+Matrix axis values and CLI flags such as `--max-tokens` appear in `context.parameters`; EvalKit does **not** map them to provider settings. If your adapter offers model selection, read (and validate) `context.parameters?.model` and use it when invoking your provider. The [configured-matrix example](https://github.com/leostera/evalkit/blob/main/examples/configured-matrix/agents/case-agent.ts) shows this with a provider-free `style` axis.
 
 ## Events and the recorded trajectory
 
@@ -75,7 +75,7 @@ Call and await `onEvent` to append evidence in emission order. AUT events get `s
 | `tool-call`, `tool-result`       | Shared call `id`, tool `name`, JSON arguments/result, `timestamp`           | Actual tool activity.                                     |
 | `turn-started`, `turn-completed` | Turn number; optional `latencyMs` and token `usage` on completion           | A turn boundary and any measured usage.                   |
 
-Timestamps are ISO strings supplied by your adapter. Any turn-completion usage or latency you emit is available in the trajectory; Evalkit does not infer provider tokens or latency from message text. If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
+Timestamps are ISO strings supplied by your adapter. Any turn-completion usage or latency you emit is available in the trajectory; EvalKit does not infer provider tokens or latency from message text. If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
 
 ## Built-in and custom integrations
 

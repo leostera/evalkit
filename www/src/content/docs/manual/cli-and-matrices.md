@@ -21,6 +21,7 @@ bun run evalkit run-matrix letter-case --eval case-transform --select style=uppe
 
 | Command                   | Selection                                                                                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `new <directory>`         | Generate a standalone, provider-free eval project without overwriting an existing directory. The public `bunx @leostera/evalkit new` entry point requires the first package release. |
 | `run-evals [eval-id,...]` | Run all registered/discovered evals, or select comma-separated IDs/positionals or repeat `--eval <id,...>`. If a config defines a matrix, this command sweeps its selected cells too. |
 | `run-matrix <matrix-id>`  | Run a configured or explicitly registered matrix, optionally filtered with `--eval` and axis flags.                                                                                   |
 | `run-suite <suite-id>`    | Run the evals in an explicitly registered suite. If a project matrix is configured, uses its axes/defaults over the suite's evals; otherwise each runs once.                          |
@@ -68,7 +69,7 @@ An AUT only responds to these choices if its adapter reads `context.parameters`.
 | `--concurrency <n>`                                              | Maximum concurrent **cells** for CLI matrix runs; default is `execution.concurrency` or 4. Trials within one CLI cell run with concurrency 1.                                     |
 | `--trials <n>`                                                   | Override `execution.trials` and each eval's `policy.trials` for this invocation. Otherwise `execution.trials` overrides the policy; absent both, the policy or one trial applies. |
 | `--local`                                                        | Require a declared `local` AUT runtime rather than auto-selecting the first declared runtime (`local`, then `remote`, then `sandbox`).                                            |
-| `--max-tokens <n>`, `--turn-budget <n>`, `--chat-timeout-ms <n>` | Positive-integer values forwarded as `maxTokens`, `turnBudget`, `chatTimeoutMs` in `context.parameters`. Evalkit does **not** enforce these budgets/timeouts.                     |
+| `--max-tokens <n>`, `--turn-budget <n>`, `--chat-timeout-ms <n>` | Positive-integer values forwarded as `maxTokens`, `turnBudget`, `chatTimeoutMs` in `context.parameters`. EvalKit does **not** enforce these budgets/timeouts.                     |
 | `--json`                                                         | Print one JSON object **per completed cell** containing the cell key, eval ID, effective parameters, and run result; not a single JSON array.                                     |
 | `--config <file>`, `--dry-run`, `--all`                          | Choose a config, inspect a no-execution plan, or lift the cell-count limit.                                                                                                       |
 

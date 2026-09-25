@@ -109,7 +109,7 @@ export async function loadProject(
   if (configPath && !present.length)
     throw new Error(`Config not found: ${configPath}`);
   if (present.length > 1)
-    throw new Error('Multiple Evalkit configs found; select one with --config');
+    throw new Error('Multiple EvalKit configs found; select one with --config');
   const file = present[0];
   const root = file ? dirname(file) : resolve(cwd);
   const config: EvalkitConfig = file

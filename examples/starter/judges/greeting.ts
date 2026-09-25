@@ -12,7 +12,7 @@ export const greetingIsReturned = predicate(
     return {
       value:
         response?.kind === 'message' &&
-        response.content === 'Hello from Evalkit: Ada'
+        response.content === 'Hello from EvalKit: Ada'
           ? 1
           : 0,
       explanation: 'The AUT should return the expected greeting.',

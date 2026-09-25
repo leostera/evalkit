@@ -2,7 +2,7 @@ import * as Schema from 'effect/Schema';
 import { resourceUriSchema } from './identity.js';
 import type { JsonValue, TrajectoryEvent } from './index.js';
 
-/** Runtime schemas for serialized Evalkit report and API boundaries. */
+/** Runtime schemas for serialized EvalKit report and API boundaries. */
 export const RunStatusSchema = Schema.Literal(
   'running',
   'completed',

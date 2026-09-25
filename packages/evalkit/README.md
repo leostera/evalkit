@@ -4,7 +4,7 @@ A single Bun package for writing and running agent evals. It contains the author
 
 ## Install from GitHub Packages
 
-After the first package release, authenticate to GitHub's npm registry (including for public packages). Put this in your project's `.npmrc`:
+After the first package release, authenticate to GitHub's npm registry (including for public packages). Before using `bunx @leostera/evalkit new`, put this in your **user-level `~/.npmrc`** (or another npm config available in the directory where you invoke `bunx`). For an existing project, its `.npmrc` works too:
 
 ```ini
 @leostera:registry=https://npm.pkg.github.com
@@ -17,11 +17,13 @@ Set `GITHUB_PACKAGES_TOKEN` to a GitHub personal access token (classic) with `re
 bun add @leostera/evalkit
 ```
 
-The GitHub Actions workflow `.github/workflows/publish-package.yml` is **manual**; until it has been run, this package is not available from the registry. For local development, run `bun run --cwd packages/evalkit build` and `bun run --cwd packages/evalkit pack:check` from the monorepo root. The latter packs the real artifact and tests a TypeScript eval and CLI run in an isolated project.
+The GitHub Actions workflow `.github/workflows/publish-package.yml` is **manual**; until it has been run, this package is not available from the registry. For local development, run `bun run --cwd packages/evalkit build` and `bun run --cwd packages/evalkit pack:check` from the monorepo root. The latter packs the real artifact, creates a standalone project with `evalkit new`, and runs the generated eval in isolation.
 
 ## Use
 
-Default-export an eval from `evals/greeting.eval.ts`:
+Once published, create a provider-free standalone EvalKit project with `bunx @leostera/evalkit new my-evals` (the GitHub Packages registry and token must be configured first). The command writes an eval, `.npmrc` using `GITHUB_PACKAGES_TOKEN`, and local run scripts; then `cd my-evals && bun install && bun run evals`. Until publication, the equivalent path is exercised by `bun run --cwd packages/evalkit pack:check` in this repository.
+
+Alternatively, default-export an eval from `evals/greeting.eval.ts`:
 
 ```ts
 import { defineEval, piAgent, predicate, user } from '@leostera/evalkit';
@@ -50,4 +52,4 @@ bun run evalkit run-evals greeting --local --trials 1
 bun run evalkit serve-dashboard
 ```
 
-An optional `evalkit.config.ts` enables matrices, custom paths, and execution settings; see [`examples/configured-matrix`](../../examples/configured-matrix/). Low-level runner helpers are available from `@leostera/evalkit/runner`. Results and trial workspaces are local files, not automatically shared. Only `user(...)` transcript steps and `predicate(...)` scorers execute today; the remote Agents SDK adapter is not implemented.
+An optional `evalkit.config.ts` enables matrices, custom paths, and execution settings; see [`examples/configured-matrix`](../../examples/configured-matrix/). Low-level runner helpers are available from `@leostera/evalkit/runner`. Results and trial workspaces are local files, not automatically shared. `user(...)`, inline and final `predicate(...)` / `judge(...)` rules, and observed `expectToolCall(...)` checkpoints execute today; judge rules require a separate eval-level judge agent. The remote Agents SDK adapter is not implemented.

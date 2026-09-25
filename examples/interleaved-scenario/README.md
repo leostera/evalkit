@@ -1,6 +1,6 @@
 # Interleaved scenario example
 
-A provider-free, zero-config Evalkit project demonstrating live checkpoints between turns. The in-process AUT emits real `tool-call`/`tool-result` events and writes `number.txt` to its **candidate** workspace. No provider credentials or model charges are involved.
+A provider-free, zero-config EvalKit project demonstrating live checkpoints between turns. The in-process AUT emits real `tool-call`/`tool-result` events and writes `number.txt` to its **candidate** workspace. No provider credentials or model charges are involved.
 
 From the repository root, install dependencies; then run from this directory:
 
@@ -14,7 +14,7 @@ bun run test       # provider-free integration test with isolated reports
 
 `evals/write-revise.eval.ts` passes: `user(...)`, `predicate(...)`, and `expectToolCall(...)` run in order in one session. The expected tool call matches an **emitted** event, not an action executed by the runner. A live file check verifies what the tool actually wrote before the next prompt. The final `predicate(...)` runs after session close.
 
-`evals/judged-reply.eval.ts` places the **same `judge(...)` descriptor** inline and in final `scoring`. Its eval-level `judge` is a separate local fake agent, not a model call, so the example remains runnable without credentials. A real judge agent may use a no-tools model or custom tools; Evalkit never borrows the AUT's model or tool permissions. The judge agent emits a JSON verdict and its events/usage remain separate from AUT evidence.
+`evals/judged-reply.eval.ts` places the **same `judge(...)` descriptor** inline and in final `scoring`. Its eval-level `judge` is a separate local fake agent, not a model call, so the example remains runnable without credentials. A real judge agent may use a no-tools model or custom tools; EvalKit never borrows the AUT's model or tool permissions. The judge agent emits a JSON verdict and its events/usage remain separate from AUT evidence.
 
 `evals/failfast-file.eval.ts` deliberately emits the expected `write_file` call but writes the wrong content; the tool result reports `{ ok: false }`. The call expectation still passes—it does not assert tool success—while the live file check fails. `policy.failfast` skips the revision and the final-file predicate, but a `supportsPartial` predicate runs and the report still fails overall. Run this eval separately because its CLI exit code is intentionally nonzero.
 

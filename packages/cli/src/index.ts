@@ -4,7 +4,9 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { Effect } from 'effect';
+import { Effect, Option } from 'effect';
+import { Args, Command, Options } from '@effect/cli';
+import { NodeContext } from '@effect/platform-node';
 import { Hono } from 'hono';
 import {
   authoringId,
@@ -28,7 +30,8 @@ import {
 } from '@evalkit/runner';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
-import { parseRunArgs, runProjectCommand } from './run-command.js';
+import { normalizeRunOptions, runProjectCommand } from './run-command.js';
+import { newProject } from './new-project.js';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -752,7 +755,7 @@ async function serveDashboard(): Promise<void> {
     fetch: app.fetch,
   });
   const url = `http://localhost:${server.port}`;
-  console.log(`Evalkit dashboard: ${url}`);
+  console.log(`EvalKit dashboard: ${url}`);
   if (process.env.EVALKIT_NO_OPEN !== '1') {
     const opener =
       process.platform === 'darwin'
@@ -768,52 +771,149 @@ async function serveDashboard(): Promise<void> {
   }
 }
 
-const [command = 'help', ...arguments_] = process.argv.slice(2);
+/* The command tree and its option/argument parsing are owned by @effect/cli. */
+const config = Options.text('config').pipe(Options.optional);
+const runOptions = {
+  config,
+  eval: Options.text('eval').pipe(Options.repeated),
+  model: Options.text('model').pipe(Options.repeated),
+  mode: Options.text('mode').pipe(Options.repeated),
+  select: Options.text('select').pipe(Options.repeated),
+  param: Options.text('param').pipe(Options.repeated),
+  maxTokens: Options.text('max-tokens').pipe(Options.optional),
+  chatTimeout: Options.text('chat-timeout-ms').pipe(Options.optional),
+  turnBudget: Options.text('turn-budget').pipe(Options.optional),
+  concurrency: Options.text('concurrency').pipe(Options.optional),
+  trials: Options.text('trials').pipe(Options.optional),
+  json: Options.boolean('json'),
+  dryRun: Options.boolean('dry-run'),
+  all: Options.boolean('all'),
+  local: Options.boolean('local'),
+};
+type RunOptions = {
+  config: Option.Option<string>;
+  eval: string[];
+  model: string[];
+  mode: string[];
+  select: string[];
+  param: string[];
+  maxTokens: Option.Option<string>;
+  chatTimeout: Option.Option<string>;
+  turnBudget: Option.Option<string>;
+  concurrency: Option.Option<string>;
+  trials: Option.Option<string>;
+  json: boolean;
+  dryRun: boolean;
+  all: boolean;
+  local: boolean;
+};
+function runInput(options: RunOptions, positionals: string[]) {
+  const unexpected = positionals.find((value) => value.startsWith('-'));
+  if (unexpected) throw new Error(`Unknown option: ${unexpected}`);
+  return normalizeRunOptions(
+    {
+      config: Option.getOrUndefined(options.config),
+      eval: options.eval,
+      model: options.model,
+      mode: options.mode,
+      select: options.select,
+      param: options.param,
+      'max-tokens': Option.getOrUndefined(options.maxTokens),
+      'chat-timeout-ms': Option.getOrUndefined(options.chatTimeout),
+      'turn-budget': Option.getOrUndefined(options.turnBudget),
+      concurrency: Option.getOrUndefined(options.concurrency),
+      trials: Option.getOrUndefined(options.trials),
+      json: options.json,
+      'dry-run': options.dryRun,
+      all: options.all,
+      local: options.local,
+    },
+    positionals,
+  );
+}
+const execute = (
+  command: string,
+  input: ReturnType<typeof normalizeRunOptions>,
+) =>
+  Effect.tryPromise({
+    try: () => runProjectCommand(command, [], process.cwd(), input),
+    catch: (error) => error,
+  });
+const evalsCommand = Command.make(
+  'run-evals',
+  {
+    ...runOptions,
+    evalIds: Args.text({ name: 'eval-id' }).pipe(Args.repeated),
+  },
+  ({ evalIds, ...options }) => execute('run-evals', runInput(options, evalIds)),
+);
+const matrixCommand = Command.make(
+  'run-matrix',
+  {
+    ...runOptions,
+    matrixId: Args.text({ name: 'matrix-id' }),
+  },
+  ({ matrixId, ...options }) =>
+    execute('run-matrix', runInput(options, [matrixId])),
+);
+const suiteCommand = Command.make(
+  'run-suite',
+  {
+    ...runOptions,
+    suiteId: Args.text({ name: 'suite-id' }),
+  },
+  ({ suiteId, ...options }) =>
+    execute('run-suite', runInput(options, [suiteId])),
+);
+const newCommand = Command.make(
+  'new',
+  {
+    directory: Args.text({ name: 'directory' }),
+  },
+  ({ directory }) =>
+    Effect.tryPromise({
+      try: async () => {
+        const root = await newProject([directory]);
+        console.log(
+          `Created EvalKit project at ${root}\nSet GITHUB_PACKAGES_TOKEN (read:packages), then cd into it and run bun install && bun run evals.`,
+        );
+      },
+      catch: (error) => error,
+    }),
+);
+const dashboardCommand = Command.make(
+  'serve-dashboard',
+  { config },
+  ({ config }) =>
+    Effect.tryPromise({
+      try: async () => {
+        project = await loadProject(projectRoot, Option.getOrUndefined(config));
+        projectRoot = project.root;
+        reportRoot = resolve(
+          projectRoot,
+          project.config.reportDir ?? '_evalkit-results',
+        );
+        await serveDashboard();
+      },
+      catch: (error) => error,
+    }),
+);
+const app = Command.make('evalkit').pipe(
+  Command.withSubcommands([
+    newCommand,
+    evalsCommand,
+    matrixCommand,
+    suiteCommand,
+    dashboardCommand,
+  ]),
+);
+const cli = Command.run(app, { name: 'EvalKit', version: '0.0.1' });
+const argv = process.argv.slice();
+if (argv[2] === 'help') argv.splice(2, 1, '--help');
+// Preserve the CLI's existing help spelling while letting @effect/cli render it.
+if (argv.at(-2) === '--' && argv.at(-1) === '--help') argv.splice(-2, 1);
 try {
-  // Help must not load a project or parse run flags: it works even in an empty directory.
-  if (
-    command === 'help' ||
-    command === '--help' ||
-    (['run-evals', 'run-matrix', 'run-suite', 'serve-dashboard'].includes(
-      command,
-    ) &&
-      arguments_.some((arg) => arg === '--help' || arg === '-h'))
-  ) {
-    console.log(`evalkit
-
-Commands:
-  run-evals [eval-id,...]
-  run-matrix <matrix-id>
-  run-suite <suite-id>
-  serve-dashboard
-
-Project: evalkit.config.js / .ts, with default discovery in evals/**/*.eval.{ts,js}
-Run options:
-  --config <file>               Select project configuration
-  --eval <eval-id,...>             Select tasks
-  --model <key,...> --mode <key,...>  Select matrix values
-  --select <axis=value>         Select any custom axis (repeatable)
-  --param <name=JSON>           Override non-axis agent parameters
-  --max-tokens <n> --turn-budget <n> --chat-timeout-ms <n>
-  --concurrency <n> --trials <n>
-  --dry-run                    Show plan without starting agents
-  --all                        Permit plans above the safety limit
-  --json                       Emit results as JSON
-  --local                      Use a declared local AUT runtime
-  -h, --help                   Show this help without loading the project
-`);
-  } else if (['run-evals', 'run-matrix', 'run-suite'].includes(command)) {
-    await runProjectCommand(command, arguments_);
-  } else if (command === 'serve-dashboard') {
-    const { values } = parseRunArgs(arguments_);
-    project = await loadProject(projectRoot, values.config);
-    projectRoot = project.root;
-    reportRoot = resolve(
-      projectRoot,
-      project.config.reportDir ?? '_evalkit-results',
-    );
-    await serveDashboard();
-  } else throw new Error(`Unknown command: ${command}`);
+  await Effect.runPromise(cli(argv).pipe(Effect.provide(NodeContext.layer)));
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

@@ -22,7 +22,7 @@ export const greetingAgent = defineAgent({
         await onEvent({
           kind: 'message',
           role: 'assistant',
-          content: `Hello from Evalkit: ${message}`,
+          content: `Hello from EvalKit: ${message}`,
           timestamp: new Date().toISOString(),
         });
         await onEvent({
