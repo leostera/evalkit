@@ -1,12 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  check,
-  defineEval,
-  expectToolCall,
-  predicate,
-  user,
-} from '@evalkit/core';
+import { defineEval, expectToolCall, predicate, user } from '@evalkit/core';
 import { fileAgent } from '../agents/file-agent.js';
 
 // A complete two-turn scenario: both intermediate and final file states pass.
@@ -15,15 +9,15 @@ export default defineEval({
   agent: fileAgent(),
   transcript: [
     user('Write 2112 into number.txt.'),
-    check(
+    predicate(
       'first reply',
-      ({ turn }) => typeof turn.lastAssistantText === 'string',
+      ({ turn }) => typeof turn?.lastAssistantText === 'string',
     ),
     expectToolCall({
       name: 'write_file',
       arguments: { path: 'number.txt', contents: '2112' },
     }),
-    check('first file version', async ({ artifacts }) => {
+    predicate('first file version', async ({ artifacts }) => {
       const content = await readFile(
         join(artifacts.candidate.root, 'number.txt'),
         'utf8',
@@ -34,7 +28,7 @@ export default defineEval({
       return content === '2112';
     }),
     user('Revise number.txt to 2113.'),
-    check('revised file version', async ({ artifacts, turn }) => {
+    predicate('revised file version', async ({ artifacts, turn }) => {
       const content = await readFile(
         join(artifacts.candidate.root, 'number.txt'),
         'utf8',
@@ -43,7 +37,7 @@ export default defineEval({
         throw error;
       });
       return (
-        turn.lastAssistantText?.includes('2113') === true && content === '2113'
+        turn?.lastAssistantText?.includes('2113') === true && content === '2113'
       );
     }),
   ],

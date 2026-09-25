@@ -4,7 +4,8 @@ import {
   CheckpointResultSchema,
   type ArtifactView,
   type AutContext,
-  type CheckStep,
+  type ScoringRule,
+  type AutAdapter,
   type ExpectToolCallStep,
   type TrajectoryEvent,
   type TurnView,
@@ -12,6 +13,7 @@ import {
 } from '@evalkit/core';
 import { CheckpointExecutionError } from './errors.js';
 import { normalizeScore } from './score.js';
+import { evaluateRule } from './evaluate-rule.js';
 import { matchingToolCall } from './turn.js';
 
 const failure = (step: number, name: string, cause: unknown) =>
@@ -24,7 +26,7 @@ const failure = (step: number, name: string, cause: unknown) =>
 
 /** An assertion failure is a successful Effect containing a failed result; only execution errors enter the error channel. */
 export function evaluateCheckpoint(
-  step: CheckStep | ExpectToolCallStep,
+  step: ScoringRule | ExpectToolCallStep,
   index: number,
   input: {
     context: AutContext;
@@ -33,6 +35,7 @@ export function evaluateCheckpoint(
     turn: TurnView;
   },
   now: () => Date,
+  judgeAgent?: AutAdapter,
 ): Effect.Effect<
   CheckpointResult & { status: 'passed' | 'failed' },
   CheckpointExecutionError
@@ -59,17 +62,15 @@ export function evaluateCheckpoint(
             catch: (cause) => failure(index, step.name, cause),
           })
         : undefined;
-    const raw =
-      step.kind === 'check'
-        ? yield* Effect.tryPromise({
-            try: async () => step.run(input),
+    const score =
+      step.kind === 'expect-tool-call'
+        ? yield* Effect.try({
+            try: () => normalizeScore(Boolean(match)),
             catch: (cause) => failure(index, step.name, cause),
           })
-        : Boolean(match);
-    const score = yield* Effect.try({
-      try: () => normalizeScore(raw),
-      catch: (cause) => failure(index, step.name, cause),
-    });
+        : yield* evaluateRule(step, input, judgeAgent, 'transcript').pipe(
+            Effect.mapError((cause) => failure(index, step.name, cause)),
+          );
     const result = yield* Schema.decodeUnknown(CheckpointResultSchema)({
       step: index,
       kind: step.kind,

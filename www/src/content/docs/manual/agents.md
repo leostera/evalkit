@@ -3,7 +3,7 @@ title: Agents under test
 description: Connect an AUT, implement a trial session, and emit scoreable evidence.
 ---
 
-The **Agent Under Test (AUT)** is the assistant, process, or service you want to measure. A _scorer_ decides whether its behavior was good; it is not the AUT. Evalkit knows only the adapter you provide, not your provider's chat or tool API. Each trial materializes its fixtures, then calls `agent.start(...)` to create a fresh session. The runner passes `user(...)` messages to `session.send(message)` in order, evaluates any interleaved `check(...)` and `expectToolCall(...)` steps against the completed turn, calls `session.close()`, and runs final predicates over the recorded events and files.
+The **Agent Under Test (AUT)** is the assistant, process, or service you want to measure. A _scorer_ decides whether its behavior was good; it is not the AUT. Evalkit knows only the adapter you provide, not your provider's chat or tool API. Each trial materializes its fixtures, then calls `agent.start(...)` to create a fresh session. The runner passes `user(...)` messages to `session.send(message)` in order, evaluates interleaved `predicate(...)`, `judge(...)`, and `expectToolCall(...)` steps against the completed turn, calls `session.close()`, and runs final predicates and judges over the recorded events and files.
 
 ## Implement an adapter
 

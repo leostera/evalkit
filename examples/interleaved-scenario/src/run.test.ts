@@ -22,6 +22,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3 
     expect(config).toEqual({});
     expect(registry.evals.map((evaluation) => evaluation.id)).toEqual([
       'failfast-file',
+      'judged-reply',
       'write-revise',
     ]);
     const reports = join(temporaryRoot, 'reports');
@@ -75,6 +76,32 @@ test('discovered scenarios prove interleaved success and failfast using real v3 
     expect(await readRunSummary(reports, passed.runId)).toMatchObject({
       passed: 1,
       failed: 0,
+    });
+
+    const judged = await run('judged-reply');
+    expect(judged.status).toBe('completed');
+    expect(judged.scoring?.passed).toBe(true);
+    expect(
+      (await readTrialScoring(reports, judged.runId, judged.trialId))
+        .checkpoints?.[0],
+    ).toMatchObject({
+      kind: 'judge',
+      status: 'passed',
+      evidence: { placement: 'transcript' },
+    });
+    expect(judged.scoring?.results[0]).toMatchObject({
+      kind: 'judge',
+      passed: true,
+      evidence: { placement: 'scoring' },
+      judge: {
+        agent: { id: 'local-fake-judge', kind: 'in-process' },
+        usage: { inputTokens: 7, outputTokens: 3 },
+        events: [
+          expect.objectContaining({ kind: 'message', role: 'assistant' }),
+          expect.objectContaining({ kind: 'turn-completed' }),
+          expect.objectContaining({ kind: 'completed' }),
+        ],
+      },
     });
 
     const failed = await run('failfast-file');

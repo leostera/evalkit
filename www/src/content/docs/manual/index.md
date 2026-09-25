@@ -20,13 +20,13 @@ For a first provider-free run, use the [getting-started guide](/docs/) or the [z
 - [Project structure and discovery](/docs/manual/project-structure/) — installation state, file matching, config precedence, IDs, and suites.
 - [Agents under test](/docs/manual/agents/) — session lifecycle, event evidence, runtime selection, and the Pi adapter.
 - [Fixtures](/docs/manual/fixtures/) — materializing per-trial inputs and separating candidate from evaluator data.
-- [Scorers and evals](/docs/manual/scoring-and-evals/) — intermediate checkpoints, final predicates, score semantics, and partial failures.
+- [Scorers and evals](/docs/manual/scoring-and-evals/) — intermediate and final predicates/judges, score semantics, and partial failures.
 - [CLI and matrices](/docs/manual/cli-and-matrices/) — commands, selection, parameter forwarding, safety limits, and dashboard runs.
 - [Results and reports](/docs/manual/results/) — v2/v3 reports, statuses, artifact snapshots, local dashboard, and CI checks.
 - [Troubleshooting and limitations](/docs/manual/troubleshooting/) — common errors and declared APIs that are not executable yet.
 
 ## What works today
 
-This manual describes the **local Bun CLI**. `user(...)`, deterministic `check(...)`, and observed `expectToolCall(...)` transcript steps execute, along with final `predicate(...)` scorers. `agent(...)`/`judge(...)` transcript steps and `judgeScorer(...)` are API declarations, not working grading features. `policy.timeoutMs` is not enforced; `agentsSdk()` is not an implemented remote transport. There is no standalone project scaffolder. Parameter choices such as `model` and `maxTokens` only change an AUT if its adapter reads `context.parameters` and applies them. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
+This manual describes the **local Bun CLI**. `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` with a separate eval-level `judge` agent, and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also work as final scoring rules. `agent(...)` remains an API declaration, not a working transcript feature. `policy.timeoutMs` is not enforced; `agentsSdk()` is not an implemented remote transport. There is no standalone project scaffolder. Parameter choices such as `model` and `maxTokens` only change an AUT if its adapter reads `context.parameters` and applies them. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
 
 Run the CLI from the eval project directory (or select a config with `--config`). The default report and retained-workspace directories are `_evalkit-results/` and `_evalkit-sandbox/` under that project. The definitions are suitable for Git; reports and workspaces are local evidence that you must explicitly archive or share. Both may contain sensitive data.

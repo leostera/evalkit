@@ -77,6 +77,25 @@ export const TrialManifestSchema = Schema.Struct({
   status: Schema.optional(RunStatusSchema),
 });
 
+export const UsageSchema = Schema.Struct({
+  inputTokens: Schema.optional(Schema.Number),
+  outputTokens: Schema.optional(Schema.Number),
+  totalTokens: Schema.optional(Schema.Number),
+});
+
+export const JudgeRunInfoSchema = Schema.Struct({
+  agent: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      kind: Schema.String,
+      name: Schema.optional(Schema.String),
+      version: Schema.optional(Schema.String),
+    }),
+  ),
+  usage: Schema.optional(UsageSchema),
+  events: Schema.optional(Schema.mutable(Schema.Array(JsonValueSchema))),
+});
+
 export const ScoreResultSchema = Schema.Struct({
   name: Schema.String,
   kind: Schema.Literal('predicate', 'judge'),
@@ -84,18 +103,20 @@ export const ScoreResultSchema = Schema.Struct({
   passed: Schema.optional(Schema.Boolean),
   explanation: Schema.optional(Schema.String),
   evidence: Schema.optional(JsonValueSchema),
+  judge: Schema.optional(JudgeRunInfoSchema),
   durationMs: Schema.Number,
   error: Schema.optional(RecordedErrorSchema),
 });
 export const CheckpointResultSchema = Schema.Struct({
   step: Schema.Number,
-  kind: Schema.Literal('check', 'expect-tool-call'),
+  kind: Schema.Literal('predicate', 'judge', 'expect-tool-call'),
   name: Schema.String,
   status: Schema.Literal('passed', 'failed', 'error', 'skipped'),
   value: Schema.optional(Schema.Number),
   passed: Schema.optional(Schema.Boolean),
   explanation: Schema.optional(Schema.String),
   evidence: Schema.optional(JsonValueSchema),
+  judge: Schema.optional(JudgeRunInfoSchema),
   durationMs: Schema.optional(Schema.Number),
   error: Schema.optional(RecordedErrorSchema),
   matchedToolCall: Schema.optional(
@@ -133,12 +154,6 @@ export const RunSummarySchema = Schema.Struct({
   passed: Schema.Number,
   failed: Schema.Number,
   error: Schema.optional(RecordedErrorSchema),
-});
-
-export const UsageSchema = Schema.Struct({
-  inputTokens: Schema.optional(Schema.Number),
-  outputTokens: Schema.optional(Schema.Number),
-  totalTokens: Schema.optional(Schema.Number),
 });
 
 const autEvent = {

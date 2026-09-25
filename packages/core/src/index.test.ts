@@ -74,11 +74,12 @@ describe('core definitions', () => {
     const definition = defineEval({
       id: 'eval-03',
       agent: aut,
+      judge: { ...aut },
       fixtures: [dynamic(() => inlineFile('input.txt', 'hello', 'candidate'))],
       transcript: [
         user('hello'),
         agent({ contains: ['hello'] }),
-        judge('The reply is friendly.'),
+        judge('friendly', { rubric: 'The reply is friendly.' }),
       ],
       scoring: [predicate('score', () => 1)],
     });
@@ -86,6 +87,21 @@ describe('core definitions', () => {
     expect(definition.id).toBe('eval-03');
     expect(definition.transcript).toHaveLength(3);
     expect(definition.scoring[0]?.kind).toBe('predicate');
+  });
+
+  test('does not reuse the AUT adapter as a judge', () => {
+    expect(() =>
+      defineEval({
+        id: 'same-judge',
+        agent: aut,
+        judge: aut,
+        transcript: [
+          user('hello'),
+          judge('friendly', { rubric: 'Is it friendly?' }),
+        ],
+        scoring: [],
+      }),
+    ).toThrow('Judge agent must be distinct');
   });
 
   test('builds an explicit eval registry', () => {

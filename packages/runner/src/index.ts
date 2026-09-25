@@ -19,7 +19,6 @@ import {
   type AutContext,
   type AutEvent,
   type EvalDefinition,
-  type PredicateScorer,
   type ReportStore,
   type RunnerEvent,
   type RunResult,
@@ -42,7 +41,7 @@ import {
   ReportError,
   ScoringError,
 } from './errors.js';
-import { normalizeScore } from './score.js';
+import { evaluateRule } from './evaluate-rule.js';
 import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
@@ -156,12 +155,11 @@ async function executeRun(
   let hasUser = false;
   for (const step of definition.transcript) {
     if (step.kind === 'user') hasUser = true;
-    else if (
-      (step.kind === 'check' || step.kind === 'expect-tool-call') &&
-      !hasUser
-    )
+    else if (step.kind !== 'agent' && !hasUser)
       throw new Error('Checkpoint requires a preceding user step');
   }
+  if (definition.judge && definition.judge === definition.agent)
+    throw new Error('Judge agent must be distinct from the agent under test');
   if (options.runId) assertUuid(options.runId, 'runId');
   if (options.trialId) assertUuid(options.trialId, 'trialId');
   const requestedTrials = options.trials ?? definition.policy?.trials ?? 1;
@@ -340,6 +338,7 @@ async function runTrial(
   let status: RunStatus = 'running';
   const checkpoints: CheckpointResult[] = [];
   let stoppedEarly = false;
+  let lastTurn: TurnView | undefined;
   let cleanupError: unknown;
   const workspaceScope = await Effect.runPromise(Scope.make());
 
@@ -407,7 +406,6 @@ async function runTrial(
         (session) =>
           Effect.tryPromise({
             try: async () => {
-              let lastTurn: TurnView | undefined;
               for (const [index, step] of definition.transcript.entries()) {
                 await emitRunner({
                   kind: 'transcript-step-started',
@@ -439,7 +437,8 @@ async function runTrial(
                   );
                   lastTurn = turnView(events, cursor, events.length, index);
                 } else if (
-                  step.kind === 'check' ||
+                  step.kind === 'predicate' ||
+                  step.kind === 'judge' ||
                   step.kind === 'expect-tool-call'
                 ) {
                   if (!lastTurn)
@@ -464,6 +463,7 @@ async function runTrial(
                         turn: lastTurn,
                       },
                       now,
+                      definition.judge,
                     ),
                   ).catch(async (error: unknown) => {
                     const recorded = recordError(error);
@@ -513,7 +513,8 @@ async function runTrial(
                       });
                       const remaining = definition.transcript[skipped]!;
                       if (
-                        remaining.kind === 'check' ||
+                        remaining.kind === 'predicate' ||
+                        remaining.kind === 'judge' ||
                         remaining.kind === 'expect-tool-call'
                       )
                         checkpoints.push({
@@ -607,21 +608,22 @@ async function runTrial(
       });
       let result: ScoreResult;
       try {
-        if (scorer.kind !== 'predicate') {
-          throw new Error(
-            `Judge scorer "${scorer.name}" is not executable yet`,
-          );
-        }
         const score = await runBoundary(
-          Effect.tryPromise({
-            try: () =>
-              runPredicate(scorer, context!, workspace!.artifacts, events),
-            catch: (cause) =>
-              new ScoringError({
-                cause,
-                message: cause instanceof Error ? cause.message : String(cause),
-              }),
-          }),
+          evaluateRule(
+            scorer,
+            {
+              context,
+              artifacts: workspace.artifacts,
+              trajectory: { events },
+              ...(lastTurn ? { turn: lastTurn } : {}),
+            },
+            definition.judge,
+            'scoring',
+          ).pipe(
+            Effect.mapError(
+              (cause) => new ScoringError({ cause, message: cause.message }),
+            ),
+          ),
         );
         result = {
           name: scorer.name,
@@ -753,18 +755,4 @@ async function runTrial(
     scoring,
     ...(error ? { error } : {}),
   };
-}
-
-async function runPredicate(
-  scorer: PredicateScorer,
-  context: AutContext,
-  artifacts: Parameters<PredicateScorer['run']>[0]['artifacts'],
-  events: readonly TrajectoryEvent[],
-): Promise<Omit<ScoreResult, 'name' | 'kind' | 'durationMs'>> {
-  const value = await scorer.run({
-    context,
-    trajectory: { events },
-    artifacts,
-  });
-  return normalizeScore(value);
 }

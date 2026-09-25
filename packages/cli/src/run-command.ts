@@ -199,11 +199,11 @@ export async function runProjectCommand(
           for (const trial of result.trials ?? [result]) {
             for (const checkpoint of trial.scoring?.checkpoints ?? [])
               console.log(
-                `  step ${checkpoint.step} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
+                `  step ${checkpoint.step} ${checkpoint.kind} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
               );
             for (const score of trial.scoring?.results ?? [])
               console.log(
-                `  ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
+                `  ${score.kind} ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
               );
           }
         }

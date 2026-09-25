@@ -20,7 +20,7 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
       }; } },
       transcript: [
         { kind: 'user', message: 'hello' },
-        { kind: 'check', name: 'long-reply', run: ({ turn }) => (turn.lastAssistantText?.length ?? 0) >= 10 },
+        { kind: 'predicate', name: 'long-reply', run: ({ turn }) => (turn.lastAssistantText?.length ?? 0) >= 10 },
         { kind: 'user', message: 'this must not run' },
       ],
       scoring: [], policy: { failfast: true },

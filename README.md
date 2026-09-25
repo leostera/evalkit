@@ -20,7 +20,7 @@ Evalkit models an **Agent Under Test (AUT)** as a session that receives messages
 
 ## Local execution
 
-The local runner supports independent trials against an AUT defined by the eval author, interleaves deterministic checkpoints with user turns, streams normalized events into an append-only `trajectory.jsonl`, runs final predicates, and writes a local report tree:
+The local runner supports independent trials against an AUT defined by the eval author, interleaves deterministic predicates and independent judge agents with user turns, streams AUT/runner events into an append-only `trajectory.jsonl` (judge observations remain in score results), runs final predicates and judges, and writes a local report tree:
 
 ```text
 _evalkit-results/<run-id>/

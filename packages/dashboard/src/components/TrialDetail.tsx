@@ -70,7 +70,7 @@ export function TrialDetail({
               <thead>
                 <tr>
                   <th>Step</th>
-                  <th>Check</th>
+                  <th>Rule</th>
                   <th>Value</th>
                   <th>Result</th>
                 </tr>
@@ -80,7 +80,7 @@ export function TrialDetail({
                   <tr key={`${check.step}-${check.name}`}>
                     <td>{check.step + 1}</td>
                     <td>
-                      {check.name}
+                      {check.kind}: {check.name}
                       {check.matchedToolCall
                         ? ` (event ${check.matchedToolCall.eventIndex + 1})`
                         : ''}
@@ -113,7 +113,10 @@ export function TrialDetail({
           <tbody>
             {selected.trial.scores.map((score) => (
               <tr key={score.name}>
-                <td>{score.name}</td>
+                <td>
+                  {score.kind ? `${score.kind}: ` : ''}
+                  {score.name}
+                </td>
                 <td>{score.value ?? '—'}</td>
                 <td>{score.passed ? 'passed' : 'failed'}</td>
               </tr>

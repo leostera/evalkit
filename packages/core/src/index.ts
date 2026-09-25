@@ -255,11 +255,6 @@ export type AgentStep = {
   expectation: JsonObject;
 };
 
-export type JudgeStep = {
-  kind: 'judge';
-  rubric: string;
-};
-
 export type TurnView = {
   userStepIndex: number;
   events: readonly (AutEvent & { source: 'aut' })[];
@@ -278,26 +273,13 @@ export type TurnView = {
   lastAssistantText?: string;
 };
 
-export type CheckpointContext = ScoringContext & { turn: TurnView };
-export type CheckStep = {
-  kind: 'check';
-  name: string;
-  run(
-    ctx: CheckpointContext,
-  ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
-};
 export type ExpectToolCallStep = {
   kind: 'expect-tool-call';
   name: string;
   expected: { name: string; arguments?: JsonValue };
 };
 export type TranscriptStep =
-  UserStep | AgentStep | JudgeStep | CheckStep | ExpectToolCallStep;
-
-export function check(name: string, run: CheckStep['run']): CheckStep {
-  if (!name.trim()) throw new Error('Checkpoint name must not be empty');
-  return { kind: 'check', name, run };
-}
+  UserStep | AgentStep | ScoringRule | ExpectToolCallStep;
 
 /** Observes a tool call in the preceding turn; never invokes a tool. */
 export function expectToolCall(
@@ -316,9 +298,12 @@ export function agent(expectation: JsonObject): AgentStep {
   return { kind: 'agent', expectation };
 }
 
-export function judge(rubric: string): JudgeStep {
-  return { kind: 'judge', rubric };
-}
+export type JudgeRunInfo = {
+  agent?: AutIdentity;
+  usage?: Usage;
+  /** Judge-agent observations; never attributed to the AUT trajectory. */
+  events?: JsonValue[];
+};
 
 export type ScoreValue =
   | number
@@ -327,6 +312,8 @@ export type ScoreValue =
       passed?: boolean;
       explanation?: string;
       evidence?: JsonValue;
+      /** Judge-agent evidence, never inferred from AUT usage. */
+      judge?: JudgeRunInfo;
     };
 
 export type ScoreResult = {
@@ -336,6 +323,7 @@ export type ScoreResult = {
   passed?: boolean;
   explanation?: string;
   evidence?: JsonValue;
+  judge?: JudgeRunInfo;
   durationMs: number;
   error?: RecordedError;
 };
@@ -349,23 +337,28 @@ export type ScoringContext = {
   context: AutContext;
   trajectory: { events: readonly TrajectoryEvent[] };
   artifacts: ArtifactView;
+  /** Most recent completed turn; absent if no user message has been sent. */
+  turn?: TurnView;
 };
 
 export type PredicateScorer = {
   kind: 'predicate';
   name: string;
   supportsPartial?: boolean;
-  run(context: ScoringContext): ScoreValue | Promise<ScoreValue>;
+  run(
+    context: ScoringContext,
+  ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
 };
 
-export type JudgeScorer = {
+export type JudgeRule = {
   kind: 'judge';
   name: string;
-  target: 'transcript' | 'artifacts';
   rubric: string;
+  /** Run even when the scenario stopped early or execution failed. */
+  supportsPartial?: boolean;
 };
 
-export type ScoringRule = PredicateScorer | JudgeScorer;
+export type ScoringRule = PredicateScorer | JudgeRule;
 
 export function predicate(
   name: string,
@@ -375,10 +368,12 @@ export function predicate(
   return { kind: 'predicate', name, run, ...options };
 }
 
-export function judgeScorer(
+export function judge(
   name: string,
-  options: Omit<JudgeScorer, 'kind' | 'name'>,
-): JudgeScorer {
+  options: Pick<JudgeRule, 'rubric' | 'supportsPartial'>,
+): JudgeRule {
+  if (!name.trim() || !options.rubric.trim())
+    throw new Error('Judge name and rubric must not be empty');
   return { kind: 'judge', name, ...options };
 }
 
@@ -394,6 +389,8 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   id: string;
   name?: string;
   agent: TAgent;
+  /** Separate judge agent; its model and tools are never inherited from the AUT. */
+  judge?: AutAdapter;
   fixtures?: Fixture[];
   transcript: TranscriptStep[];
   scoring: ScoringRule[];
@@ -406,12 +403,17 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
   let hasUser = false;
   for (const step of definition.transcript) {
     if (step.kind === 'user') hasUser = true;
-    else if (
-      (step.kind === 'check' || step.kind === 'expect-tool-call') &&
-      !hasUser
-    )
+    else if (step.kind !== 'agent' && !hasUser)
       throw new Error('Checkpoint requires a preceding user step');
   }
+  if (
+    (definition.transcript.some((step) => step.kind === 'judge') ||
+      definition.scoring.some((rule) => rule.kind === 'judge')) &&
+    !definition.judge
+  )
+    throw new Error('Judge rules require an eval judge agent');
+  if (definition.judge && definition.judge === definition.agent)
+    throw new Error('Judge agent must be distinct from the agent under test');
   return definition;
 }
 
@@ -643,13 +645,14 @@ export type TrialMetadata = {
 
 export type CheckpointResult = {
   step: number;
-  kind: 'check' | 'expect-tool-call';
+  kind: 'predicate' | 'judge' | 'expect-tool-call';
   name: string;
   status: 'passed' | 'failed' | 'error' | 'skipped';
   value?: number;
   passed?: boolean;
   explanation?: string;
   evidence?: JsonValue;
+  judge?: JudgeRunInfo;
   durationMs?: number;
   error?: RecordedError;
   matchedToolCall?: { eventIndex: number; id: string };

@@ -75,6 +75,7 @@ type LocalRun = {
 
 type LocalScore = {
   name: string;
+  kind?: 'predicate' | 'judge';
   value?: number;
   passed?: boolean;
   explanation?: string;

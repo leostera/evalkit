@@ -4,15 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect } from 'effect';
 import {
-  check,
   defineAgent,
   defineEval,
   expectToolCall,
   predicate,
+  judge,
   user,
   parseTrajectoryJsonl,
   canonicalParameters,
   type ReportStore,
+  type ScoreValue,
 } from '@evalkit/core';
 import {
   localReportStore,
@@ -85,8 +86,85 @@ function writerAgent(options: { first?: string; emitTool?: boolean } = {}) {
     },
   };
 }
+function fakeJudge(
+  grade: (request: {
+    name: string;
+    rubric: string;
+    placement: string;
+    evidence: { turn?: unknown[]; trajectory?: unknown[] };
+  }) => ScoreValue | boolean,
+  options: { tools?: boolean; invalid?: boolean } = {},
+) {
+  const requests: Array<{
+    name: string;
+    rubric: string;
+    placement: string;
+    evidence: { turn?: unknown[]; trajectory?: unknown[] };
+  }> = [];
+  let closed = 0;
+  const agent = defineAgent({
+    identity: { id: 'fake-judge', kind: 'in-process' },
+    async start({ context, onEvent }) {
+      let verdict: ScoreValue | boolean | undefined;
+      return {
+        async send(message: string) {
+          const request = JSON.parse(message) as (typeof requests)[number];
+          requests.push(request);
+          if (options.tools) {
+            await onEvent({
+              kind: 'tool-call',
+              id: 'judge-tool',
+              name: 'inspect',
+              arguments: { path: 'judge-tool.txt' },
+              timestamp: stamp(),
+            });
+            await writeFile(
+              join(context.workspace.root, 'judge-tool.txt'),
+              'private judge workspace',
+            );
+            await onEvent({
+              kind: 'tool-result',
+              id: 'judge-tool',
+              result: { ok: true },
+              timestamp: stamp(),
+            });
+          }
+          verdict = grade(request);
+          await onEvent({
+            kind: 'message',
+            role: 'assistant',
+            content: options.invalid ? 'not-json' : JSON.stringify(verdict),
+            timestamp: stamp(),
+          });
+          await onEvent({
+            kind: 'turn-completed',
+            turn: 1,
+            usage: { inputTokens: 7, outputTokens: 3 },
+            timestamp: stamp(),
+          });
+        },
+        async close() {
+          closed++;
+          await onEvent({
+            kind: 'completed',
+            ...(options.invalid ? {} : { output: verdict }),
+            timestamp: stamp(),
+          });
+        },
+      };
+    },
+  });
+  return {
+    agent,
+    requests,
+    get closed() {
+      return closed;
+    },
+  };
+}
+
 const fileIs = (value: string) =>
-  check(`file-is-${value}`, async ({ artifacts }) => {
+  predicate(`file-is-${value}`, async ({ artifacts }) => {
     const content = await readFile(
       join(artifacts.candidate.root, 'number.txt'),
       'utf8',
@@ -105,10 +183,10 @@ const scenario = (
     agent,
     transcript: [
       user('first'),
-      check(
+      predicate(
         'greeting',
         ({ turn }) =>
-          turn.lastAssistantText === 'Hello there!' &&
+          turn?.lastAssistantText === 'Hello there!' &&
           turn.assistantMessages.length === 1 &&
           turn.toolCalls[0]?.resultObservation === 'observed' &&
           JSON.stringify(turn.toolCalls[0]?.result) === '{"ok":false}',
@@ -119,7 +197,7 @@ const scenario = (
       }),
       fileIs('2112'),
       user('revise'),
-      check('no-old-call', ({ turn }) => turn.toolCalls.length === 0),
+      predicate('no-old-call', ({ turn }) => turn?.toolCalls.length === 0),
       fileIs('2113'),
     ],
     scoring: [
@@ -256,7 +334,7 @@ test('check errors stop regardless of failfast, remain distinct from false, and 
     agent: aut.agent,
     transcript: [
       user('first'),
-      check('invalid', () => ({
+      predicate('invalid', () => ({
         value: 0.5,
         evidence: { notJson: undefined! },
       })),
@@ -344,7 +422,7 @@ for (const failingEvent of [
         defineEval({
           id: 'report-error',
           agent,
-          transcript: [user('first'), check('check', () => true)],
+          transcript: [user('first'), predicate('check', () => true)],
           scoring: [],
         }),
         { report: brokenReport },
@@ -370,9 +448,9 @@ test('boolean, thresholded numeric, and low scores are distinct checkpoint outco
     agent: aut.agent,
     transcript: [
       user('first'),
-      check('yes', () => true),
-      check('threshold', () => ({ value: 0.8, passed: true })),
-      check('below', () => 0.8),
+      predicate('yes', () => true),
+      predicate('threshold', () => ({ value: 0.8, passed: true })),
+      predicate('below', () => 0.8),
     ],
     scoring: [],
   });
@@ -387,6 +465,210 @@ test('boolean, thresholded numeric, and low scores are distinct checkpoint outco
   ]);
   expect(result.scoring?.overall).toBeUndefined();
   expect(result.scoring?.passed).toBe(false);
+});
+
+test('the same predicate and judge rules execute inline and after close with distinct evidence', async () => {
+  const dir = await root();
+  const aut = writerAgent();
+  const reviewer = fakeJudge(
+    (request) => ({
+      value: 0.9,
+      passed: true,
+      explanation: 'Helpful greeting',
+      evidence: { placement: request.placement },
+    }),
+    { tools: true },
+  );
+  const rule = judge('reply quality', {
+    rubric: 'The reply contains a greeting',
+  });
+  const deterministic = predicate(
+    'has reply',
+    ({ turn }) => turn?.lastAssistantText === 'Hello there!',
+  );
+  const evaluation = defineEval({
+    id: 'unified-rules',
+    agent: aut.agent,
+    judge: reviewer.agent,
+    transcript: [user('first'), deterministic, rule],
+    scoring: [deterministic, rule],
+  });
+  const result = await Effect.runPromise(
+    runEval(evaluation, { report: localReportStore(dir) }),
+  );
+  expect(result.status).toBe('completed');
+  expect(result.scoring?.passed).toBe(true);
+  expect(result.scoring?.overall).toBe(0.95); // only the two final scorer values
+  expect(
+    result.scoring?.checkpoints?.map((entry) => [entry.kind, entry.value]),
+  ).toEqual([
+    ['predicate', 1],
+    ['judge', 0.9],
+  ]);
+  expect(
+    result.scoring?.results.map((entry) => [entry.kind, entry.value]),
+  ).toEqual([
+    ['predicate', 1],
+    ['judge', 0.9],
+  ]);
+  expect(reviewer.requests.map((request) => request.placement)).toEqual([
+    'transcript',
+    'scoring',
+  ]);
+  expect(reviewer.requests[0]).toMatchObject({
+    name: 'reply quality',
+    rubric: 'The reply contains a greeting',
+  });
+  expect(reviewer.requests[0]?.evidence.turn).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: 'message', content: 'Hello there!' }),
+    ]),
+  );
+  expect(reviewer.requests[1]?.evidence.trajectory?.length).toBeGreaterThan(
+    reviewer.requests[0]?.evidence.turn?.length ?? 0,
+  );
+  const scoring = await readTrialScoring(dir, result.runId, result.trialId);
+  expect(scoring.checkpoints?.[1]?.evidence).toEqual({
+    placement: 'transcript',
+  });
+  expect(scoring.checkpoints?.[1]?.judge).toMatchObject({
+    agent: { id: 'fake-judge', kind: 'in-process' },
+    usage: { inputTokens: 7, outputTokens: 3 },
+  });
+  expect(scoring.checkpoints?.[1]?.judge?.events).toContainEqual(
+    expect.objectContaining({ kind: 'tool-call', name: 'inspect' }),
+  );
+  const autEvents = await readTrialEvents(dir, result.runId, result.trialId);
+  expect(
+    autEvents.some(
+      (event) => event.kind === 'tool-call' && event.id === 'judge-tool',
+    ),
+  ).toBe(false);
+  expect(reviewer.closed).toBe(2);
+  expect(aut.closed).toBe(1);
+});
+
+test('a failed inline judge triggers failfast; a partial final judge still cannot erase it', async () => {
+  const dir = await root();
+  const aut = writerAgent();
+  const reviewer = fakeJudge((request) => request.placement !== 'transcript');
+  const evaluation = defineEval({
+    id: 'judge-failfast',
+    agent: aut.agent,
+    judge: reviewer.agent,
+    transcript: [
+      user('first'),
+      judge('inline verdict', { rubric: 'Did it pass?' }),
+      user('revise'),
+      predicate('skipped', () => true),
+    ],
+    scoring: [
+      judge('final verdict', {
+        rubric: 'What was observed?',
+        supportsPartial: true,
+      }),
+    ],
+    policy: { failfast: true },
+  });
+  const result = await Effect.runPromise(
+    runEval(evaluation, { report: localReportStore(dir) }),
+  );
+  expect(result.status).toBe('completed');
+  expect(result.scoring?.passed).toBe(false);
+  expect(result.scoring?.checkpoints?.map((entry) => entry.status)).toEqual([
+    'failed',
+    'skipped',
+  ]);
+  expect(
+    result.scoring?.results.map((entry) => [entry.kind, entry.value]),
+  ).toEqual([['judge', 1]]);
+  expect(reviewer.requests.map((request) => request.placement)).toEqual([
+    'transcript',
+    'scoring',
+  ]);
+  expect(aut.sends).toEqual(['first']);
+});
+
+test('judge configuration and provider errors fail explicitly in either placement', async () => {
+  const aut = writerAgent();
+  expect(() =>
+    defineEval({
+      id: 'no-provider',
+      agent: aut.agent,
+      transcript: [user('first'), judge('verdict', { rubric: 'Is it good?' })],
+      scoring: [],
+    }),
+  ).toThrow('judge agent');
+  const dir = await root();
+  const reviewer = defineAgent({
+    async start() {
+      throw new Error('judge unavailable');
+    },
+  });
+  const evaluation = defineEval({
+    id: 'judge-error',
+    agent: aut.agent,
+    judge: reviewer,
+    transcript: [
+      user('first'),
+      judge('verdict', { rubric: 'Is it good?' }),
+      user('later'),
+    ],
+    scoring: [],
+  });
+  const failed = await Effect.runPromise(
+    runEval(evaluation, { report: localReportStore(dir) }),
+  );
+  expect(failed.status).toBe('failed');
+  expect(failed.scoring?.checkpoints?.[0]).toMatchObject({
+    kind: 'judge',
+    status: 'error',
+  });
+  expect(aut.sends).toEqual(['first']);
+  const finalOnly = defineEval({
+    ...evaluation,
+    id: 'final-judge-error',
+    transcript: [user('first')],
+    scoring: [judge('verdict', { rubric: 'Is it good?' })],
+  });
+  const scored = await Effect.runPromise(
+    runEval(finalOnly, { report: localReportStore(dir) }),
+  );
+  expect(scored.status).toBe('completed');
+  expect(scored.scoring?.results[0]).toMatchObject({
+    kind: 'judge',
+    passed: false,
+    error: { name: 'ScoringError' },
+  });
+  expect(scored.scoring?.passed).toBe(false);
+});
+
+test('malformed judge verdicts fail explicitly and still close the judge and AUT sessions', async () => {
+  const dir = await root();
+  const aut = writerAgent();
+  const reviewer = fakeJudge(() => ({ value: 1 }), { invalid: true });
+  const evaluation = defineEval({
+    id: 'bad-judge-verdict',
+    agent: aut.agent,
+    judge: reviewer.agent,
+    transcript: [
+      user('first'),
+      judge('verdict', { rubric: 'Is it good?' }),
+      user('later'),
+    ],
+    scoring: [],
+  });
+  const result = await Effect.runPromise(
+    runEval(evaluation, { report: localReportStore(dir) }),
+  );
+  expect(result.status).toBe('failed');
+  expect(result.scoring?.checkpoints?.[0]).toMatchObject({
+    kind: 'judge',
+    status: 'error',
+  });
+  expect(aut.sends).toEqual(['first']);
+  expect(aut.closed).toBe(1);
+  expect(reviewer.closed).toBe(1);
 });
 
 test('the shared reader still decodes existing v2 reports', async () => {

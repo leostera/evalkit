@@ -1,12 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  check,
-  defineEval,
-  expectToolCall,
-  predicate,
-  user,
-} from '@evalkit/core';
+import { defineEval, expectToolCall, predicate, user } from '@evalkit/core';
 import { fileAgent } from '../agents/file-agent.js';
 
 // The AUT emits the expected call but writes the wrong file. The first file check
@@ -16,15 +10,15 @@ export default defineEval({
   agent: fileAgent({ firstWrite: 'wrong' }),
   transcript: [
     user('Write 2112 into number.txt.'),
-    check(
+    predicate(
       'first reply',
-      ({ turn }) => typeof turn.lastAssistantText === 'string',
+      ({ turn }) => typeof turn?.lastAssistantText === 'string',
     ),
     expectToolCall({
       name: 'write_file',
       arguments: { path: 'number.txt', contents: '2112' },
     }),
-    check('first file version', async ({ artifacts }) => {
+    predicate('first file version', async ({ artifacts }) => {
       const content = await readFile(
         join(artifacts.candidate.root, 'number.txt'),
         'utf8',
@@ -35,7 +29,7 @@ export default defineEval({
       return content === '2112';
     }),
     user('Revise number.txt to 2113.'), // skipped when the first file check fails
-    check('revised file version', async ({ artifacts, turn }) => {
+    predicate('revised file version', async ({ artifacts, turn }) => {
       const content = await readFile(
         join(artifacts.candidate.root, 'number.txt'),
         'utf8',
@@ -44,7 +38,7 @@ export default defineEval({
         throw error;
       });
       return (
-        turn.lastAssistantText?.includes('2113') === true && content === '2113'
+        turn?.lastAssistantText?.includes('2113') === true && content === '2113'
       );
     }),
   ],

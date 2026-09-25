@@ -20,6 +20,12 @@ export class ScoringError extends Data.TaggedError('ScoringError')<{
   message?: string;
 }> {}
 
+export class RuleExecutionError extends Data.TaggedError('RuleExecutionError')<{
+  name: string;
+  message: string;
+  cause: unknown;
+}> {}
+
 export class CheckpointExecutionError extends Data.TaggedError(
   'CheckpointExecutionError',
 )<{

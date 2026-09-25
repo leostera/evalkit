@@ -57,7 +57,7 @@ export type WorkspaceEntry = {
 
 export type CheckpointResult = {
   step: number;
-  kind: 'check' | 'expect-tool-call';
+  kind: 'predicate' | 'judge' | 'expect-tool-call';
   name: string;
   status: 'passed' | 'failed' | 'error' | 'skipped';
   value?: number;
@@ -77,6 +77,7 @@ export type TrialSummary = {
   score?: number;
   scores: Array<{
     name: string;
+    kind?: 'predicate' | 'judge';
     value?: number;
     passed?: boolean;
     explanation?: string;
