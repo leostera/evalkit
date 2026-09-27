@@ -1,0 +1,299 @@
+import * as Schema from 'effect/Schema';
+import { resourceUriSchema } from './identity.js';
+import type { JsonValue, TrajectoryEvent } from './index.js';
+
+/** Runtime schemas for serialized EvalKit report and API boundaries. */
+export const RunStatusSchema = Schema.Literal(
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+);
+
+export const RecordedErrorSchema = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  stack: Schema.optional(Schema.String),
+});
+
+export const AutIdentitySchema = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  kind: Schema.String,
+  id: Schema.String,
+  version: Schema.optional(Schema.String),
+});
+
+// Payloads and scorer evidence are provider-neutral JSON, not benchmark-specific objects.
+export const JsonValueSchema: Schema.Schema<JsonValue> = Schema.suspend(() =>
+  Schema.Union(
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonValueSchema)),
+    Schema.Record({ key: Schema.String, value: JsonValueSchema }),
+  ),
+);
+
+const ParametersSchema = Schema.Record({
+  key: Schema.String,
+  value: JsonValueSchema,
+});
+const MatrixCellSchema = Schema.Struct({
+  id: Schema.String,
+  cellKey: Schema.String,
+});
+
+export const RunMetadataSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(2, 3),
+  runUri: resourceUriSchema('run'),
+  evalId: Schema.String,
+  suiteId: Schema.optional(Schema.String),
+  parameters: Schema.optional(ParametersSchema),
+  matrix: Schema.optional(MatrixCellSchema),
+  aut: Schema.optional(AutIdentitySchema),
+  startedAt: Schema.String,
+});
+
+export const TrialMetadataSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(2, 3),
+  runUri: resourceUriSchema('run'),
+  trialUri: resourceUriSchema('trial'),
+  trialIndex: Schema.Number,
+  evalId: Schema.String,
+  parameters: Schema.optional(ParametersSchema),
+  matrix: Schema.optional(MatrixCellSchema),
+  aut: Schema.optional(AutIdentitySchema),
+  startedAt: Schema.String,
+});
+
+/** On-disk manifests include a lifecycle status; older finalized manifests may still say running. */
+export const RunManifestSchema = Schema.Struct({
+  ...RunMetadataSchema.fields,
+  status: Schema.optional(RunStatusSchema),
+});
+export const TrialManifestSchema = Schema.Struct({
+  ...TrialMetadataSchema.fields,
+  status: Schema.optional(RunStatusSchema),
+});
+
+export const UsageSchema = Schema.Struct({
+  inputTokens: Schema.optional(Schema.Number),
+  outputTokens: Schema.optional(Schema.Number),
+  totalTokens: Schema.optional(Schema.Number),
+});
+
+export const JudgeRunInfoSchema = Schema.Struct({
+  agent: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      kind: Schema.String,
+      name: Schema.optional(Schema.String),
+      version: Schema.optional(Schema.String),
+    }),
+  ),
+  usage: Schema.optional(UsageSchema),
+  events: Schema.optional(Schema.mutable(Schema.Array(JsonValueSchema))),
+});
+
+export const ScoreResultSchema = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literal('predicate', 'judge'),
+  value: Schema.optional(Schema.Number),
+  passed: Schema.optional(Schema.Boolean),
+  explanation: Schema.optional(Schema.String),
+  evidence: Schema.optional(JsonValueSchema),
+  judge: Schema.optional(JudgeRunInfoSchema),
+  durationMs: Schema.Number,
+  error: Schema.optional(RecordedErrorSchema),
+});
+export const CheckpointResultSchema = Schema.Struct({
+  step: Schema.Number,
+  kind: Schema.Literal('predicate', 'judge', 'expect-tool-call'),
+  name: Schema.String,
+  status: Schema.Literal('passed', 'failed', 'error', 'skipped'),
+  value: Schema.optional(Schema.Number),
+  passed: Schema.optional(Schema.Boolean),
+  explanation: Schema.optional(Schema.String),
+  evidence: Schema.optional(JsonValueSchema),
+  judge: Schema.optional(JudgeRunInfoSchema),
+  durationMs: Schema.optional(Schema.Number),
+  error: Schema.optional(RecordedErrorSchema),
+  matchedToolCall: Schema.optional(
+    Schema.Struct({ eventIndex: Schema.Number, id: Schema.String }),
+  ),
+});
+export const TrialScoringSchema = Schema.Struct({
+  results: Schema.mutable(Schema.Array(ScoreResultSchema)),
+  checkpoints: Schema.optional(
+    Schema.mutable(Schema.Array(CheckpointResultSchema)),
+  ),
+  skippedScorers: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  overall: Schema.optional(Schema.Number),
+  passed: Schema.Boolean,
+});
+export const ArtifactEntrySchema = Schema.Struct({
+  path: Schema.String,
+  kind: Schema.Literal('file', 'directory'),
+  size: Schema.optional(Schema.Number),
+});
+export const TrialSummarySchema = Schema.Struct({
+  status: RunStatusSchema,
+  endedAt: Schema.String,
+  durationMs: Schema.optional(Schema.Number),
+  scoring: Schema.optional(TrialScoringSchema),
+  artifacts: Schema.optional(Schema.mutable(Schema.Array(ArtifactEntrySchema))),
+  error: Schema.optional(RecordedErrorSchema),
+});
+
+export const RunSummarySchema = Schema.Struct({
+  status: RunStatusSchema,
+  endedAt: Schema.String,
+  durationMs: Schema.optional(Schema.Number),
+  trialCount: Schema.Number,
+  passed: Schema.Number,
+  failed: Schema.Number,
+  error: Schema.optional(RecordedErrorSchema),
+});
+
+const autEvent = {
+  started: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('started'),
+    timestamp: Schema.String,
+  }),
+  message: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('message'),
+    role: Schema.Literal('system', 'user', 'assistant', 'tool'),
+    content: JsonValueSchema,
+    timestamp: Schema.String,
+  }),
+  toolCall: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('tool-call'),
+    id: Schema.String,
+    name: Schema.String,
+    arguments: JsonValueSchema,
+    timestamp: Schema.String,
+  }),
+  toolResult: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('tool-result'),
+    id: Schema.String,
+    name: Schema.optional(Schema.String),
+    result: JsonValueSchema,
+    timestamp: Schema.String,
+  }),
+  turnStarted: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('turn-started'),
+    turn: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  turnCompleted: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('turn-completed'),
+    turn: Schema.Number,
+    timestamp: Schema.String,
+    latencyMs: Schema.optional(Schema.Number),
+    usage: Schema.optional(UsageSchema),
+  }),
+  completed: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('completed'),
+    output: Schema.optional(JsonValueSchema),
+    timestamp: Schema.String,
+  }),
+  error: Schema.Struct({
+    source: Schema.Literal('aut'),
+    kind: Schema.Literal('error'),
+    error: RecordedErrorSchema,
+    timestamp: Schema.String,
+  }),
+};
+const runnerEvent = {
+  trialStarted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('trial-started'),
+    timestamp: Schema.String,
+  }),
+  stepStarted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('transcript-step-started'),
+    step: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  stepCompleted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('transcript-step-completed'),
+    step: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  stepSkipped: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('transcript-step-skipped'),
+    step: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  checkpointStarted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-started'),
+    step: Schema.Number,
+    name: Schema.String,
+    timestamp: Schema.String,
+  }),
+  checkpointCompleted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-completed'),
+    step: Schema.Number,
+    status: Schema.Literal('passed', 'failed'),
+    timestamp: Schema.String,
+  }),
+  checkpointError: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('checkpoint-error'),
+    step: Schema.Number,
+    error: RecordedErrorSchema,
+    timestamp: Schema.String,
+  }),
+  scorerStarted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('scorer-started'),
+    scorer: Schema.String,
+    timestamp: Schema.String,
+  }),
+  scorerCompleted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('scorer-completed'),
+    scorer: Schema.String,
+    value: Schema.Number,
+    timestamp: Schema.String,
+  }),
+  scorerFailed: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('scorer-failed'),
+    scorer: Schema.String,
+    error: RecordedErrorSchema,
+    timestamp: Schema.String,
+  }),
+  trialCompleted: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('trial-completed'),
+    timestamp: Schema.String,
+  }),
+  error: Schema.Struct({
+    source: Schema.Literal('runner'),
+    kind: Schema.Literal('error'),
+    error: RecordedErrorSchema,
+    timestamp: Schema.String,
+  }),
+};
+
+export const TrajectoryEventSchema: Schema.Schema<TrajectoryEvent> =
+  Schema.Union(...Object.values(autEvent), ...Object.values(runnerEvent));
+
+export const ApiErrorSchema = Schema.Struct({
+  error: Schema.String,
+  message: Schema.String,
+});

@@ -1,0 +1,23 @@
+{
+  "name": "@evalkit/runner",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "effect": "^3.19.0"
+  },
+  "peerDependencies": {
+    "@evalkit/core": "*"
+  },
+  "peerDependenciesMeta": {
+    "@evalkit/core": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check": "tsc --noEmit"
+  }
+}

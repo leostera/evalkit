@@ -1,0 +1,9 @@
+{
+  "name": "@evalkit/example-agents-sdk",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@evalkit/core": "workspace:*",
+    "@evalkit/agents": "workspace:*"
+  }
+}

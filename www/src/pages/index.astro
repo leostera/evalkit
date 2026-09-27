@@ -1,0 +1,36 @@
+---
+import Site from '../layouts/Site.astro';
+import { heroDefinition } from '../content/snippets';
+---
+
+<Site title="EvalKit — author agent evals as code" description="A local-first kit for writing agent evals as code. Version definitions with your team, reuse fixtures and predicate judges, compare model settings, and inspect saved results." active="home">
+  <section class="hero wrap">
+    <div class="hero-copy">
+      <h1>Write evals <em>as code</em></h1>
+      <p class="hero-lede">EvalKit is a kit for authoring agent evals in TypeScript. Version them with your team, reuse fixtures and code-based judges, test across model settings, and keep the results as files you can inspect.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="/docs/">Get started <span aria-hidden="true">↗</span></a>
+        <a class="button button-quiet" href="https://github.com/leostera/evalkit">View source <span aria-hidden="true">→</span></a>
+      </div>
+      <p class="hero-note">Your evals live in your repo. Your runs live on disk.</p>
+    </div>
+    <div class="hero-code">
+      <div class="code-card"><div class="code-header">greeting.eval.ts <span class="code-header-right">TypeScript</span></div><pre><code>{heroDefinition}</code></pre><div class="code-footer">Typed definitions. Reusable parts. Reviewable changes.</div></div>
+      <a class="hero-code-source" href="https://github.com/leostera/evalkit/blob/main/examples/starter/evals/greeting.eval.ts">See the runnable starter source <span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+
+  <section class="section wrap" id="how-it-works">
+    <div class="section-intro"><h2>A test suite your team can build together.</h2><p>Keep eval definitions in Git, review changes like any other code, and reuse the building blocks instead of rebuilding each test from scratch.</p></div>
+    <div class="feature-grid">
+      <article class="feature"><h3>Author evals as code.</h3><p>Define tasks, transcripts, trial policies, and success criteria in TypeScript. Diff and review eval changes alongside your app.</p><a href="/docs/manual/scoring-and-evals/">Writing evals <span aria-hidden="true">→</span></a></article>
+      <article class="feature"><h3>Reuse fixtures and judges.</h3><p>Use the same input files and predicate scorers across evals. Keep evaluator-only answers separate from what the agent can see.</p><a href="/docs/manual/fixtures/">Working with fixtures <span aria-hidden="true">→</span></a></article>
+      <article class="feature"><h3>Compare model settings.</h3><p>Configure a lazy parameter matrix to run the same eval across settings. Have your adapter apply the selected model.</p><a href="/docs/manual/cli-and-matrices/">Running matrices <span aria-hidden="true">→</span></a></article>
+    </div>
+  </section>
+
+  <section class="section wrap artifacts-section"><div class="section-intro"><h2>Version the definition. Keep the result.</h2><p>Git tracks the eval code your team reviews. Each local run saves manifests, scores, trajectories, and candidate artifacts as files you can inspect, compare, or selectively archive for a history of results.</p></div><div class="artifact-grid"><div class="artifact-card"><div><strong>trajectory.jsonl</strong><span>Every recorded event, in order.</span></div></div><div class="artifact-card"><div><strong>scoring.json</strong><span>Values, explanations, and evidence.</span></div></div><div class="artifact-card"><div><strong>artifacts/candidate/</strong><span>The files the agent worked with.</span></div></div><div class="artifact-card"><div><strong>Local dashboard</strong><span>Browse runs and trial evidence.</span></div></div></div></section>
+
+  <section class="cta-band"><div class="wrap cta-content"><div><h2>Write the eval once.<br /><em>Test the next change.</em></h2><p>Start locally with a runnable example. No hosted account required.</p></div><a class="button button-dark" href="/docs/">Open the getting started guide <span aria-hidden="true">↗</span></a></div></section>
+</Site>
