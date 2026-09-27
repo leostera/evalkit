@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root {
+  --sl-font: 'DM Sans';
+  --sl-font-mono: 'DM Mono';
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #eae9e2;
+  --sl-color-accent: #393833;
+  --sl-color-accent-high: #171717;
+  --sl-color-text-accent: #171717;
+  --sl-color-bg: #f5f4ef;
+  --sl-color-bg-nav: #f5f4ef;
+  --sl-color-bg-sidebar: #f5f4ef;
+  --sl-color-bg-inline-code: #eae9e2;
+}
+
+:root[data-theme='light'] .expressive-code {
+  --ec-codeBg: #faf9f5;
+}
+
+main h1,
+.sl-markdown-content h2 {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+
+main h1 { font-size: clamp(2.8rem, 5vw, 4.5rem); }
+.sl-markdown-content h2 { font-size: clamp(2rem, 3vw, 2.8rem); }
+.sl-markdown-content { max-width: 72ch; line-height: 1.7; }
+.sl-markdown-content :not(pre) > code { overflow-wrap: anywhere; }
+.sl-markdown-content a { text-underline-offset: 0.2em; }
+
+:root { color-scheme: light dark; }
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+::selection { background: #393833; color: #fff; }
+:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 3px; }

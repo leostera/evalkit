@@ -1,0 +1,57 @@
+{
+  "name": "@leostera/evalkit",
+  "version": "0.0.1",
+  "description": "Author and run agent evals as code",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leostera/evalkit.git"
+  },
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*",
+    "examples/*",
+    "www"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.mts",
+      "import": "./dist/runner.mjs"
+    }
+  },
+  "bin": {
+    "evalkit": "./dist/cli.mjs"
+  },
+  "dependencies": {
+    "effect": "^3.22.2",
+    "hono": "^4.11.6"
+  },
+  "scripts": {
+    "build": "bun run --filter './packages/*' build && bun scripts/sync-package.ts",
+    "check": "bun run --filter './packages/*' check && bun run --filter './examples/*' check",
+    "test": "bun test",
+    "pack:check": "bun packages/evalkit/scripts/pack-check.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "rm -rf packages/*/dist dist"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "latest",
+    "typescript": "latest"
+  }
+}
