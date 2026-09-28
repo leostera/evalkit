@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import type { CatalogEval, MatrixSummary, RunSummary } from '../api.js';
+import type {
+  CatalogEval,
+  DashboardApi,
+  MatrixSummary,
+  RunSummary,
+} from '../api.js';
+import { ConstrainedMatrixTable } from './ConstrainedMatrixTable.js';
 import { agentName } from './agentName.js';
 import { EvalRow } from './EvalRow.js';
 import {
@@ -73,7 +79,22 @@ export function filterMatrixRows(
   });
 }
 
-export function MatrixEvalTable({
+export function MatrixEvalTable(props: {
+  api: DashboardApi;
+  evalIds: string[];
+  catalog: CatalogEval[];
+  matrix?: MatrixSummary | null;
+  runs: RunSummary[];
+  nested?: boolean;
+  onRun(path: string, parameters?: Record<string, unknown>): void;
+  onOpenEval(entry: CatalogEval): void;
+}) {
+  if (props.matrix?.constrained)
+    return <ConstrainedMatrixTable {...props} matrix={props.matrix} />;
+  return <CartesianMatrixEvalTable {...props} />;
+}
+
+function CartesianMatrixEvalTable({
   evalIds,
   catalog,
   matrix,

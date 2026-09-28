@@ -138,6 +138,8 @@ export async function runProjectCommand(
       evals: suite.evals,
       parameters: project.config.matrix?.parameters ?? {},
       defaults: project.config.matrix?.defaults,
+      cases: project.config.matrix?.cases,
+      exclude: project.config.matrix?.exclude,
     });
   } else {
     requestedEvals.push(...positionals.flatMap((value) => value.split(',')));
@@ -155,7 +157,10 @@ export async function runProjectCommand(
     ...(requestedEvals.length ? { evals: requestedEvals } : {}),
   };
   for (const [axis, choices] of Object.entries(parsed.selection)) {
-    if (axis in matrix.parameters)
+    if (
+      axis in matrix.parameters ||
+      matrix.cases?.some((assignment) => Object.hasOwn(assignment, axis))
+    )
       (selection.parameters as Record<string, JsonValue[]>)[axis] = choices;
     else if (
       (axis === 'model' || axis === 'mode') &&
@@ -167,7 +172,10 @@ export async function runProjectCommand(
     else throw new Error(`Unknown matrix axis: ${axis}`);
   }
   const cells = matrix.count(selection);
-  if (!cells) throw new Error('Selection contains no cells');
+  if (!cells)
+    throw new Error(
+      'Selection contains no eligible cells; check cases and exclusions',
+    );
   const trials = parsed.trials ?? project.config.execution?.trials;
   const plan = {
     matrix: authoringId(matrix),

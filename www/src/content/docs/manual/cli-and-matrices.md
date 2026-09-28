@@ -19,13 +19,13 @@ bun run evalkit run-matrix letter-case --dry-run
 bun run evalkit run-matrix letter-case --eval case-transform --select style=upper
 ```
 
-| Command                   | Selection                                                                                                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                   | Selection                                                                                                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `new <directory>`         | Generate a provider-free project with `bunx https://github.com/leostera/evalkit.git new ./evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add https://github.com/leostera/evalkit`. Never overwrites existing evals. |
-| `run-evals [eval-id,...]` | Run all registered/discovered evals, or select comma-separated IDs/positionals or repeat `--eval <id,...>`. If a config defines a matrix, this command sweeps its selected cells too. |
-| `run-matrix <matrix-id>`  | Run a configured or explicitly registered matrix, optionally filtered with `--eval` and axis flags.                                                                                   |
-| `run-suite <suite-id>`    | Run the evals in an explicitly registered suite. If a project matrix is configured, uses its axes/defaults over the suite's evals; otherwise each runs once.                          |
-| `serve-dashboard`         | Start the local report viewer and run launcher; `--config` selects a project.                                                                                                         |
+| `run-evals [eval-id,...]` | Run all registered/discovered evals, or select comma-separated IDs/positionals or repeat `--eval <id,...>`. If a config defines a matrix, this command sweeps its selected cells too.                                                                      |
+| `run-matrix <matrix-id>`  | Run a configured or explicitly registered matrix, optionally filtered with `--eval` and axis flags.                                                                                                                                                        |
+| `run-suite <suite-id>`    | Run the evals in an explicitly registered suite. If a project matrix is configured, uses its axes/defaults over the suite's evals; otherwise each runs once.                                                                                               |
+| `serve-dashboard`         | Start the local report viewer and run launcher; `--config` selects a project.                                                                                                                                                                              |
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. A zero-config discovery project has no suites and no named project matrix. See [Project structure](/docs/manual/project-structure/) for registering those.
 
@@ -33,7 +33,7 @@ Running every eval in the starter also starts Pi-backed examples. They need an i
 
 ## Matrix definitions and selection
 
-A matrix is a lazy Cartesian expansion of registered evals × axis choices; it does not allocate a list of every cell up front. For a runnable provider-free example, configure `style` instead of claiming a model has been selected:
+A matrix lazily expands registered evals across declared choices. Independent axes form a Cartesian product; optional correlated `cases` and partial `exclude` patterns restrict it to eligible cells without scheduling invalid combinations. For a runnable provider-free example, configure `style` instead of claiming a model has been selected:
 
 ```ts
 // evalkit.config.ts
@@ -50,6 +50,8 @@ export default defineConfig({
 ```
 
 With one discovered eval and two styles this plans **two cells**. Axis names are sorted for stable expansion; each `cellKey` is a canonical JSON key of the matrix ID, eval ID, and **effective** parameters. Defaults are merged with CLI non-axis overrides, then each axis supplies its selected value. Duplicate axis values or empty axes fail configuration; axis selections must be among the configured choices. Cell parameters and matrix provenance are written to every run/trial manifest.
+
+To avoid combinations you cannot run, add a partial exclusion: `exclude: [{ os: 'windows', arch: 'arm64' }]` removes Windows ARM across every other axis. To correlate choices, use `cases: [{ language: 'ruby', framework: 'rails' }, { language: 'go', framework: 'gin' }]`; each complete case crosses with the independent `parameters` axes. Case keys must be consistent, must not overlap axis or default keys, and can be selected with `--select language=ruby`. Exclusions match declared dimensions, not non-axis overrides. `--dry-run` and `maxCells` count only eligible cells; selecting an excluded combination produces a zero-cell error. For details and future comparison work, see [RFD0005](https://github.com/leostera/evalkit/blob/main/docs/rfds/RFD0005-constrained-matrices-and-comparisons.md).
 
 ```sh
 bun run evalkit run-matrix letter-case --eval case-transform --dry-run
@@ -79,4 +81,4 @@ CLI flags expecting positive integers reject zero, fractions, and negative numbe
 
 `bun run evalkit serve-dashboard` serves the bundled local UI (default `http://localhost:4317`). Set `PORT=4318` to choose another port or `EVALKIT_NO_OPEN=1` to prevent its best-effort browser launch. Use the dashboard to browse cataloged suites/evals/agents/fixtures, launch runs, and inspect trials, scores, trajectories, and candidate files from [local reports](/docs/manual/results/).
 
-With a config-backed matrix, the dashboard asks for **one eval and one configured value for every axis** and starts **one cell** per request. It does not launch an entire suite under that matrix; use the CLI to sweep or run the suite. It rejects a second matrix cell while one is in flight. Without a config-backed matrix it can launch a single eval or an explicit suite, but does not accept custom parameter overrides in the UI. `serve-dashboard` reads the same project and report directory as CLI runs; it is a local server, not a hosted synchronization service.
+With an unconstrained config-backed matrix, the dashboard asks for **one eval and one configured value for every axis** and starts **one cell** per request. For matrices with `cases` or `exclude`, the dashboard lists only eligible cells through a bounded, server-backed view; you can search, sort, page, and launch one cell at a time. It rejects excluded or invalid one-cell submissions. For selections above 100,000 eligible cells, narrow the matrix using the CLI; the dashboard does not scan unbounded plans. It does not launch an entire suite under a matrix; use the CLI to sweep or run the suite. It rejects a second matrix cell while one is in flight. Without a config-backed matrix it can launch a single eval or an explicit suite, but does not accept custom parameter overrides in the UI. `serve-dashboard` reads the same project and report directory as CLI runs; it is a local server, not a hosted synchronization service.

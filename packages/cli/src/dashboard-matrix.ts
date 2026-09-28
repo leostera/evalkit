@@ -17,7 +17,10 @@ export function selectDashboardCell(
   )
     throw new Error('Select one value for every matrix axis');
   const provided = parameters as Record<string, unknown>;
-  const axes = Object.keys(matrix.parameters);
+  const axes = [
+    ...Object.keys(matrix.parameters),
+    ...Object.keys(matrix.cases?.[0] ?? {}),
+  ];
   if (
     Object.keys(provided).length !== axes.length ||
     axes.some((axis) => !Object.hasOwn(provided, axis))
@@ -26,9 +29,12 @@ export function selectDashboardCell(
   const selected: Record<string, unknown[]> = {};
   for (const axis of axes) {
     const value = provided[axis];
-    // JSON from the request must match a configured choice; arrays are valid values, not selections.
+    // JSON from the request must match a declared choice; arrays are values, not selections.
+    const choices =
+      matrix.parameters[axis] ??
+      matrix.cases!.map((assignment) => assignment[axis]!);
     if (
-      !matrix.parameters[axis]!.some(
+      !choices.some(
         (choice) =>
           canonicalParameters(choice) === canonicalParameters(value as never),
       )
@@ -41,6 +47,6 @@ export function selectDashboardCell(
     parameters: selected,
   } as MatrixSelection;
   if (matrix.count(selection) !== 1)
-    throw new Error('Selection must contain exactly one cell');
+    throw new Error('Selection must contain exactly one eligible cell');
   return selection;
 }

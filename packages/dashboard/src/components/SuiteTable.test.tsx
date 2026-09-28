@@ -140,6 +140,16 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
   expect(html).not.toContain('disabled=""');
 });
 
+test('constrained matrices load eligible cells instead of rendering a Cartesian product', () => {
+  const html = render([], [standalone], [], {
+    id: 'platforms',
+    parameters: { os: ['windows', 'linux'], arch: ['arm64', 'x86_64'] },
+    constrained: true,
+  });
+  expect(html).toContain('Loading cells');
+  expect(html).not.toContain('Run eval');
+});
+
 test('suite members also display one row per configured matrix cell', () => {
   const html = render(
     [{ id: 'starter', evalIds: ['echo'] }],

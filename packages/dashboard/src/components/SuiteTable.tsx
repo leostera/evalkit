@@ -104,6 +104,7 @@ export function SuiteTable({
                     <tr key={`${suite.id}-evals`}>
                       <td colSpan={4}>
                         <MatrixEvalTable
+                          api={api}
                           evalIds={suite.evalIds}
                           catalog={catalog}
                           matrix={matrix}
@@ -126,6 +127,7 @@ export function SuiteTable({
           <h2>Standalone evals</h2>
           <div className="table-wrap">
             <MatrixEvalTable
+              api={api}
               evalIds={standalone.map((evaluation) => evaluation.id)}
               catalog={catalog}
               matrix={matrix}

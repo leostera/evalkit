@@ -25,6 +25,25 @@ export type MatrixSummary = {
   id: string;
   parameters: Record<string, unknown[]>;
   trials?: number;
+  /** Until the dashboard supports planner-backed cell listing, use the CLI for constrained sweeps. */
+  constrained?: boolean;
+  dimensions?: string[];
+};
+export type MatrixCellPage = {
+  total: number;
+  planned: number;
+  cells: Array<{
+    evalId: string;
+    key: string;
+    parameters: Record<string, unknown>;
+  }>;
+};
+export type MatrixCellQuery = {
+  evalIds: string[];
+  query: string;
+  offset: number;
+  sort: string;
+  direction: 'asc' | 'desc';
 };
 export type SuiteSummary = {
   id: string;
@@ -38,6 +57,7 @@ export type RunSummary = {
   suiteId?: string;
   agent?: string;
   matrixId?: string;
+  cellKey?: string;
   parameters?: Record<string, unknown>;
   /** Dashboard status: terminal runs are passed, failed, or errored. */
   status: 'running' | 'passed' | 'failed' | 'errored';
@@ -102,6 +122,7 @@ type FetchLike = (
 export interface DashboardApi {
   listCatalog(): Promise<CatalogEval[]>;
   getMatrix(): Promise<MatrixSummary | null>;
+  listMatrixCells(query: MatrixCellQuery): Promise<MatrixCellPage>;
   listEvals(): Promise<EvalSummary[]>;
   listSuites(): Promise<SuiteSummary[]>;
   listRuns(): Promise<RunSummary[]>;
@@ -133,13 +154,25 @@ export function createHttpDashboardApi(options: {
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const response = await send(new URL(path, options.baseUrl), init);
     if (!response.ok)
-      throw new Error(`Dashboard request failed: ${response.status}`);
+      throw new Error(
+        (await response.text()) ||
+          `Dashboard request failed: ${response.status}`,
+      );
     return response.json() as Promise<T>;
   };
 
   return {
     async listCatalog() {
       return (await request<{ evals: CatalogEval[] }>('/v1/catalog')).evals;
+    },
+    async listMatrixCells(query) {
+      const url = new URL('/v1/matrix/cells', options.baseUrl);
+      for (const id of query.evalIds) url.searchParams.append('eval', id);
+      url.searchParams.set('q', query.query);
+      url.searchParams.set('offset', String(query.offset));
+      url.searchParams.set('sort', query.sort);
+      url.searchParams.set('direction', query.direction);
+      return request<MatrixCellPage>(url.pathname + url.search);
     },
     async getMatrix() {
       return (await request<{ matrix: MatrixSummary | null }>('/v1/matrix'))

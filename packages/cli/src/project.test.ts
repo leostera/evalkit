@@ -66,6 +66,60 @@ test('config-relative discovery, duplicate IDs, and ambiguous configs fail clear
   await expect(loadProject(root)).rejects.toThrow('Multiple EvalKit configs');
 });
 
+test('CLI plans only eligible cells for configured and suite matrices', async () => {
+  const root = await project();
+  await writeFile(join(root, 'evals/a.eval.ts'), evaluation(1));
+  await writeFile(
+    join(root, 'evalkit.config.js'),
+    `export default {
+    matrix: { id: 'platforms', parameters: { os: ['windows', 'linux'], arch: ['arm64', 'x86_64'] }, exclude: [{ os: 'windows', arch: 'arm64' }] }
+  };`,
+  );
+  const matrix = (await loadProject(root)).registry.matrices[0]!;
+  expect(matrix.count()).toBe(3);
+  const child = Bun.spawn(
+    [
+      'bun',
+      resolve(import.meta.dir, 'index.ts'),
+      'run-matrix',
+      'platforms',
+      '--dry-run',
+    ],
+    {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  const [output, status] = await Promise.all([
+    new Response(child.stdout).text(),
+    child.exited,
+  ]);
+  expect(status).toBe(0);
+  expect(JSON.parse(output).cells).toBe(3);
+  const excluded = Bun.spawn(
+    [
+      'bun',
+      resolve(import.meta.dir, 'index.ts'),
+      'run-matrix',
+      'platforms',
+      '--select',
+      'os=windows',
+      '--select',
+      'arch=arm64',
+      '--dry-run',
+    ],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  );
+  const [error, excludedStatus] = await Promise.all([
+    new Response(excluded.stderr).text(),
+    excluded.exited,
+  ]);
+  expect(excludedStatus).not.toBe(0);
+  expect(error).toContain('no eligible cells');
+  expect(await readdir(root)).not.toContain('_evalkit-results');
+});
+
 test('parser handles values before positionals and rejects unknown or invalid flags', () => {
   const parsed = parseRunArgs([
     '--max-tokens',
