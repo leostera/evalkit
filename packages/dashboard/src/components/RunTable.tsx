@@ -13,6 +13,7 @@ import {
   type SortState,
 } from './SortableTable.js';
 import { TrialTable } from './TrialTable.js';
+import { filterRunFacets, runFacets } from './run-facets.js';
 
 function display(value: unknown): string {
   return typeof value === 'string'
@@ -70,6 +71,8 @@ export function RunTable({
   onTrial,
   onOpenRun,
   selectedRunId,
+  search,
+  onSearchChange,
 }: {
   api: DashboardApi;
   runs: RunSummary[];
@@ -78,11 +81,37 @@ export function RunTable({
   onTrial(run: RunSummary, trial: TrialSummary): void;
   onOpenRun(run: RunSummary): void;
   selectedRunId?: string;
+  search?: URLSearchParams;
+  onSearchChange?(next: URLSearchParams): void;
 }) {
   const [trials, setTrials] = useState<Record<string, TrialSummary[]>>({});
-  const [query, setQuery] = useState('');
+  const [localSearch, setLocalSearch] = useState(() => new URLSearchParams());
+  const activeSearch = search ?? localSearch;
+  const updateSearch = onSearchChange ?? setLocalSearch;
+  const query = activeSearch.get('q') ?? '';
+  const facets = useMemo(() => runFacets(runs), [runs]);
   const parameterColumns = useMemo(() => runParameterColumns(runs), [runs]);
-  const filteredRuns = filterRuns(runs, query, suites, catalog);
+  const filteredRuns = filterRuns(
+    filterRunFacets(runs, activeSearch),
+    query,
+    suites,
+    catalog,
+  );
+  const toggleFacet = (facet: string, value: string) => {
+    const next = new URLSearchParams(activeSearch);
+    const values = next.getAll(facet);
+    next.delete(facet);
+    for (const selected of values.filter((selected) => selected !== value))
+      next.append(facet, selected);
+    if (!values.includes(value)) next.append(facet, value);
+    updateSearch(next);
+  };
+  const setField = (field: string, value: string) => {
+    const next = new URLSearchParams(activeSearch);
+    if (value) next.set(field, value);
+    else next.delete(field);
+    updateSearch(next);
+  };
   // A run can appear before its first trial is persisted; refresh expanded trials
   // when the run list is polled rather than caching an empty result forever.
   useEffect(() => {
@@ -148,155 +177,218 @@ export function RunTable({
       <Empty message="No runs yet. Select an eval or suite to start one." />
     );
   return (
-    <div className="table-wrap">
-      <label className="matrix-filter">
-        Filter runs
-        <input
-          type="search"
-          aria-label="Filter runs"
-          placeholder="Eval, parameter, agent or status"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <span>
-          {sortedRuns.length} of {runs.length} runs
-        </span>
-      </label>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <SortableHeader
-              label="Run"
-              sortKey="run"
-              sort={sort}
-              onSort={onSort}
+    <div className="runs-layout">
+      <details className="runs-filter-panel" open>
+        <summary>
+          Filters{activeSearch.size ? ` (${activeSearch.size} active)` : ''}
+        </summary>
+        <div className="runs-filter-fields">
+          {facets.map((facet) => (
+            <fieldset key={facet.key}>
+              <legend>{facet.label}</legend>
+              {facet.values.map((choice) => (
+                <label key={choice.key} className="runs-choice">
+                  <input
+                    type="checkbox"
+                    checked={activeSearch
+                      .getAll(facet.key)
+                      .includes(choice.key)}
+                    onChange={() => toggleFacet(facet.key, choice.key)}
+                  />
+                  <span>{choice.label}</span>
+                  <small>{choice.count}</small>
+                </label>
+              ))}
+            </fieldset>
+          ))}
+          <label className="runs-date">
+            From{' '}
+            <input
+              type="date"
+              value={activeSearch.get('from') ?? ''}
+              onChange={(event) => setField('from', event.target.value)}
             />
-            <SortableHeader
-              label="Suite"
-              sortKey="suite"
-              sort={sort}
-              onSort={onSort}
+          </label>
+          <label className="runs-date">
+            To{' '}
+            <input
+              type="date"
+              value={activeSearch.get('to') ?? ''}
+              onChange={(event) => setField('to', event.target.value)}
             />
-            <SortableHeader
-              label="Eval"
-              sortKey="eval"
-              sort={sort}
-              onSort={onSort}
-            />
-            {parameterColumns.map((parameter) => (
+          </label>
+          <button
+            type="button"
+            className="clear-filters"
+            disabled={!activeSearch.size}
+            onClick={() => updateSearch(new URLSearchParams())}
+          >
+            Clear filters
+          </button>
+        </div>
+      </details>
+      <div className="table-wrap">
+        <label className="matrix-filter">
+          Filter runs
+          <input
+            type="search"
+            aria-label="Filter runs"
+            placeholder="Eval, parameter, agent or status"
+            value={query}
+            onChange={(event) => setField('q', event.target.value)}
+          />
+          <span>
+            {sortedRuns.length} of {runs.length} runs
+          </span>
+        </label>
+        <table className="data-table">
+          <thead>
+            <tr>
               <SortableHeader
-                key={parameter}
-                label={parameter}
-                sortKey={`param:${parameter}`}
+                label="Run"
+                sortKey="run"
                 sort={sort}
                 onSort={onSort}
               />
-            ))}
-            <SortableHeader
-              label="Agent"
-              sortKey="agent"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Status"
-              sortKey="status"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Trials"
-              sortKey="trials"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Score"
-              sortKey="score"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Runtime"
-              sortKey="runtime"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Started"
-              sortKey="started"
-              sort={sort}
-              onSort={onSort}
-            />
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRuns.map((run) => {
-            const evaluation = evalFor(run);
-            return (
-              <Fragment key={run.id}>
-                <tr onClick={() => toggle(run)}>
-                  <td>
-                    <button
-                      className="mono"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggle(run);
-                      }}
-                    >
-                      {run.id.slice(0, 8)}
-                    </button>
-                  </td>
-                  <td>
-                    {suites.find((suite) => suite.id === run.suiteId)?.name ??
-                      '—'}
-                  </td>
-                  <td>{evaluation?.name ?? run.evalId}</td>
-                  {parameterColumns.map((parameter) => (
-                    <td key={parameter}>
-                      {Object.hasOwn(run.parameters ?? {}, parameter)
-                        ? display(run.parameters?.[parameter])
-                        : '—'}
-                    </td>
-                  ))}
-                  <td>
-                    {evaluation?.agent.name ??
-                      evaluation?.agent.kind ??
-                      'Unnamed agent'}
-                  </td>
-                  <td>
-                    <span className={`status ${run.status}`}>{run.status}</span>
-                  </td>
-                  <td>
-                    {run.completedTrials}/{run.requestedTrials}
-                  </td>
-                  <td>{run.score ?? '—'}</td>
-                  <td>
-                    {run.durationMs === undefined ? '—' : `${run.durationMs}ms`}
-                  </td>
-                  <td>{new Date(run.startedAt).toLocaleString()}</td>
-                </tr>
-                {selectedRunId === run.id ? (
-                  <tr>
-                    <td colSpan={9 + parameterColumns.length}>
-                      <TrialTable
-                        run={run}
-                        trials={trials[run.id] ?? []}
-                        onTrial={onTrial}
-                      />
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
-            );
-          })}
-          {!sortedRuns.length ? (
-            <tr>
-              <td colSpan={9 + parameterColumns.length}>No matching runs.</td>
+              <SortableHeader
+                label="Suite"
+                sortKey="suite"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Eval"
+                sortKey="eval"
+                sort={sort}
+                onSort={onSort}
+              />
+              {parameterColumns.map((parameter) => (
+                <SortableHeader
+                  key={parameter}
+                  label={parameter}
+                  sortKey={`param:${parameter}`}
+                  sort={sort}
+                  onSort={onSort}
+                />
+              ))}
+              <SortableHeader
+                label="Agent"
+                sortKey="agent"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Status"
+                sortKey="status"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Trials"
+                sortKey="trials"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Score"
+                sortKey="score"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Runtime"
+                sortKey="runtime"
+                sort={sort}
+                onSort={onSort}
+              />
+              <SortableHeader
+                label="Started"
+                sortKey="started"
+                sort={sort}
+                onSort={onSort}
+              />
             </tr>
-          ) : null}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sortedRuns.map((run) => {
+              const evaluation = evalFor(run);
+              return (
+                <Fragment key={run.id}>
+                  <tr onClick={() => toggle(run)}>
+                    <td>
+                      <button
+                        className="mono"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggle(run);
+                        }}
+                      >
+                        {run.id.slice(0, 8)}
+                      </button>
+                    </td>
+                    <td>
+                      {suites.find((suite) => suite.id === run.suiteId)?.name ??
+                        '—'}
+                    </td>
+                    <td>{evaluation?.name ?? run.evalId}</td>
+                    {parameterColumns.map((parameter) => (
+                      <td key={parameter}>
+                        {Object.hasOwn(run.parameters ?? {}, parameter)
+                          ? display(run.parameters?.[parameter])
+                          : '—'}
+                      </td>
+                    ))}
+                    <td>
+                      {evaluation?.agent.name ??
+                        evaluation?.agent.kind ??
+                        'Unnamed agent'}
+                    </td>
+                    <td>
+                      <span className={`status ${run.status}`}>
+                        {run.status}
+                      </span>
+                    </td>
+                    <td>
+                      {run.completedTrials}/{run.requestedTrials}
+                    </td>
+                    <td>{run.score ?? '—'}</td>
+                    <td>
+                      {run.durationMs === undefined
+                        ? '—'
+                        : `${run.durationMs}ms`}
+                    </td>
+                    <td>{new Date(run.startedAt).toLocaleString()}</td>
+                  </tr>
+                  {selectedRunId === run.id ? (
+                    <tr>
+                      <td colSpan={9 + parameterColumns.length}>
+                        <TrialTable
+                          run={run}
+                          trials={trials[run.id] ?? []}
+                          onTrial={onTrial}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+            {!sortedRuns.length ? (
+              <tr>
+                <td colSpan={9 + parameterColumns.length}>
+                  No matching runs.{' '}
+                  <button
+                    type="button"
+                    onClick={() => updateSearch(new URLSearchParams())}
+                  >
+                    Clear filters
+                  </button>
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

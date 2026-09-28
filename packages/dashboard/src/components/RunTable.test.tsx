@@ -83,6 +83,28 @@ test('runs show a stable union of saved parameter keys, including overrides', ()
   expect(html).toContain('colSpan="13"');
 });
 
+test('saved parameter facets and URL filters keep historical runs from different matrix states', () => {
+  const search = new URLSearchParams();
+  search.append('p.model', '"scout"');
+  const html = renderToStaticMarkup(
+    <RunTable
+      api={{} as DashboardApi}
+      runs={runs}
+      suites={suites}
+      catalog={catalog}
+      search={search}
+      onSearchChange={() => {}}
+      onTrial={() => {}}
+      onOpenRun={() => {}}
+    />,
+  );
+  expect(html).toContain('Filters (1 active)');
+  expect(html).toContain('1 of 3 runs');
+  expect(html).toContain('run-one');
+  expect(html).not.toContain('run-two');
+  expect(html).toContain('Missing');
+});
+
 test('filters runs across the complete list by names, status and parameter keys and values', () => {
   expect(
     filterRuns(runs, 'starter scout', suites, catalog).map((run) => run.id),

@@ -14,7 +14,7 @@ Make a matrix describe the **valid experimental cells** for an eval, not necessa
 
 Make historical runs browsable by their **persisted** matrix parameters, independently of today's matrix configuration. In Runs, a left-hand filter pane narrows the table by eval, parameter values, status and time. Readers can then compare repeated runs of the _same_ configuration across invocations (for example, before and after editing a prompt), or compare two configurations while holding the other parameters fixed. Comparison is a **view over persisted evidence**, not a new scoring rule or an automatic claim that one configuration is better. Cross-invocation comparison is a first-class path, not an opt-in afterthought; provenance and unknowns must be visible rather than assumed away.
 
-This RFD describes the target contract, not a claim that every stage is shipped. The first implementation slice supports `cases` and `exclude` in core and CLI, with exact eligible-cell planning and server-side single-cell validation. The dashboard now lists and launches eligible constrained cells via a bounded, shared-planner-backed API. Historical faceted Runs, invocation provenance, and comparisons remain to be implemented. Existing manifests store effective parameters plus `{ id, cellKey }` but no invocation identity or definition snapshot.
+This RFD describes the target contract, not a claim that every stage is shipped. The first implementation slice supports `cases` and `exclude` in core and CLI, with exact eligible-cell planning and server-side single-cell validation. The dashboard now lists and launches eligible constrained cells via a bounded, shared-planner-backed API. The Runs workspace now has client-side historical parameter facets and URL-backed filters; bounded server-side report paging remains outstanding. Invocation provenance and comparisons remain to be implemented. Existing manifests store effective parameters plus `{ id, cellKey }` but no invocation identity or definition snapshot.
 
 ## Motivation
 
@@ -143,7 +143,7 @@ Definitions without `cases`/`exclude` preserve their existing expansion and keys
 
 ## Rollout and acceptance
 
-The first slices implement steps 1–3 below, with a bounded dashboard planner query. Steps 4–6 are pending.
+The first slices implement steps 1–3 below, with a bounded dashboard planner query. Step 4 has a client-side historical facet view, but bounded server-side report queries remain pending; steps 5–6 are pending.
 
 1. Extend `defineEvalMatrix` and project config with cases/exclusions, JSON validation, deterministic eligible-cell iteration and exact counting. Add unit tests for no exclusions, partial/multiple/overlapping exclusions, invalid values, correlated cases, zero-cell selections, defaults, overrides, stable keys and very large sparse products.
 2. Use the shared planner in `run-matrix`, `run-evals`, `run-suite`, dry-run and the one-cell dashboard POST. Test that `maxCells` counts only eligible cells and an excluded cell can never be launched through either surface.
