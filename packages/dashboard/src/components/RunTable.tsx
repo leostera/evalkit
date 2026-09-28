@@ -14,6 +14,54 @@ import {
 } from './SortableTable.js';
 import { TrialTable } from './TrialTable.js';
 
+function display(value: unknown): string {
+  return typeof value === 'string'
+    ? value
+    : (JSON.stringify(value) ?? String(value));
+}
+
+/** Saved runs may have different axes and non-axis overrides. Show every key. */
+export function runParameterColumns(runs: readonly RunSummary[]): string[] {
+  return [
+    ...new Set(runs.flatMap((run) => Object.keys(run.parameters ?? {}))),
+  ].sort();
+}
+
+export function filterRuns(
+  runs: readonly RunSummary[],
+  query: string,
+  suites: readonly SuiteSummary[],
+  catalog: readonly CatalogEval[],
+): RunSummary[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [...runs];
+  return runs.filter((run) => {
+    const evaluation = catalog.find((entry) => entry.id === run.evalId);
+    const suite = suites.find((entry) => entry.id === run.suiteId);
+    const parameters = Object.entries(run.parameters ?? {}).flatMap(
+      ([key, value]) => [key, display(value)],
+    );
+    const haystack = [
+      run.id,
+      run.evalId,
+      evaluation?.name,
+      run.suiteId,
+      suite?.name,
+      run.matrixId,
+      evaluation?.agent.name,
+      evaluation?.agent.kind,
+      run.status,
+      run.score,
+      run.startedAt,
+      ...parameters,
+    ]
+      .map(display)
+      .join(' ')
+      .toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
 export function RunTable({
   api,
   runs,
@@ -32,6 +80,9 @@ export function RunTable({
   selectedRunId?: string;
 }) {
   const [trials, setTrials] = useState<Record<string, TrialSummary[]>>({});
+  const [query, setQuery] = useState('');
+  const parameterColumns = useMemo(() => runParameterColumns(runs), [runs]);
+  const filteredRuns = filterRuns(runs, query, suites, catalog);
   // A run can appear before its first trial is persisted; refresh expanded trials
   // when the run list is polled rather than caching an empty result forever.
   useEffect(() => {
@@ -51,7 +102,15 @@ export function RunTable({
   });
   const evalFor = (run: RunSummary) =>
     catalog.find((entry) => entry.id === run.evalId);
-  const sortedRuns = useSortedRows(runs, sort, (run, key) => {
+  const sortedRuns = useSortedRows(filteredRuns, sort, (run, key) => {
+    if (key.startsWith('param:')) {
+      const value = run.parameters?.[key.slice(6)];
+      return value === undefined
+        ? undefined
+        : typeof value === 'number'
+          ? value
+          : display(value);
+    }
     const evaluation = evalFor(run);
     return (
       {
@@ -90,6 +149,19 @@ export function RunTable({
     );
   return (
     <div className="table-wrap">
+      <label className="matrix-filter">
+        Filter runs
+        <input
+          type="search"
+          aria-label="Filter runs"
+          placeholder="Eval, parameter, agent or status"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <span>
+          {sortedRuns.length} of {runs.length} runs
+        </span>
+      </label>
       <table className="data-table">
         <thead>
           <tr>
@@ -111,6 +183,15 @@ export function RunTable({
               sort={sort}
               onSort={onSort}
             />
+            {parameterColumns.map((parameter) => (
+              <SortableHeader
+                key={parameter}
+                label={parameter}
+                sortKey={`param:${parameter}`}
+                sort={sort}
+                onSort={onSort}
+              />
+            ))}
             <SortableHeader
               label="Agent"
               sortKey="agent"
@@ -171,6 +252,13 @@ export function RunTable({
                       '—'}
                   </td>
                   <td>{evaluation?.name ?? run.evalId}</td>
+                  {parameterColumns.map((parameter) => (
+                    <td key={parameter}>
+                      {Object.hasOwn(run.parameters ?? {}, parameter)
+                        ? display(run.parameters?.[parameter])
+                        : '—'}
+                    </td>
+                  ))}
                   <td>
                     {evaluation?.agent.name ??
                       evaluation?.agent.kind ??
@@ -190,7 +278,7 @@ export function RunTable({
                 </tr>
                 {selectedRunId === run.id ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={9 + parameterColumns.length}>
                       <TrialTable
                         run={run}
                         trials={trials[run.id] ?? []}
@@ -202,6 +290,11 @@ export function RunTable({
               </Fragment>
             );
           })}
+          {!sortedRuns.length ? (
+            <tr>
+              <td colSpan={9 + parameterColumns.length}>No matching runs.</td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>

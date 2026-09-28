@@ -3,25 +3,35 @@ title: Get started
 description: Run a local agent eval, then learn how to author and score your own.
 ---
 
-An eval tells EvalKit what task to give your agent, which agent to run, and how to score what happened. Write it as TypeScript, keep definitions in Git, and inspect each run as local files. This guide follows the current Bun implementation; the [manual](/docs/manual/) covers the full contracts.
+Write an agent task in TypeScript, run it locally, then inspect the messages, scores, and files it produced. This guide starts with an agent that needs no model credentials. For the full API, see the [manual](/docs/manual/).
 
 ## First run
 
-Create a standalone project from the public repository. Its first eval uses an in-process agent and requires no Pi, model credentials, or registry token:
+You need [Bun](https://bun.sh/) 1.4.2 (the version used by this repository). Create a project from the public Git repository; no registry token or model key is needed:
 
 ```sh
 bunx https://github.com/leostera/evalkit.git new ./evals
 cd evals
 bun install
-bun run check         # type-check the scaffold
-bun run evals         # run both provider-free styles
-bun run matrix:plan   # preview the configured matrix
-bun run dashboard     # start this in another terminal to inspect reports
+bun run check
+bun run evals
 ```
 
-To add EvalKit to an **existing Bun project** instead, run `bun add https://github.com/leostera/evalkit` and then `bun run evalkit new .` from its root, then `bun install` to add TypeScript and Bun types for `bun run check`. This preserves existing scripts, dependencies, and README; it refuses to overwrite any generated path (including an existing `evalkit.config.ts`). Include the `.git` suffix in the `bunx` URL: Bun 1.4.2 cannot determine an executable for the bare HTTPS repository URL. The Git URL installs the executable package at this repository's root; the generated project installs the **same public Git package**. No npm release is required. **Run commands from your eval project directory**: EvalKit discovers eval files, resolves fixtures, and writes reports there. The generated project contains `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Its provider-free `greeting` eval runs across two configured styles; discovery needs no registry.
+`bun run evals` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run matrix:plan`. To browse results, start `bun run dashboard` in another terminal. Reports are saved under `_evalkit-results/` in the project you just created.
 
-Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
+The scaffold includes `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Run commands **from the eval project directory** so discovery, fixtures, and reports resolve there. See [CLI and matrices](/docs/manual/cli-and-matrices/) for selection and safety limits.
+
+### Already have a Bun project?
+
+Run these commands from its root:
+
+```sh
+bun add https://github.com/leostera/evalkit
+bun run evalkit new .
+bun install
+```
+
+The scaffold preserves existing scripts, dependencies, and README; it stops before changing anything if a generated path already exists. The Git URL installs the public package without an npm release. For `bunx`, keep the `.git` suffix shown above: Bun 1.4.2 cannot find the executable from the bare HTTPS URL. See [project setup](/docs/manual/project-structure/) for the full contract.
 
 ## Define an eval
 
@@ -36,7 +46,12 @@ import { matchesGreeting } from '../judges/matches-greeting.js';
 export default defineEval({
   id: 'greeting',
   agent: greetingAgent,
-  fixtures: [file('fixtures/greeting.txt', { dst: 'greeting.txt', visibility: 'candidate' })],
+  fixtures: [
+    file('fixtures/greeting.txt', {
+      dst: 'greeting.txt',
+      visibility: 'candidate',
+    }),
+  ],
   transcript: [user('Ada')],
   scoring: [matchesGreeting],
 });
@@ -64,11 +79,17 @@ export const greetingAgent = defineAgent({
   async start({ context, onEvent }) {
     return {
       async send(message: string) {
-        const prefix = (await readFile(join(context.workspace.root, 'greeting.txt'), 'utf8')).trim();
+        const prefix = (
+          await readFile(join(context.workspace.root, 'greeting.txt'), 'utf8')
+        ).trim();
         const greeting = `${prefix}, ${message}!`;
         await onEvent({
-          kind: 'message', role: 'assistant',
-          content: context.parameters?.style === 'shout' ? greeting.toUpperCase() : greeting,
+          kind: 'message',
+          role: 'assistant',
+          content:
+            context.parameters?.style === 'shout'
+              ? greeting.toUpperCase()
+              : greeting,
           timestamp: new Date().toISOString(),
         });
       },
@@ -98,13 +119,24 @@ A reusable `predicate(...)` is an executable judge. It inspects events and files
 // judges/matches-greeting.ts
 import { predicate } from '@leostera/evalkit';
 
-export const matchesGreeting = predicate('matches greeting and style', ({ context, trajectory }) => {
-  const reply = trajectory.events.filter(
-    (event) => event.source === 'aut' && event.kind === 'message' && event.role === 'assistant',
-  ).at(-1);
-  const expected = context.parameters?.style === 'shout' ? 'HELLO, ADA!' : 'Hello, Ada!';
-  return { value: reply?.kind === 'message' && reply.content === expected ? 1 : 0 };
-});
+export const matchesGreeting = predicate(
+  'matches greeting and style',
+  ({ context, trajectory }) => {
+    const reply = trajectory.events
+      .filter(
+        (event) =>
+          event.source === 'aut' &&
+          event.kind === 'message' &&
+          event.role === 'assistant',
+      )
+      .at(-1);
+    const expected =
+      context.parameters?.style === 'shout' ? 'HELLO, ADA!' : 'Hello, Ada!';
+    return {
+      value: reply?.kind === 'message' && reply.content === expected ? 1 : 0,
+    };
+  },
+);
 ```
 
 The callback can also inspect `artifacts.candidate.root` and `artifacts.evaluator.root`. Score errors are saved, not silently counted as passes.

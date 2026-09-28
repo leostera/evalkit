@@ -31,7 +31,7 @@ beforeAll(async () => {
   );
   await waitForServer();
   browser = await puppeteer.launch({ headless: true });
-});
+}, 30_000);
 
 afterAll(async () => {
   await browser?.close();
@@ -448,6 +448,102 @@ describe('dashboard URL routing', () => {
       expect(submissions).toEqual([
         { path: 'echo', parameters: { model: 'model-29', mode: 'with-docs' } },
       ]);
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
+
+  test('filters and sorts runs by saved matrix parameters', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        const bodies: Record<string, unknown> = {
+          '/v1/matrix': { matrix: null },
+          '/v1/catalog': {
+            evals: [
+              {
+                id: 'echo',
+                path: 'echo',
+                trialCount: 1,
+                agent: { kind: 'worker', runtimes: [] },
+                fixtures: [],
+                scorers: [],
+              },
+            ],
+          },
+          '/v1/suites': { suites: [] },
+          '/v1/runs': {
+            runs: [
+              {
+                id: 'run-low',
+                evalId: 'echo',
+                matrixId: 'models',
+                parameters: { model: 'scout', retries: 2 },
+                status: 'passed',
+                startedAt: '2026-01-01',
+                completedTrials: 1,
+                requestedTrials: 1,
+              },
+              {
+                id: 'run-high',
+                evalId: 'echo',
+                matrixId: 'models',
+                parameters: { model: 'glm', retries: 10 },
+                status: 'failed',
+                startedAt: '2026-01-02',
+                completedTrials: 1,
+                requestedTrials: 1,
+              },
+              {
+                id: 'run-plain',
+                evalId: 'echo',
+                status: 'running',
+                startedAt: '2026-01-03',
+                completedTrials: 0,
+                requestedTrials: 1,
+              },
+            ],
+          },
+        };
+        if (path in bodies)
+          void request.respond({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(bodies[path]),
+          });
+        else void request.continue();
+      });
+      await page.goto(`${baseUrl}/runs`, { waitUntil: 'networkidle0' });
+      const rows = '.table-wrap > table > tbody > tr';
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll('.table-wrap > table > tbody > tr')
+            .length === 3,
+      );
+      expect(
+        await page.$eval('.table-wrap thead', (head) => head.textContent),
+      ).toContain('retries');
+      await page.click('.table-wrap th:nth-child(5) button'); // retries ascending, numeric
+      expect(
+        await page.$eval(`${rows}:nth-child(3)`, (row) => row.textContent),
+      ).toContain('10');
+      const input = 'input[aria-label="Filter runs"]';
+      await page.type(input, 'model glm');
+      expect(
+        await page.$eval('.matrix-filter span', (span) => span.textContent),
+      ).toContain('1 of 3 runs');
+      expect(await page.$eval(rows, (row) => row.textContent)).toContain(
+        'run-high',
+      );
+      await page.$eval(input, (element) =>
+        (element as HTMLInputElement).select(),
+      );
+      await page.keyboard.type('not-a-model');
+      expect(await page.$eval(rows, (row) => row.textContent)).toContain(
+        'No matching runs.',
+      );
     } finally {
       await page.close();
     }
