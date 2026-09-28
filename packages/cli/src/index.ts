@@ -28,6 +28,7 @@ import {
   readTrialSummary,
   readTrialEvents,
 } from '@evalkit/runner';
+import { listMatrixCells } from './dashboard-cells.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import { normalizeRunOptions, runProjectCommand } from './run-command.js';
@@ -325,7 +326,9 @@ async function listLocalRuns(): Promise<LocalRun[]> {
           id,
           evalId: manifest.evalId,
           ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
-          ...(manifest.matrix ? { matrixId: manifest.matrix.id } : {}),
+          ...(manifest.matrix
+            ? { matrixId: manifest.matrix.id, cellKey: manifest.matrix.cellKey }
+            : {}),
           ...(manifest.parameters ? { parameters: manifest.parameters } : {}),
           ...(manifest.aut
             ? {
@@ -554,6 +557,17 @@ async function serveDashboard(): Promise<void> {
         ? {
             id: dashboardMatrix.id,
             parameters: dashboardMatrix.parameters,
+            ...(dashboardMatrix.cases?.length || dashboardMatrix.exclude?.length
+              ? {
+                  dimensions: [
+                    ...Object.keys(dashboardMatrix.cases?.[0] ?? {}),
+                    ...Object.keys(dashboardMatrix.parameters),
+                  ],
+                }
+              : {}),
+            ...(dashboardMatrix.cases?.length || dashboardMatrix.exclude?.length
+              ? { constrained: true }
+              : {}),
             ...(project?.config.execution?.trials
               ? { trials: project.config.execution.trials }
               : {}),
@@ -561,6 +575,28 @@ async function serveDashboard(): Promise<void> {
         : null,
     }),
   );
+  app.get('/v1/matrix/cells', (context) => {
+    if (!dashboardMatrix) return context.text('Project has no matrix', 404);
+    const url = new URL(context.req.url);
+    try {
+      return context.json(
+        listMatrixCells(dashboardMatrix, {
+          evalIds: url.searchParams.getAll('eval'),
+          query: url.searchParams.get('q') ?? '',
+          offset: Number(url.searchParams.get('offset') ?? '0'),
+          limit: Number(url.searchParams.get('limit') ?? '50'),
+          sort: url.searchParams.get('sort') ?? 'eval',
+          direction:
+            url.searchParams.get('direction') === 'desc' ? 'desc' : 'asc',
+        }),
+      );
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : 'Unable to list cells',
+        400,
+      );
+    }
+  });
   app.post('/v1/runs', async (context) => {
     const body = (await context.req.json().catch(() => null)) as {
       path?: unknown;

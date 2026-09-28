@@ -17,7 +17,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
   await mkdir(join(root, 'evals'));
   await writeFile(
     join(root, 'evalkit.config.js'),
-    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] } }, execution: { trials: 3 } };\n",
+    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] }, exclude: [{ model: 'scout', mode: 'without-docs' }] }, execution: { trials: 3 } };\n",
   );
   await writeFile(
     join(root, 'evals', 'echo.eval.js'),
@@ -62,13 +62,32 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
           model: ['glm', 'scout'],
           mode: ['with-docs', 'without-docs'],
         },
+        dimensions: ['model', 'mode'],
         trials: 3,
+        constrained: true,
       },
     });
+    const cells = (await (
+      await fetch(`${url}/v1/matrix/cells?eval=echo`)
+    ).json()) as {
+      total: number;
+      planned: number;
+      cells: Array<{ parameters: Record<string, unknown> }>;
+    };
+    expect(cells.total).toBe(3);
+    expect(cells.planned).toBe(3);
+    expect(
+      cells.cells.some(
+        (cell) =>
+          cell.parameters.model === 'scout' &&
+          cell.parameters.mode === 'without-docs',
+      ),
+    ).toBe(false);
     for (const body of [
       { path: 'echo' },
       { path: 'echo', parameters: { model: 'glm' } },
       { path: 'echo', parameters: { model: 'unknown', mode: 'with-docs' } },
+      { path: 'echo', parameters: { model: 'scout', mode: 'without-docs' } },
     ]) {
       expect((await submit(body)).status).toBe(400);
     }
@@ -109,10 +128,15 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
     });
     expect(manifest.matrix?.id).toBe('benchmark');
     const listed = (await (await fetch(`${url}/v1/runs`)).json()) as {
-      runs: Array<{ matrixId?: string; parameters?: Record<string, unknown> }>;
+      runs: Array<{
+        matrixId?: string;
+        cellKey?: string;
+        parameters?: Record<string, unknown>;
+      }>;
     };
     expect(listed.runs[0]).toMatchObject({
       matrixId: 'benchmark',
+      cellKey: expect.any(String),
       parameters: { model: 'glm', mode: 'with-docs' },
     });
   } finally {

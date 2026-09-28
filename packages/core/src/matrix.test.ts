@@ -46,6 +46,102 @@ test('keys are canonical and ignore display names and key insertion order', () =
   });
   expect(a.cells().next().value!.key).toBe(b.cells().next().value!.key);
 });
+test('excludes partial and overlapping patterns without double-counting', () => {
+  const m = defineEvalMatrix({
+    id,
+    evals: [evaluation],
+    parameters: {
+      os: ['linux', 'macos', 'windows'],
+      arch: ['arm64', 'x86_64'],
+      spec: [true, false],
+    },
+    exclude: [
+      { os: 'windows', arch: 'arm64' },
+      { os: 'windows', arch: 'arm64', spec: true },
+    ],
+  });
+  expect(m.count()).toBe(10);
+  expect([...m.cells()]).toHaveLength(10);
+  expect(m.count({ parameters: { os: ['windows'] } })).toBe(2);
+  expect(m.count({ parameters: { os: ['windows'], arch: ['arm64'] } })).toBe(0);
+  expect([
+    ...m.cells({ parameters: { os: ['windows'], arch: ['arm64'] } }),
+  ]).toEqual([]);
+});
+
+test('correlated cases cross independent axes, preserve keys and select case values', () => {
+  const m = defineEvalMatrix({
+    id,
+    evals: [evaluation],
+    cases: [
+      { language: 'ruby', framework: 'rails' },
+      { language: 'ruby', framework: null },
+      { language: 'go', framework: 'gin' },
+      { language: 'go', framework: null },
+      { language: 'python', framework: 'fastapi' },
+      { language: 'python', framework: null },
+    ],
+    parameters: { spec: ['detailed', 'none'], formalModel: [true, false] },
+    exclude: [{ language: 'go', framework: 'gin', formalModel: true }],
+    defaults: { turnBudget: 6 },
+  });
+  expect(m.count()).toBe(22);
+  expect([...m.cells()]).toHaveLength(22);
+  expect(
+    m.count({ parameters: { language: ['ruby'], framework: ['rails'] } }),
+  ).toBe(4);
+  expect(
+    m.count({ parameters: { framework: ['gin'], formalModel: [true] } }),
+  ).toBe(0);
+  const selected = [
+    ...m.cells({
+      parameters: { framework: [null], spec: ['none'], formalModel: [true] },
+    }),
+  ];
+  expect(selected).toHaveLength(3);
+  expect(selected[0]?.parameters).toEqual({
+    turnBudget: 6,
+    language: 'ruby',
+    framework: null,
+    formalModel: true,
+    spec: 'none',
+  });
+  expect(new Set(selected.map((cell) => cell.key)).size).toBe(3);
+  expect(() => m.count({ overrides: { language: 'ruby' } })).toThrow(
+    'Select axis language',
+  );
+});
+
+test('rejects malformed cases and ineffective exclusions before execution', () => {
+  const base = {
+    id,
+    evals: [evaluation],
+    parameters: { os: ['linux', 'windows'], arch: ['arm64'] },
+  };
+  expect(() => defineEvalMatrix({ ...base, cases: [] })).toThrow();
+  expect(() =>
+    defineEvalMatrix({
+      ...base,
+      cases: [{ language: 'ruby' }, { framework: 'rails' }],
+    }),
+  ).toThrow();
+  expect(() =>
+    defineEvalMatrix({
+      ...base,
+      cases: [{ language: 'ruby' }, { language: 'ruby' }],
+    }),
+  ).toThrow();
+  expect(() =>
+    defineEvalMatrix({ ...base, exclude: [{ os: 'macos' }] }),
+  ).toThrow('matches no declared cell');
+  expect(() =>
+    defineEvalMatrix({ ...base, exclude: [{ typo: true }] }),
+  ).toThrow('Unknown matrix exclude dimension');
+  expect(() => defineEvalMatrix({ ...base, exclude: [{}] })).toThrow(
+    'must specify a dimension',
+  );
+});
+
 test('large matrix yields a single cell without creating the Cartesian array', () => {
   const values = Array.from({ length: 1000 }, (_, i) => i);
   const m = defineEvalMatrix({
@@ -55,4 +151,12 @@ test('large matrix yields a single cell without creating the Cartesian array', (
   });
   expect(m.count()).toBe(1_000_000_000);
   expect(m.cells().next().value!.parameters).toEqual({ a: 0, b: 0, c: 0 });
+  const sparse = defineEvalMatrix({
+    id,
+    evals: [evaluation],
+    parameters: { a: values, b: values, c: values },
+    exclude: [{ a: 0, b: 0, c: 0 }],
+  });
+  expect(sparse.count()).toBe(999_999_999);
+  expect(sparse.cells().next().value!.parameters).toEqual({ a: 0, b: 0, c: 1 });
 });
