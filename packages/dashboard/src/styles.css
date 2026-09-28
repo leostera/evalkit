@@ -21,7 +21,7 @@ tr:focus-visible {
 .dashboard-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 11rem 1fr;
+  grid-template-columns: 11rem minmax(0, 1fr);
 }
 aside {
   border-right: 1px solid #111;
@@ -61,6 +61,7 @@ nav a.active {
   color: #fff;
 }
 .content {
+  min-width: 0;
   max-width: 1400px;
   padding: 2rem clamp(1rem, 3vw, 3rem);
   width: 100%;
@@ -118,6 +119,7 @@ h2 {
   text-align: center;
 }
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
 }
 table {
@@ -386,7 +388,8 @@ pre {
     border-bottom: 1px solid #ccc;
   }
   .dashboard-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
   aside {
     border-bottom: 1px solid #111;
@@ -396,7 +399,7 @@ pre {
     margin-bottom: 1rem;
   }
   nav {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .content {
     padding-top: 1rem;
