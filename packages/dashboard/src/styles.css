@@ -118,6 +118,79 @@ h2 {
   padding: 1.5rem;
   text-align: center;
 }
+.runs-layout {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.runs-filter-panel {
+  border: 1px solid #111;
+  background: #f7f7f7;
+  max-height: calc(100vh - 7rem);
+  overflow-y: auto;
+}
+.runs-filter-panel > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #ccc;
+}
+.runs-filter-fields {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.75rem;
+}
+.runs-filter-fields fieldset {
+  border: 0;
+  border-top: 1px solid #ccc;
+  margin: 0;
+  min-width: 0;
+  padding: 0.5rem 0 0;
+}
+.runs-filter-fields legend {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0 0.25rem 0 0;
+}
+.runs-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.runs-choice input {
+  flex: none;
+}
+.runs-choice span {
+  min-width: 0;
+}
+.runs-choice small {
+  margin-left: auto;
+}
+.runs-date {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
+.runs-date input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.25rem;
+}
+.clear-filters {
+  border: 1px solid #111;
+  background: #fff;
+  padding: 0.35rem;
+  cursor: pointer;
+}
+.clear-filters:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .table-wrap {
   max-width: 100%;
   overflow-x: auto;
@@ -373,6 +446,14 @@ pre {
   overflow: auto;
   padding: 0.5rem;
   white-space: pre-wrap;
+}
+@media (max-width: 900px) {
+  .runs-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .runs-filter-panel {
+    max-height: none;
+  }
 }
 @media (max-width: 650px) {
   .trial-inspector {

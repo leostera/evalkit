@@ -4,6 +4,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from 'react-router-dom';
 import type {
   CatalogEval,
@@ -165,15 +166,23 @@ function RunTableRoute(props: {
 }) {
   const navigate = useNavigate();
   const { runUuid } = useParams();
+  const [search, setSearch] = useSearchParams();
   return (
     <RunTable
       {...props}
+      search={search}
+      onSearchChange={(next) => setSearch(next, { replace: true })}
       selectedRunId={runUuid}
       onTrial={(run, trial) => {
         props.onTrial(run, trial);
         navigate(`/trials/${encodeURIComponent(trial.id)}`);
       }}
-      onOpenRun={(run) => navigate(`/runs/${encodeURIComponent(run.id)}`)}
+      onOpenRun={(run) =>
+        navigate({
+          pathname: `/runs/${encodeURIComponent(run.id)}`,
+          search: search.toString(),
+        })
+      }
     />
   );
 }
