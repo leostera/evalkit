@@ -1,98 +1,9 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
+import { starterFiles, starterReadme } from './new-project-template.js';
 
 const gitDependency = 'git+https://github.com/leostera/evalkit.git';
 const ignored = ['node_modules/', '_evalkit-results/', '_evalkit-sandbox/'];
-
-/** The starter's matrix, fixture, agent and scorer all run without credentials. */
-const template: Record<string, string> = {
-  'tsconfig.json': `${JSON.stringify(
-    {
-      compilerOptions: {
-        target: 'ES2022',
-        module: 'ESNext',
-        moduleResolution: 'Bundler',
-        strict: true,
-        noEmit: true,
-        types: ['bun'],
-      },
-      include: [
-        'agents/**/*.ts',
-        'evals/**/*.ts',
-        'judges/**/*.ts',
-        'evalkit.config.ts',
-      ],
-    },
-    null,
-    2,
-  )}\n`,
-  'evalkit.config.ts': `import { defineConfig } from '@leostera/evalkit';
-
-export default defineConfig({
-  // Default-exported evals in evals/*.eval.ts are discovered automatically.
-  matrix: {
-    id: 'styles',
-    parameters: { style: ['plain', 'shout'] },
-  },
-  execution: { concurrency: 2, maxCells: 20 },
-});
-`,
-  'fixtures/greeting.txt': 'Hello\n',
-  'agents/greeting-agent.ts': `import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { defineAgent } from '@leostera/evalkit';
-
-// Replace this in-process example with an adapter for your own agent.
-export const greetingAgent = defineAgent({
-  identity: { id: 'greeting-agent', kind: 'in-process' },
-  runtimes: { local: { kind: 'in-process' } },
-  async start({ context, onEvent }) {
-    return {
-      async send(message: string) {
-        // Fixtures copied to the candidate workspace are visible to the AUT.
-        const prefix = (await readFile(join(context.workspace.root, 'greeting.txt'), 'utf8')).trim();
-        const style = context.parameters?.style;
-        if (style !== 'plain' && style !== 'shout')
-          throw new Error(\`Unknown style: \${String(style)}\`);
-        const greeting = \`\${prefix}, \${message}!\`;
-        await onEvent({
-          kind: 'message', role: 'assistant',
-          content: style === 'shout' ? greeting.toUpperCase() : greeting,
-          timestamp: new Date().toISOString(),
-        });
-      },
-      async close() {},
-    };
-  },
-});
-`,
-  'judges/matches-greeting.ts': `import { predicate } from '@leostera/evalkit';
-
-// Deterministic scorers need no judge model; add a separate judge agent for judge(...) rules.
-export const matchesGreeting = predicate('matches greeting and style', ({ context, trajectory }) => {
-  const reply = trajectory.events.filter(
-    (event) => event.source === 'aut' && event.kind === 'message' && event.role === 'assistant',
-  ).at(-1);
-  const expected = context.parameters?.style === 'shout' ? 'HELLO, ADA!' : 'Hello, Ada!';
-  return {
-    value: reply?.kind === 'message' && reply.content === expected ? 1 : 0,
-    explanation: \`Expected \${expected}\`,
-  };
-});
-`,
-  'evals/greeting.eval.ts': `import { defineEval, file, user } from '@leostera/evalkit';
-import { greetingAgent } from '../agents/greeting-agent.js';
-import { matchesGreeting } from '../judges/matches-greeting.js';
-
-export default defineEval({
-  id: 'greeting',
-  agent: greetingAgent,
-  fixtures: [file('fixtures/greeting.txt', { dst: 'greeting.txt', visibility: 'candidate' })],
-  transcript: [user('Ada')],
-  scoring: [matchesGreeting],
-});
-`,
-};
 
 const readIfExists = async (path: string): Promise<string | undefined> => {
   try {
@@ -118,6 +29,19 @@ export async function newProject(
   args: string[],
   cwd = process.cwd(),
 ): Promise<string> {
+  const { root, name, inPlace } = projectTarget(args, cwd);
+  await prepareDirectory(root, inPlace);
+  const packagePath = resolve(root, 'package.json');
+  const pkg = await preparePackage(packagePath, name);
+  await writeStarterFiles(root, inPlace);
+  await updateGitignore(root);
+  await writeStarterReadme(root, name, inPlace);
+  // Persist metadata last; never replace an existing dependency or script.
+  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+  return root;
+}
+
+function projectTarget(args: string[], cwd: string) {
   const inPlace = args.length === 1 && (args[0] === '.' || args[0] === './');
   const match =
     args.length === 1
@@ -125,7 +49,6 @@ export async function newProject(
       : null;
   if (!inPlace && !match)
     throw new Error('Usage: evalkit new <lowercase-kebab-case-directory|.>');
-
   const root = inPlace ? resolve(cwd) : resolve(cwd, match![1]!);
   const name = inPlace
     ? basename(root)
@@ -133,26 +56,14 @@ export async function newProject(
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') || 'evalkit-evals'
     : match![1]!;
-  const packagePath = resolve(root, 'package.json');
+  return { root, name, inPlace };
+}
+
+async function prepareDirectory(root: string, inPlace: boolean): Promise<void> {
   if (inPlace) {
     if (!(await stat(root)).isDirectory())
       throw new Error(`Not a directory: ${root}`);
-    // Check every generated path before any writes to an existing project.
-    for (const path of Object.keys(template).filter(
-      (path) => path !== 'tsconfig.json',
-    ))
-      if (await exists(resolve(root, path)))
-        throw new Error(`Scaffold file already exists: ${resolve(root, path)}`);
-    for (const extension of ['js', 'mjs'])
-      if (await exists(resolve(root, `evalkit.config.${extension}`)))
-        throw new Error(
-          `EvalKit config already exists: evalkit.config.${extension}`,
-        );
-    for (const directory of ['agents', 'fixtures', 'evals', 'judges']) {
-      const path = resolve(root, directory);
-      if ((await exists(path)) && !(await stat(path)).isDirectory())
-        throw new Error(`Scaffold directory is not a directory: ${path}`);
-    }
+    await checkExistingScaffold(root);
   } else {
     // Atomic mkdir refuses to replace any existing project, even an empty one.
     try {
@@ -163,7 +74,31 @@ export async function newProject(
       throw error;
     }
   }
+}
 
+async function checkExistingScaffold(root: string): Promise<void> {
+  // Validate everything before touching an existing project.
+  for (const path of Object.keys(starterFiles).filter(
+    (path) => path !== 'tsconfig.json',
+  ))
+    if (await exists(resolve(root, path)))
+      throw new Error(`Scaffold file already exists: ${resolve(root, path)}`);
+  for (const extension of ['js', 'mjs'])
+    if (await exists(resolve(root, `evalkit.config.${extension}`)))
+      throw new Error(
+        `EvalKit config already exists: evalkit.config.${extension}`,
+      );
+  for (const directory of ['agents', 'fixtures', 'evals', 'judges']) {
+    const path = resolve(root, directory);
+    if ((await exists(path)) && !(await stat(path)).isDirectory())
+      throw new Error(`Scaffold directory is not a directory: ${path}`);
+  }
+}
+
+async function preparePackage(
+  packagePath: string,
+  name: string,
+): Promise<Record<string, unknown>> {
   const originalPackage = await readIfExists(packagePath);
   const pkg = originalPackage
     ? (JSON.parse(originalPackage) as Record<string, unknown>)
@@ -204,14 +139,22 @@ export async function newProject(
   pkg.scripts = scripts;
   pkg.dependencies = dependencies;
   pkg.devDependencies = devDependencies;
+  return pkg;
+}
 
-  for (const [path, contents] of Object.entries(template)) {
+async function writeStarterFiles(
+  root: string,
+  inPlace: boolean,
+): Promise<void> {
+  for (const [path, contents] of Object.entries(starterFiles)) {
     const target = resolve(root, path);
     if (inPlace && path === 'tsconfig.json' && (await exists(target))) continue;
     await mkdir(resolve(target, '..'), { recursive: true });
     await writeFile(target, contents, { flag: 'wx' });
   }
+}
 
+async function updateGitignore(root: string): Promise<void> {
   const ignorePath = resolve(root, '.gitignore');
   const existingIgnore = (await readIfExists(ignorePath)) ?? '';
   const missing = ignored.filter(
@@ -222,15 +165,14 @@ export async function newProject(
       ignorePath,
       `${existingIgnore}${existingIgnore && !existingIgnore.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`,
     );
+}
 
+async function writeStarterReadme(
+  root: string,
+  name: string,
+  inPlace: boolean,
+): Promise<void> {
   const readmePath = resolve(root, 'README.md');
   if (!inPlace && !(await exists(readmePath)))
-    await writeFile(
-      readmePath,
-      `# ${name}\n\nA local EvalKit project. Each default-exported eval in \`evals/\` is discovered automatically. Start with \`evals/greeting.eval.ts\`: it imports an in-process agent from \`agents/\`, a deterministic scorer from \`judges/\`, and a candidate-visible file from \`fixtures/\`. Replace these examples with your own agent, tasks, and checks.\n\n\`evalkit.config.ts\` defines a provider-free \`styles\` matrix; the example agent reads \`context.parameters.style\`. Run:\n\n\`\`\`sh\nbun install\nbun run check        # type-check your eval, agent, scorer, and config\nbun run evals        # run the example across both styles\nbun run matrix:plan  # inspect the matrix without running it\nbun run matrix       # run the configured matrix\nbun run dashboard    # inspect local reports\n\`\`\`\n\nEvalKit installs from the public GitHub repository; no registry token is needed. Reports and trial workspaces stay local and are ignored by Git. Commit \`bun.lock\` to pin the resolved EvalKit Git revision.\n`,
-    );
-
-  // Persist metadata last; never replace an existing dependency or script.
-  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
-  return root;
+    await writeFile(readmePath, starterReadme(name));
 }
