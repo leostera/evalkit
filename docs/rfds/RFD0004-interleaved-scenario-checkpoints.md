@@ -132,7 +132,10 @@ The same rule descriptor and evaluator normalize both results; inline scoring ha
 The implemented logical shapes are:
 
 ```ts
-type ScoringContext = { context: AutContext; trajectory: { events: readonly TrajectoryEvent[] }; artifacts: ArtifactView;
+type ScoringContext = {
+  context: AutContext;
+  trajectory: { events: readonly TrajectoryEvent[] };
+  artifacts: ArtifactView;
   turn?: {
     userStepIndex: number;
     /** AUT events emitted during the most recent send, in receipt order. */
@@ -157,11 +160,18 @@ type ScoringContext = { context: AutContext; trajectory: { events: readonly Traj
 type PredicateScorer = {
   kind: 'predicate';
   name: string;
-  run(ctx: ScoringContext): boolean | ScoreValue | Promise<boolean | ScoreValue>;
+  run(
+    ctx: ScoringContext,
+  ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
   supportsPartial?: boolean;
 };
 
-type JudgeRule = { kind: 'judge'; name: string; rubric: string; supportsPartial?: boolean };
+type JudgeRule = {
+  kind: 'judge';
+  name: string;
+  rubric: string;
+  supportsPartial?: boolean;
+};
 type ScoringRule = PredicateScorer | JudgeRule;
 type TranscriptStep = UserStep | AgentStep | ScoringRule | ExpectToolCallStep;
 type EvalDefinition = {

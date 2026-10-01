@@ -537,6 +537,9 @@ describe('dashboard URL routing', () => {
       expect(await page.$eval(rows, (row) => row.textContent)).toContain(
         'run-high',
       );
+      await page.waitForFunction(
+        () => new URLSearchParams(location.search).get('q') === 'model glm',
+      );
       await page.$eval(input, (element) =>
         (element as HTMLInputElement).select(),
       );

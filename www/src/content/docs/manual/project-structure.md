@@ -47,7 +47,12 @@ import { matchesGreeting } from '../judges/matches-greeting.js';
 export default defineEval({
   id: 'greeting',
   agent: greetingAgent,
-  fixtures: [file('fixtures/greeting.txt', { dst: 'greeting.txt', visibility: 'candidate' })],
+  fixtures: [
+    file('fixtures/greeting.txt', {
+      dst: 'greeting.txt',
+      visibility: 'candidate',
+    }),
+  ],
   transcript: [user('Ada')],
   scoring: [matchesGreeting],
 });

@@ -538,18 +538,12 @@ function contentType(file: string): string {
   );
 }
 
-async function serveDashboard(): Promise<void> {
-  const registry = await loadRegistry();
-  const bundledDashboard = new URL('./dashboard/', import.meta.url);
-  const dashboardRoot = fileURLToPath(
-    existsSync(bundledDashboard)
-      ? bundledDashboard
-      : new URL('../../dashboard/dist/', import.meta.url),
-  );
-  const app = new Hono();
-  const dashboardMatrix = project?.config.matrix
-    ? registry.matrices.at(-1)
-    : undefined;
+function registerMatrixRoutes(
+  app: Hono,
+  registry: EvalRegistry,
+  dashboardMatrix: EvalRegistry['matrices'][number] | undefined,
+  trials?: number,
+): void {
   let matrixRunning = false;
   app.get('/v1/matrix', (context) =>
     context.json({
@@ -568,9 +562,7 @@ async function serveDashboard(): Promise<void> {
             ...(dashboardMatrix.cases?.length || dashboardMatrix.exclude?.length
               ? { constrained: true }
               : {}),
-            ...(project?.config.execution?.trials
-              ? { trials: project.config.execution.trials }
-              : {}),
+            ...(trials ? { trials } : {}),
           }
         : null,
     }),
@@ -635,7 +627,7 @@ async function serveDashboard(): Promise<void> {
         runMatrix(dashboardMatrix, {
           selection,
           concurrency: 1,
-          trials: project?.config.execution?.trials,
+          trials,
           ...(suiteId ? { suiteId } : {}),
           report: localReportStore(reportRoot),
           workspaceRoot: sandboxRoot,
@@ -668,6 +660,9 @@ async function serveDashboard(): Promise<void> {
     }).catch((error) => console.error('Dashboard suite run failed:', error));
     return context.json({ accepted: true }, 202);
   });
+}
+
+function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   app.get('/v1/catalog', (context) =>
     context.json({ evals: registry.catalog() }),
   );
@@ -768,6 +763,9 @@ async function serveDashboard(): Promise<void> {
       );
     }
   });
+}
+
+function registerDashboardAssets(app: Hono, dashboardRoot: string): void {
   app.all('*', async (context) => {
     const url = new URL(context.req.url);
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -786,6 +784,28 @@ async function serveDashboard(): Promise<void> {
       headers: { 'content-type': contentType(servedFile) },
     });
   });
+}
+
+async function serveDashboard(): Promise<void> {
+  const registry = await loadRegistry();
+  const bundledDashboard = new URL('./dashboard/', import.meta.url);
+  const dashboardRoot = fileURLToPath(
+    existsSync(bundledDashboard)
+      ? bundledDashboard
+      : new URL('../../dashboard/dist/', import.meta.url),
+  );
+  const app = new Hono();
+  const dashboardMatrix = project?.config.matrix
+    ? registry.matrices.at(-1)
+    : undefined;
+  registerMatrixRoutes(
+    app,
+    registry,
+    dashboardMatrix,
+    project?.config.execution?.trials,
+  );
+  registerReportRoutes(app, registry);
+  registerDashboardAssets(app, dashboardRoot);
   const server = Bun.serve({
     port: Number(process.env.PORT ?? 4317),
     fetch: app.fetch,

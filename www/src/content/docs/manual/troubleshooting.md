@@ -32,14 +32,14 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 
 ## Current limitations
 
-| Declared feature                                      | Current behavior                                                                                                                                                |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent(...)` transcript step                           | Typed but not executable; inserting it into a transcript fails trial execution.                                                                                |
-| Implicit judge agent                                  | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT.                                    |
-| `policy.timeoutMs` and forwarded CLI budgets/timeouts | Not enforced. Flags such as `--chat-timeout-ms` and `--max-tokens` only set adapter-visible parameters.                                                         |
-| `agentsSdk()`                                         | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.                                                 |
-| `piAgent()` conversation and parameter selection      | One new, tool-free Pi process per message. Does not read `context.parameters` for a model or budget.                                                            |
-| npm release                           | Optional and not yet published. The public root Git package and `bunx https://github.com/leostera/evalkit.git new ./evals` work without a registry release.           |
-| Hosted sync or automatic report versioning            | No automatic sharing, upload, or Git commit for local report/sandbox files.                                                                                     |
+| Declared feature                                      | Current behavior                                                                                                                                            |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent(...)` transcript step                          | Typed but not executable; inserting it into a transcript fails trial execution.                                                                             |
+| Implicit judge agent                                  | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT.                                |
+| `policy.timeoutMs` and forwarded CLI budgets/timeouts | Not enforced. Flags such as `--chat-timeout-ms` and `--max-tokens` only set adapter-visible parameters.                                                     |
+| `agentsSdk()`                                         | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.                                             |
+| `piAgent()` conversation and parameter selection      | One new, tool-free Pi process per message. Does not read `context.parameters` for a model or budget.                                                        |
+| npm release                                           | Optional and not yet published. The public root Git package and `bunx https://github.com/leostera/evalkit.git new ./evals` work without a registry release. |
+| Hosted sync or automatic report versioning            | No automatic sharing, upload, or Git commit for local report/sandbox files.                                                                                 |
 
 For implementation details, consult the [core API](https://github.com/leostera/evalkit/blob/main/packages/core/src/index.ts), [runner](https://github.com/leostera/evalkit/blob/main/packages/runner/src/index.ts), and [CLI project loader](https://github.com/leostera/evalkit/blob/main/packages/cli/src/project.ts).

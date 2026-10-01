@@ -113,12 +113,14 @@ A predicate can return `true`/`false`, a numeric score in `[0, 1]`, or a score o
 ```ts
 import { defineEval, judge, piAgent, user } from '@leostera/evalkit';
 
-const clarity = judge('clarity', { rubric: 'Is the reply clear and accurate?' });
+const clarity = judge('clarity', {
+  rubric: 'Is the reply clear and accurate?',
+});
 
 export default defineEval({
   id: 'judge-clarity',
-  agent: myAgent,     // the system being measured
-  judge: piAgent(),  // separate, tool-free local judge agent; requires Pi/model access
+  agent: myAgent, // the system being measured
+  judge: piAgent(), // separate, tool-free local judge agent; requires Pi/model access
   transcript: [user('Explain the change.'), clarity],
   scoring: [clarity],
   policy: { failfast: true },

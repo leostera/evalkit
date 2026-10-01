@@ -23,6 +23,18 @@ function run(args: string[], cwd: string): string {
 }
 
 try {
+  const archive = await packAndInspect();
+  const consumer = await checkInstalledPackage(archive);
+  await checkStandaloneScaffold(consumer, archive);
+  await checkInPlaceScaffold(archive);
+  console.log(
+    'Packed package: isolated import, CLI run, new directory, in-place setup, and evals passed.',
+  );
+} finally {
+  await rm(temporaryRoot, { recursive: true, force: true });
+}
+
+async function packAndInspect(): Promise<string> {
   const pack = JSON.parse(
     run(
       [
@@ -52,6 +64,10 @@ try {
       throw new Error(`Workspace dependency leaked into ${path}`);
   }
 
+  return join(temporaryRoot, pack[0]!.filename);
+}
+
+async function checkInstalledPackage(archive: string): Promise<string> {
   const projectRoot = join(temporaryRoot, 'consumer');
   await mkdir(join(projectRoot, 'evals'), { recursive: true });
   await writeFile(
@@ -61,7 +77,7 @@ try {
       private: true,
       type: 'module',
       dependencies: {
-        '@leostera/evalkit': `file:${join(temporaryRoot, pack[0]!.filename)}`,
+        '@leostera/evalkit': `file:${archive}`,
       },
     }),
   );
@@ -125,7 +141,13 @@ export default defineEval({
     ),
   ) as { failed: number };
   if (summary.failed !== 0) throw new Error('The external eval failed');
+  return projectRoot;
+}
 
+async function checkStandaloneScaffold(
+  projectRoot: string,
+  archive: string,
+): Promise<void> {
   run(['bun', 'run', 'evalkit', 'new', 'my-evals'], projectRoot);
   const scaffold = join(projectRoot, 'my-evals');
   const generated = JSON.parse(
@@ -134,8 +156,7 @@ export default defineEval({
     dependencies: Record<string, string>;
   };
   // Exercise the generated project using this local tarball before publication.
-  generated.dependencies['@leostera/evalkit'] =
-    `file:${join(temporaryRoot, pack[0]!.filename)}`;
+  generated.dependencies['@leostera/evalkit'] = `file:${archive}`;
   await writeFile(join(scaffold, 'package.json'), JSON.stringify(generated));
   run(['bun', 'install'], scaffold);
   run(['bun', 'run', 'check'], scaffold);
@@ -147,10 +168,12 @@ export default defineEval({
     throw new Error(
       `Expected two matrix cells in the dry-run plan:\n${matrixPlan}`,
     );
-  // Simulate `bun add <Git URL>; bun run evalkit new .` in an existing project.
+}
+
+async function checkInPlaceScaffold(archive: string): Promise<void> {
   const existing = join(temporaryRoot, 'existing');
   await mkdir(existing);
-  const dependency = `file:${join(temporaryRoot, pack[0]!.filename)}`;
+  const dependency = `file:${archive}`;
   await writeFile(
     join(existing, 'package.json'),
     JSON.stringify({
@@ -186,9 +209,4 @@ export default defineEval({
       .length !== 2
   )
     throw new Error('In-place generated eval did not pass');
-  console.log(
-    'Packed package: isolated import, CLI run, new directory, in-place setup, and evals passed.',
-  );
-} finally {
-  await rm(temporaryRoot, { recursive: true, force: true });
 }

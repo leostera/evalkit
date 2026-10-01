@@ -12,8 +12,6 @@ import {
   resourceUri,
   authoringId,
   type AgentRuntimeName,
-  type CheckpointResult,
-  type TurnView,
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
@@ -27,21 +25,15 @@ import {
   type RunWriter,
   type RunMetadata,
   type ScoreResult,
-  type Uuid,
   type TrialScoring,
+  type Uuid,
   type TrajectoryEvent,
 } from '@evalkit/core';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
-import { turnView } from './turn.js';
-import { evaluateCheckpoint } from './checkpoint.js';
-import {
-  AutExecutionError,
-  FixtureError,
-  ReportError,
-  ScoringError,
-} from './errors.js';
-import { evaluateRule } from './evaluate-rule.js';
+import { executeTranscript, type TranscriptProgress } from './transcript.js';
+import { evaluateFinalScorers, scoreSummary } from './final-scoring.js';
+import { AutExecutionError, FixtureError, ReportError } from './errors.js';
 import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
@@ -119,32 +111,6 @@ function assertUuid(value: string, label: string): void {
   ) {
     throw new Error(`${label} must be a UUID`);
   }
-}
-
-function scoreSummary(
-  results: ScoreResult[],
-  checkpoints: CheckpointResult[],
-  skippedScorers: string[],
-): TrialScoring {
-  const valid = results.filter((result) => result.value !== undefined);
-  const hasError = results.some((result) => result.error !== undefined);
-  return {
-    results,
-    ...(checkpoints.length ? { checkpoints } : {}),
-    ...(skippedScorers.length ? { skippedScorers } : {}),
-    ...(valid.length === 0
-      ? {}
-      : {
-          overall:
-            valid.reduce((sum, result) => sum + (result.value ?? 0), 0) /
-            valid.length,
-        }),
-    passed:
-      !hasError &&
-      results.every((result) => result.passed === true) &&
-      checkpoints.every((result) => result.status === 'passed') &&
-      !skippedScorers.length,
-  };
 }
 
 /** Executes one aggregate eval run and its requested isolated trials. */
@@ -336,9 +302,7 @@ async function runTrial(
   let scoring: TrialScoring | undefined;
   let artifacts: ArtifactEntry[] | undefined;
   let status: RunStatus = 'running';
-  const checkpoints: CheckpointResult[] = [];
-  let stoppedEarly = false;
-  let lastTurn: TurnView | undefined;
+  const progress: TranscriptProgress = { checkpoints: [], stoppedEarly: false };
   let cleanupError: unknown;
   const workspaceScope = await Effect.runPromise(Scope.make());
 
@@ -405,140 +369,16 @@ async function runTrial(
         }),
         (session) =>
           Effect.tryPromise({
-            try: async () => {
-              for (const [index, step] of definition.transcript.entries()) {
-                await emitRunner({
-                  kind: 'transcript-step-started',
-                  step: index,
-                  timestamp: now().toISOString(),
-                });
-                if (step.kind === 'user') {
-                  const cursor = events.length;
-                  await runBoundary(
-                    Effect.tryPromise({
-                      try: () =>
-                        session.send(
-                          step.message.replaceAll(
-                            '{{randomSeed}}',
-                            String(randomSeed),
-                          ),
-                        ),
-                      catch: (cause) =>
-                        cause instanceof ReportError
-                          ? cause
-                          : new AutExecutionError({
-                              cause,
-                              message:
-                                cause instanceof Error
-                                  ? cause.message
-                                  : String(cause),
-                            }),
-                    }),
-                  );
-                  lastTurn = turnView(events, cursor, events.length, index);
-                } else if (
-                  step.kind === 'predicate' ||
-                  step.kind === 'judge' ||
-                  step.kind === 'expect-tool-call'
-                ) {
-                  if (!lastTurn)
-                    throw new Error(
-                      'Checkpoint requires a preceding user step',
-                    );
-                  const started = now();
-                  await emitRunner({
-                    kind: 'checkpoint-started',
-                    step: index,
-                    name: step.name,
-                    timestamp: started.toISOString(),
-                  });
-                  const result = await runBoundary(
-                    evaluateCheckpoint(
-                      step,
-                      index,
-                      {
-                        context: trialContext,
-                        artifacts: trialWorkspace.artifacts,
-                        trajectory: { events },
-                        turn: lastTurn,
-                      },
-                      now,
-                      definition.judge,
-                    ),
-                  ).catch(async (error: unknown) => {
-                    const recorded = recordError(error);
-                    checkpoints.push({
-                      step: index,
-                      kind: step.kind,
-                      name: step.name,
-                      status: 'error',
-                      durationMs: now().getTime() - started.getTime(),
-                      error: recorded,
-                    });
-                    try {
-                      await emitRunner({
-                        kind: 'checkpoint-error',
-                        step: index,
-                        error: recorded,
-                        timestamp: now().toISOString(),
-                      });
-                    } catch {
-                      /* Preserve the checkpoint error if the writer also fails. */
-                    }
-                    throw error;
-                  });
-                  checkpoints.push(result);
-                  await emitRunner({
-                    kind: 'checkpoint-completed',
-                    step: index,
-                    status: result.status,
-                    timestamp: now().toISOString(),
-                  });
-                  await emitRunner({
-                    kind: 'transcript-step-completed',
-                    step: index,
-                    timestamp: now().toISOString(),
-                  });
-                  if (!result.passed && definition.policy?.failfast) {
-                    stoppedEarly = true;
-                    for (
-                      let skipped = index + 1;
-                      skipped < definition.transcript.length;
-                      skipped++
-                    ) {
-                      await emitRunner({
-                        kind: 'transcript-step-skipped',
-                        step: skipped,
-                        timestamp: now().toISOString(),
-                      });
-                      const remaining = definition.transcript[skipped]!;
-                      if (
-                        remaining.kind === 'predicate' ||
-                        remaining.kind === 'judge' ||
-                        remaining.kind === 'expect-tool-call'
-                      )
-                        checkpoints.push({
-                          step: skipped,
-                          kind: remaining.kind,
-                          name: remaining.name,
-                          status: 'skipped',
-                        });
-                    }
-                    break;
-                  }
-                  continue;
-                } else {
-                  throw new Error(
-                    `Transcript step kind "${step.kind}" is not executable yet`,
-                  );
-                }
-                await emitRunner({
-                  kind: 'transcript-step-completed',
-                  step: index,
-                  timestamp: now().toISOString(),
-                });
-              }
-            },
+            try: () =>
+              executeTranscript(definition, session, {
+                context: trialContext,
+                artifacts: trialWorkspace.artifacts,
+                events,
+                now,
+                randomSeed,
+                emitRunner,
+                progress,
+              }),
             catch: (cause) => cause,
           }),
         (opened) =>
@@ -586,76 +426,23 @@ async function runTrial(
     }
   }
 
+  const { checkpoints, stoppedEarly, lastTurn } = progress;
   const scoreResults: ScoreResult[] = [];
   const skippedScorers: string[] = [];
   try {
-    for (const scorer of definition.scoring) {
-      if (
-        reportingFailed ||
-        !context ||
-        !workspace ||
-        ((primaryError || stoppedEarly) &&
-          (!('supportsPartial' in scorer) || !scorer.supportsPartial))
-      ) {
-        skippedScorers.push(scorer.name);
-        continue;
-      }
-      const started = now();
-      await emitRunner({
-        kind: 'scorer-started',
-        scorer: scorer.name,
-        timestamp: started.toISOString(),
-      });
-      let result: ScoreResult;
-      try {
-        const score = await runBoundary(
-          evaluateRule(
-            scorer,
-            {
-              context,
-              artifacts: workspace.artifacts,
-              trajectory: { events },
-              ...(lastTurn ? { turn: lastTurn } : {}),
-            },
-            definition.judge,
-            'scoring',
-          ).pipe(
-            Effect.mapError(
-              (cause) => new ScoringError({ cause, message: cause.message }),
-            ),
-          ),
-        );
-        result = {
-          name: scorer.name,
-          kind: scorer.kind,
-          durationMs: now().getTime() - started.getTime(),
-          ...score,
-        };
-        scoreResults.push(result);
-      } catch (error) {
-        const recorded = recordError(error);
-        scoreResults.push({
-          name: scorer.name,
-          kind: scorer.kind,
-          durationMs: now().getTime() - started.getTime(),
-          error: recorded,
-          passed: false,
-        });
-        await emitRunner({
-          kind: 'scorer-failed',
-          scorer: scorer.name,
-          error: recorded,
-          timestamp: now().toISOString(),
-        });
-        continue;
-      }
-      await emitRunner({
-        kind: 'scorer-completed',
-        scorer: scorer.name,
-        value: result.value ?? 0,
-        timestamp: now().toISOString(),
-      });
-    }
+    await evaluateFinalScorers(definition, {
+      context,
+      workspace,
+      events,
+      lastTurn,
+      primaryError,
+      stoppedEarly,
+      reportingFailed,
+      results: scoreResults,
+      skippedScorers,
+      now,
+      emitRunner,
+    });
 
     scoring = scoreSummary(scoreResults, checkpoints, skippedScorers);
     await trialWriter.writeScores(scoring);

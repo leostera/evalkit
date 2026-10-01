@@ -88,7 +88,20 @@ export function RunTable({
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams());
   const activeSearch = search ?? localSearch;
   const updateSearch = onSearchChange ?? setLocalSearch;
-  const query = activeSearch.get('q') ?? '';
+  const urlQuery = activeSearch.get('q') ?? '';
+  const [query, setQuery] = useState(urlQuery);
+  // Filter immediately, but avoid navigating (and replacing the input) on each keypress.
+  useEffect(() => setQuery(urlQuery), [urlQuery]);
+  useEffect(() => {
+    if (query === urlQuery) return;
+    const timeout = setTimeout(() => {
+      const next = new URLSearchParams(activeSearch);
+      if (query) next.set('q', query);
+      else next.delete('q');
+      updateSearch(next);
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [query, urlQuery, activeSearch, updateSearch]);
   const facets = useMemo(() => runFacets(runs), [runs]);
   const parameterColumns = useMemo(() => runParameterColumns(runs), [runs]);
   const filteredRuns = filterRuns(
@@ -235,7 +248,7 @@ export function RunTable({
             aria-label="Filter runs"
             placeholder="Eval, parameter, agent or status"
             value={query}
-            onChange={(event) => setField('q', event.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
           />
           <span>
             {sortedRuns.length} of {runs.length} runs
