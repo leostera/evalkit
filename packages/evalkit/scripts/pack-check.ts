@@ -11,7 +11,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
-const repositoryRoot = packageRoot;
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'evalkit-package-'));
 
 function run(args: string[], cwd: string): string {
@@ -93,6 +92,8 @@ async function checkInstalledPackage(archive: string): Promise<string> {
       },
     }),
   );
+  // Independent API probe: this deliberately does not import the generated scaffold.
+  // It checks the public root and /runner exports even if the starter changes.
   await writeFile(
     join(projectRoot, 'evals/hello.eval.ts'),
     `
@@ -122,7 +123,7 @@ export default defineEval({
   );
   run(['bun', 'install'], projectRoot);
   run(
-    [join(repositoryRoot, 'node_modules/.bin/tsc'), '--project', projectRoot],
+    [join(packageRoot, 'node_modules/.bin/tsc'), '--project', projectRoot],
     projectRoot,
   );
   const output = run(
@@ -158,11 +159,7 @@ async function checkStandaloneScaffold(
   // Exercise the generated project using this local tarball before publication.
   generated.dependencies['@leostera/evalkit'] = `file:${archive}`;
   await writeFile(join(scaffold, 'package.json'), JSON.stringify(generated));
-  run(['bun', 'install'], scaffold);
-  run(['bun', 'run', 'check'], scaffold);
-  const scaffoldOutput = run(['bun', 'run', 'evals'], scaffold);
-  if ((scaffoldOutput.match(/PASS greeting/g) ?? []).length !== 2)
-    throw new Error(`Generated eval did not pass:\n${scaffoldOutput}`);
+  checkGeneratedExample(scaffold);
   const matrixPlan = run(['bun', 'run', 'matrix:plan'], scaffold);
   if (!/"cells"\s*:\s*2\b/.test(matrixPlan))
     throw new Error(
@@ -186,8 +183,7 @@ async function checkInPlaceScaffold(archive: string): Promise<void> {
   await writeFile(join(existing, 'README.md'), 'Preserve this file.\n');
   run(['bun', 'install'], existing);
   run(['bun', 'run', 'evalkit', 'new', '.'], existing);
-  run(['bun', 'install'], existing);
-  run(['bun', 'run', 'check'], existing);
+  checkGeneratedExample(existing);
   const existingPackage = JSON.parse(
     await readFile(join(existing, 'package.json'), 'utf8'),
   ) as {
@@ -204,9 +200,12 @@ async function checkInPlaceScaffold(archive: string): Promise<void> {
     'Preserve this file.\n'
   )
     throw new Error('In-place setup overwrote the existing README');
-  if (
-    (run(['bun', 'run', 'evals'], existing).match(/PASS greeting/g) ?? [])
-      .length !== 2
-  )
-    throw new Error('In-place generated eval did not pass');
+}
+
+function checkGeneratedExample(root: string): void {
+  run(['bun', 'install'], root);
+  run(['bun', 'run', 'check'], root);
+  const output = run(['bun', 'run', 'evals'], root);
+  if ((output.match(/PASS greeting/g) ?? []).length !== 2)
+    throw new Error(`Generated eval did not pass:\n${output}`);
 }

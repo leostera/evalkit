@@ -19,7 +19,5 @@ jobs:
       - run: bun run check
       - run: bun test
       - run: bun run build
-      - name: Ensure Git-installable package matches source
-        run: git diff --exit-code -- dist
       - run: bun run pack:check
       - run: bun run --cwd www build

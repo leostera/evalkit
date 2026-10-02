@@ -1,7 +1,5 @@
 node_modules
 dist
-!/dist/
-!/dist/**
 .astro
 .DS_Store
 .env
