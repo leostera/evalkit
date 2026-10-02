@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { extname, resolve, sep } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Effect, Option } from 'effect';
 import { Args, Command, Options } from '@effect/cli';
@@ -12,30 +12,20 @@ import {
   authoringId,
   type EvalDefinition,
   type EvalRegistry,
-  type JsonObject,
   type AgentRuntimeName,
-  type CheckpointResult,
   type TrajectoryEvent,
   type TrialResult,
 } from '@evalkit/core';
-import {
-  localReportStore,
-  runEval,
-  runMatrix,
-  readRunManifest,
-  readRunSummary,
-  readTrialManifest,
-  readTrialSummary,
-  readTrialEvents,
-} from '@evalkit/runner';
+import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
 import { listMatrixCells } from './dashboard-cells.js';
+import {
+  createDashboardReportReader,
+  fileContentType,
+} from './dashboard-reports.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import { normalizeRunOptions, runProjectCommand } from './run-command.js';
 import { newProject } from './new-project.js';
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const colorEnabled =
   process.env.NO_COLOR === undefined &&
@@ -55,49 +45,6 @@ const paint = {
   yellow: (value: string) => color(33, value),
 };
 
-function assertUuid(value: string, label: string): void {
-  if (!UUID_PATTERN.test(value)) throw new Error(`Invalid ${label}`);
-}
-
-type PersistedStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-
-type LocalRun = {
-  id: string;
-  evalId: string;
-  suiteId?: string;
-  agent?: string;
-  matrixId?: string;
-  parameters?: JsonObject;
-  status: 'running' | 'passed' | 'failed' | 'errored';
-  startedAt: string;
-  completedAt?: string;
-  completedTrials: number;
-  requestedTrials: number;
-  score?: number;
-  durationMs?: number;
-};
-
-type LocalScore = {
-  name: string;
-  kind?: 'predicate' | 'judge';
-  value?: number;
-  passed?: boolean;
-  explanation?: string;
-  durationMs: number;
-};
-type LocalTrial = {
-  id: string;
-  index: number;
-  status: LocalRun['status'];
-  score?: number;
-  startedAt: string;
-  completedAt?: string;
-  durationMs?: number;
-  scores: LocalScore[];
-  checkpoints: CheckpointResult[];
-  skippedScorers?: string[];
-};
-
 type TrajectoryMeasurements = {
   eventCount: number;
   autEventCount: number;
@@ -111,28 +58,6 @@ let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
 const sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
 let project: Awaited<ReturnType<typeof loadProject>> | undefined;
-
-function dashboardRunStatus(summary: {
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
-  passed: number;
-  failed: number;
-  trialCount: number;
-}): LocalRun['status'] {
-  if (summary.status === 'running') return 'running';
-  if (summary.status !== 'completed') return 'errored';
-  return summary.failed === 0 && summary.passed === summary.trialCount
-    ? 'passed'
-    : 'failed';
-}
-
-function dashboardTrialStatus(summary: {
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
-  scoring?: { passed?: boolean };
-}): LocalTrial['status'] {
-  if (summary.status === 'running') return 'running';
-  if (summary.status !== 'completed') return 'errored';
-  return summary.scoring?.passed === true ? 'passed' : 'failed';
-}
 
 async function loadRegistry(): Promise<EvalRegistry> {
   project ??= await loadProject(projectRoot);
@@ -282,262 +207,6 @@ async function runEvals(options: {
   );
 }
 
-async function listLocalRuns(): Promise<LocalRun[]> {
-  let entries: string[];
-  try {
-    entries = await readdir(reportRoot);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-  const runs = await Promise.all(
-    entries.map(async (id) => {
-      const directory = resolve(reportRoot, id);
-      try {
-        const manifest = await readRunManifest(reportRoot, id);
-        const summary = await readRunSummary(reportRoot, id).catch(
-          (error: unknown) => {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-              return undefined;
-            throw error;
-          },
-        );
-        const trialIds = await readdir(`${directory}/trials`).catch(
-          (error: unknown): string[] => {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-            throw error;
-          },
-        );
-        const trials = await Promise.all(
-          trialIds.map((trialId) =>
-            readTrialSummary(reportRoot, id, trialId).catch(
-              (error: unknown) => {
-                if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-                  return undefined;
-                throw error;
-              },
-            ),
-          ),
-        );
-        const scores = trials.flatMap((trial) =>
-          trial?.scoring?.overall === undefined ? [] : [trial.scoring.overall],
-        );
-        return {
-          id,
-          evalId: manifest.evalId,
-          ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
-          ...(manifest.matrix
-            ? { matrixId: manifest.matrix.id, cellKey: manifest.matrix.cellKey }
-            : {}),
-          ...(manifest.parameters ? { parameters: manifest.parameters } : {}),
-          ...(manifest.aut
-            ? {
-                agent: [
-                  manifest.aut.kind,
-                  manifest.aut.id,
-                  manifest.aut.version,
-                ]
-                  .filter(Boolean)
-                  .join(' / '),
-              }
-            : {}),
-          status: summary ? dashboardRunStatus(summary) : 'running',
-          startedAt: manifest.startedAt,
-          ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
-          ...(summary?.durationMs !== undefined
-            ? { durationMs: summary.durationMs }
-            : {}),
-          completedTrials: summary?.trialCount ?? trials.filter(Boolean).length,
-          requestedTrials:
-            summary?.trialCount ??
-            project?.registry.get(manifest.evalId)?.policy?.trials ??
-            1,
-          ...(scores.length
-            ? {
-                score:
-                  scores.reduce((sum, score) => sum + score, 0) / scores.length,
-              }
-            : {}),
-        };
-      } catch {
-        return undefined;
-      }
-    }),
-  );
-  return runs.filter((run): run is LocalRun => run !== undefined);
-}
-
-async function listLocalTrials(runId: string): Promise<LocalTrial[]> {
-  assertUuid(runId, 'run ID');
-  const trialsRoot = resolve(reportRoot, runId, 'trials');
-  let trialIds: string[];
-  try {
-    trialIds = await readdir(trialsRoot);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-  const trials = await Promise.all(
-    trialIds.map(async (id) => {
-      const manifest = await readTrialManifest(reportRoot, runId, id);
-      const summary = await readTrialSummary(reportRoot, runId, id).catch(
-        (error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-            return undefined;
-          throw error;
-        },
-      );
-      return {
-        id,
-        index: manifest.trialIndex,
-        status: summary ? dashboardTrialStatus(summary) : 'running',
-        startedAt: manifest.startedAt,
-        ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
-        ...(summary?.durationMs !== undefined
-          ? { durationMs: summary.durationMs }
-          : {}),
-        ...(summary?.scoring?.overall === undefined
-          ? {}
-          : { score: summary.scoring.overall }),
-        scores: summary?.scoring?.results ?? [],
-        checkpoints: summary?.scoring?.checkpoints ?? [],
-        ...(summary?.scoring?.skippedScorers
-          ? { skippedScorers: summary.scoring.skippedScorers }
-          : {}),
-      };
-    }),
-  );
-  return trials.sort((left, right) => left.index - right.index);
-}
-
-async function readTrialDetail(runId: string, trialId: string) {
-  assertUuid(runId, 'run ID');
-  assertUuid(trialId, 'trial ID');
-  return {
-    manifest: await readTrialManifest(reportRoot, runId, trialId),
-    summary: await readTrialSummary(reportRoot, runId, trialId).catch(
-      (error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-          return { status: 'running' };
-        throw error;
-      },
-    ),
-  };
-}
-
-async function listTrialArtifacts(runId: string, trialId: string) {
-  assertUuid(runId, 'run ID');
-  assertUuid(trialId, 'trial ID');
-  const root = resolve(reportRoot, runId, 'trials', trialId, 'artifacts');
-  const result: Array<{
-    path: string;
-    kind: 'file' | 'directory';
-    size?: number;
-  }> = [];
-  async function visit(directory: string, prefix: string): Promise<void> {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        result.push({ path: relative, kind: 'directory' });
-        await visit(resolve(directory, entry.name), relative);
-      } else {
-        const file = Bun.file(resolve(directory, entry.name));
-        result.push({ path: relative, kind: 'file', size: file.size });
-      }
-    }
-  }
-  try {
-    await visit(root, '');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  return result;
-}
-
-async function listCandidateWorkspace(runId: string, trialId: string) {
-  assertUuid(runId, 'run ID');
-  assertUuid(trialId, 'trial ID');
-  const root = resolve(
-    reportRoot,
-    runId,
-    'trials',
-    trialId,
-    'artifacts',
-    'candidate',
-  );
-  const result: Array<{
-    path: string;
-    kind: 'file' | 'directory';
-    size?: number;
-  }> = [];
-  async function visit(directory: string, prefix: string): Promise<void> {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        result.push({ path: relative, kind: 'directory' });
-        await visit(resolve(directory, entry.name), relative);
-      } else {
-        result.push({
-          path: relative,
-          kind: 'file',
-          size: Bun.file(resolve(directory, entry.name)).size,
-        });
-      }
-    }
-  }
-  try {
-    await visit(root, '');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  return result;
-}
-
-async function readCandidateWorkspaceFile(
-  runId: string,
-  trialId: string,
-  relativePath: string,
-): Promise<Response> {
-  assertUuid(runId, 'run ID');
-  assertUuid(trialId, 'trial ID');
-  const root = resolve(
-    reportRoot,
-    runId,
-    'trials',
-    trialId,
-    'artifacts',
-    'candidate',
-  );
-  const file = resolve(root, relativePath);
-  if (file !== root && !file.startsWith(`${root}${sep}`))
-    throw new Error('Invalid workspace path');
-  const info = await stat(file);
-  if (!info.isFile()) throw new Error('Workspace path is not a file');
-  return new Response(await Bun.file(file).arrayBuffer(), {
-    headers: { 'content-type': contentType(file) },
-  });
-}
-
-async function readTrajectory(
-  runId: string,
-  trialId: string,
-): Promise<unknown[]> {
-  assertUuid(runId, 'run ID');
-  assertUuid(trialId, 'trial ID');
-  return readTrialEvents(reportRoot, runId, trialId).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  });
-}
-
-function contentType(file: string): string {
-  return (
-    { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript' }[
-      extname(file)
-    ] ?? 'application/octet-stream'
-  );
-}
-
 function registerMatrixRoutes(
   app: Hono,
   registry: EvalRegistry,
@@ -662,7 +331,11 @@ function registerMatrixRoutes(
   });
 }
 
-function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
+function registerReportRoutes(
+  app: Hono,
+  registry: EvalRegistry,
+  reports: ReturnType<typeof createDashboardReportReader>,
+): void {
   app.get('/v1/catalog', (context) =>
     context.json({ evals: registry.catalog() }),
   );
@@ -673,12 +346,12 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
     context.json({ suites: registry.suiteMetadata() }),
   );
   app.get('/v1/runs', async (context) =>
-    context.json({ runs: await listLocalRuns() }),
+    context.json({ runs: await reports.listRuns() }),
   );
   app.get('/v1/runs/:runId/trials', async (context) => {
     try {
       return context.json({
-        trials: await listLocalTrials(context.req.param('runId')),
+        trials: await reports.listTrials(context.req.param('runId')),
       });
     } catch (error) {
       return context.text(
@@ -690,7 +363,7 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   app.get('/v1/runs/:runId/trials/:trialId', async (context) => {
     try {
       return context.json(
-        await readTrialDetail(
+        await reports.trialDetail(
           context.req.param('runId'),
           context.req.param('trialId'),
         ),
@@ -705,7 +378,7 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   app.get('/v1/runs/:runId/trials/:trialId/workspace', async (context) => {
     try {
       return context.json(
-        await listCandidateWorkspace(
+        await reports.listCandidateWorkspace(
           context.req.param('runId'),
           context.req.param('trialId'),
         ),
@@ -719,7 +392,7 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   });
   app.get('/v1/runs/:runId/trials/:trialId/workspace/*', async (context) => {
     try {
-      return await readCandidateWorkspaceFile(
+      return await reports.candidateFile(
         context.req.param('runId'),
         context.req.param('trialId'),
         context.req.param('*') ?? '',
@@ -736,7 +409,7 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   app.get('/v1/runs/:runId/trials/:trialId/artifacts', async (context) => {
     try {
       return context.json({
-        artifacts: await listTrialArtifacts(
+        artifacts: await reports.listArtifacts(
           context.req.param('runId'),
           context.req.param('trialId'),
         ),
@@ -751,7 +424,7 @@ function registerReportRoutes(app: Hono, registry: EvalRegistry): void {
   app.get('/v1/runs/:runId/trials/:trialId/events', async (context) => {
     try {
       return context.json({
-        events: await readTrajectory(
+        events: await reports.trajectory(
           context.req.param('runId'),
           context.req.param('trialId'),
         ),
@@ -781,7 +454,7 @@ function registerDashboardAssets(app: Hono, dashboardRoot: string): void {
       content = Bun.file(servedFile);
     }
     return new Response(content, {
-      headers: { 'content-type': contentType(servedFile) },
+      headers: { 'content-type': fileContentType(servedFile) },
     });
   });
 }
@@ -804,7 +477,11 @@ async function serveDashboard(): Promise<void> {
     dashboardMatrix,
     project?.config.execution?.trials,
   );
-  registerReportRoutes(app, registry);
+  registerReportRoutes(
+    app,
+    registry,
+    createDashboardReportReader(reportRoot, registry),
+  );
   registerDashboardAssets(app, dashboardRoot);
   const server = Bun.serve({
     port: Number(process.env.PORT ?? 4317),

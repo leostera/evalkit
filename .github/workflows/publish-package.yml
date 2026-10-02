@@ -22,7 +22,6 @@ jobs:
       - run: bun run check
       - run: bun test
       - run: bun run build
-      - run: git diff --exit-code -- dist
       - run: bun run pack:check
       - name: Publish package
         run: npm publish

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type {
   CatalogEval,
   DashboardApi,
@@ -14,6 +14,7 @@ import {
 } from './SortableTable.js';
 import { TrialTable } from './TrialTable.js';
 import { filterRunFacets, runFacets } from './run-facets.js';
+import { useRunFilters, useRunTrials } from './use-run-table-state.js';
 
 function display(value: unknown): string {
   return typeof value === 'string'
@@ -84,24 +85,9 @@ export function RunTable({
   search?: URLSearchParams;
   onSearchChange?(next: URLSearchParams): void;
 }) {
-  const [trials, setTrials] = useState<Record<string, TrialSummary[]>>({});
-  const [localSearch, setLocalSearch] = useState(() => new URLSearchParams());
-  const activeSearch = search ?? localSearch;
-  const updateSearch = onSearchChange ?? setLocalSearch;
-  const urlQuery = activeSearch.get('q') ?? '';
-  const [query, setQuery] = useState(urlQuery);
-  // Filter immediately, but avoid navigating (and replacing the input) on each keypress.
-  useEffect(() => setQuery(urlQuery), [urlQuery]);
-  useEffect(() => {
-    if (query === urlQuery) return;
-    const timeout = setTimeout(() => {
-      const next = new URLSearchParams(activeSearch);
-      if (query) next.set('q', query);
-      else next.delete('q');
-      updateSearch(next);
-    }, 250);
-    return () => clearTimeout(timeout);
-  }, [query, urlQuery, activeSearch, updateSearch]);
+  const { activeSearch, query, setQuery, setField, toggleFacet, clearFilters } =
+    useRunFilters(search, onSearchChange);
+  const { trials, loadTrials } = useRunTrials(api, runs, selectedRunId);
   const facets = useMemo(() => runFacets(runs), [runs]);
   const parameterColumns = useMemo(() => runParameterColumns(runs), [runs]);
   const filteredRuns = filterRuns(
@@ -110,34 +96,6 @@ export function RunTable({
     suites,
     catalog,
   );
-  const toggleFacet = (facet: string, value: string) => {
-    const next = new URLSearchParams(activeSearch);
-    const values = next.getAll(facet);
-    next.delete(facet);
-    for (const selected of values.filter((selected) => selected !== value))
-      next.append(facet, selected);
-    if (!values.includes(value)) next.append(facet, value);
-    updateSearch(next);
-  };
-  const setField = (field: string, value: string) => {
-    const next = new URLSearchParams(activeSearch);
-    if (value) next.set(field, value);
-    else next.delete(field);
-    updateSearch(next);
-  };
-  // A run can appear before its first trial is persisted; refresh expanded trials
-  // when the run list is polled rather than caching an empty result forever.
-  useEffect(() => {
-    if (!selectedRunId || !runs.some((run) => run.id === selectedRunId)) return;
-    let active = true;
-    void api.listTrials(selectedRunId).then((value) => {
-      if (active)
-        setTrials((current) => ({ ...current, [selectedRunId]: value }));
-    });
-    return () => {
-      active = false;
-    };
-  }, [api, runs, selectedRunId]);
   const [sort, setSort] = useState<SortState>({
     key: 'started',
     direction: 'desc',
@@ -178,12 +136,7 @@ export function RunTable({
     );
   const toggle = (run: RunSummary) => {
     onOpenRun(run);
-    if (!trials[run.id])
-      void api
-        .listTrials(run.id)
-        .then((value) =>
-          setTrials((current) => ({ ...current, [run.id]: value })),
-        );
+    loadTrials(run.id);
   };
   if (!runs.length)
     return (
@@ -234,7 +187,7 @@ export function RunTable({
             type="button"
             className="clear-filters"
             disabled={!activeSearch.size}
-            onClick={() => updateSearch(new URLSearchParams())}
+            onClick={clearFilters}
           >
             Clear filters
           </button>
@@ -390,10 +343,7 @@ export function RunTable({
               <tr>
                 <td colSpan={9 + parameterColumns.length}>
                   No matching runs.{' '}
-                  <button
-                    type="button"
-                    onClick={() => updateSearch(new URLSearchParams())}
-                  >
+                  <button type="button" onClick={clearFilters}>
                     Clear filters
                   </button>
                 </td>

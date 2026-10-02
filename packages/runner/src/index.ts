@@ -113,6 +113,42 @@ function assertUuid(value: string, label: string): void {
   }
 }
 
+function runMetadata(
+  definition: EvalDefinition,
+  options: RunEvalOptions,
+  runId: string,
+  startedAt: string,
+): RunMetadata {
+  return {
+    schemaVersion: 3,
+    runId,
+    runUri: canonicalId('run', runId),
+    evalId: definition.id,
+    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+    ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
+    parameters: options.parameters,
+    matrix: options.matrix,
+    startedAt,
+  };
+}
+
+/** Recording a secondary error must never mask the original failure or block cleanup. */
+async function tryEmitError(
+  error: unknown,
+  emitRunner: (event: RunnerEvent) => Promise<void>,
+  now: () => Date,
+): Promise<void> {
+  try {
+    await emitRunner({
+      kind: 'error',
+      error: recordError(error),
+      timestamp: now().toISOString(),
+    });
+  } catch {
+    // A failed report writer cannot prevent cleanup or finalization.
+  }
+}
+
 /** Executes one aggregate eval run and its requested isolated trials. */
 async function executeRun(
   definition: EvalDefinition,
@@ -139,17 +175,9 @@ async function executeRun(
   const now = options.now ?? (() => new Date());
   const aggregateStartedAt = now();
   const runId = options.runId ?? createId('run');
-  const runWriter = await options.report.startRun({
-    schemaVersion: 3,
-    runId,
-    runUri: canonicalId('run', runId),
-    evalId: definition.id,
-    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
-    ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
-    parameters: options.parameters,
-    matrix: options.matrix,
-    startedAt: aggregateStartedAt.toISOString(),
-  });
+  const runWriter = await options.report.startRun(
+    runMetadata(definition, options, runId, aggregateStartedAt.toISOString()),
+  );
   const trialEffects = Array.from(
     { length: requestedTrials },
     (_, trialIndex) => {
@@ -251,17 +279,9 @@ async function runTrial(
   const events: TrajectoryEvent[] = [];
   const runWriter =
     options.runWriter ??
-    (await options.report.startRun({
-      schemaVersion: 3,
-      runId,
-      runUri: canonicalId('run', runId),
-      evalId: definition.id,
-      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
-      ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
-      parameters: options.parameters,
-      matrix: options.matrix,
-      startedAt,
-    }));
+    (await options.report.startRun(
+      runMetadata(definition, options, runId, startedAt),
+    ));
   const trialWriter = await runWriter.startTrial({
     schemaVersion: 3,
     runId,
@@ -402,28 +422,12 @@ async function runTrial(
     );
   } catch (error) {
     primaryError = error;
-    try {
-      await emitRunner({
-        kind: 'error',
-        error: recordError(error),
-        timestamp: now().toISOString(),
-      });
-    } catch {
-      /* A failed report writer must not prevent closing the AUT. */
-    }
+    await tryEmitError(error, emitRunner, now);
   }
 
   if (closeError) {
     if (!primaryError) primaryError = closeError;
-    try {
-      await emitRunner({
-        kind: 'error',
-        error: recordError(closeError),
-        timestamp: now().toISOString(),
-      });
-    } catch {
-      /* Cleanup and finalization are still attempted. */
-    }
+    await tryEmitError(closeError, emitRunner, now);
   }
 
   const { checkpoints, stoppedEarly, lastTurn } = progress;
@@ -455,43 +459,19 @@ async function runTrial(
         );
       } catch (captureError) {
         if (!primaryError) primaryError = captureError;
-        try {
-          await emitRunner({
-            kind: 'error',
-            error: recordError(captureError),
-            timestamp: now().toISOString(),
-          });
-        } catch {
-          /* Preserve the snapshot error and continue cleanup. */
-        }
+        await tryEmitError(captureError, emitRunner, now);
       }
     }
   } catch (error) {
     if (!primaryError) primaryError = error;
-    try {
-      await emitRunner({
-        kind: 'error',
-        error: recordError(error),
-        timestamp: now().toISOString(),
-      });
-    } catch {
-      /* Reporting is already unavailable; still release resources. */
-    }
+    await tryEmitError(error, emitRunner, now);
   } finally {
     await Effect.runPromise(
       Scope.close(workspaceScope, Exit.succeed(undefined)),
     );
     if (cleanupError) {
       if (!primaryError) primaryError = cleanupError;
-      try {
-        await emitRunner({
-          kind: 'error',
-          error: recordError(cleanupError),
-          timestamp: now().toISOString(),
-        });
-      } catch {
-        /* Keep the primary failure and continue finalization. */
-      }
+      await tryEmitError(cleanupError, emitRunner, now);
     }
   }
 

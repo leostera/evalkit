@@ -94,6 +94,8 @@ test('dashboard API lists a run and trial before their summaries exist', async (
       await fetch(`${url}/v1/runs/${runId}/trials/${trialId}/events`)
     ).json()) as { events: unknown[] };
     expect(events.events).toEqual([]);
+    await writeFile(join(runDir, 'summary.json'), '{broken json');
+    expect((await fetch(`${url}/v1/runs`)).status).toBe(500);
     await writeFile(
       join(runDir, 'summary.json'),
       JSON.stringify({
