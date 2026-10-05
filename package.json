@@ -1,6 +1,6 @@
 {
   "name": "@leostera/evalkit",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Author and run agent evals as code",
   "type": "module",
   "license": "MIT",

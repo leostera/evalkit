@@ -640,7 +640,7 @@ const app = Command.make('evalkit').pipe(
     dashboardCommand,
   ]),
 );
-const cli = Command.run(app, { name: 'EvalKit', version: '0.0.1' });
+const cli = Command.run(app, { name: 'EvalKit', version: '0.0.2' });
 const argv = process.argv.slice();
 if (argv[2] === 'help') argv.splice(2, 1, '--help');
 // Preserve the CLI's existing help spelling while letting @effect/cli render it.
