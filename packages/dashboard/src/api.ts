@@ -101,6 +101,7 @@ export type TrialSummary = {
     value?: number;
     passed?: boolean;
     explanation?: string;
+    error?: { name: string; message: string };
     durationMs: number;
   }>;
   checkpoints?: CheckpointResult[];

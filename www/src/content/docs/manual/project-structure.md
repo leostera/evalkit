@@ -22,17 +22,21 @@ The CLI imports the eval module, so its agent and scorer imports must resolve in
 
 ## Getting the CLI and API
 
-The root of this public repository is the installable **`@leostera/evalkit`** package. Create a standalone project without registry credentials or a preinstalled package:
+The root of this public repository builds the **`@leostera/evalkit`** npm package. Create a standalone project without a preinstalled package:
 
 ```sh
-bunx https://github.com/leostera/evalkit.git new ./evals
+bunx @leostera/evalkit new ./evals
 cd evals
 bun install
 bun run check
 bun run evals
 ```
 
-For an existing Bun project, use `bun add https://github.com/leostera/evalkit` and then `bun run evalkit new .` from its root. Run `bun install` afterward to install the generated type-checking dependencies. This keeps existing package metadata, scripts, README, and authored evals; an existing scaffold path (including `evalkit.config.ts` or `evals/greeting.eval.ts`) causes an explicit error before any changes are made. The generated `package.json` installs `@leostera/evalkit` from the same Git repository. Import authoring helpers from `@leostera/evalkit` and runner helpers from `@leostera/evalkit/runner`, **not** the monorepo's internal `@evalkit/*` workspace names. The generated eval is provider-free; its results and trial workspaces stay local. When contributing to this repository, `examples/starter` and `examples/configured-matrix` still use internal workspace imports. A separate npm release is optional and has not happened yet.
+For an existing Bun project, use `bun add @leostera/evalkit` and then `bun run evalkit new .` from its root. Run `bun install` afterward to install the generated type-checking dependencies. This keeps existing package metadata, scripts, README, and authored evals; an existing scaffold path (including `evalkit.config.ts` or `evals/greeting.eval.ts`) causes an explicit error before any changes are made. The generated `package.json` installs `@leostera/evalkit` from npm. Import authoring helpers from `@leostera/evalkit` and runner helpers from `@leostera/evalkit/runner`, **not** the monorepo's internal `@evalkit/*` workspace names. The generated eval is provider-free; its results and trial workspaces stay local. When contributing to this repository, `examples/starter` and `examples/configured-matrix` still use internal workspace imports.
+
+### Migrating from the previous npm scope
+
+Replace `@leostera-js/evalkit` with `@leostera/evalkit` in `package.json` and all imports, including `@leostera/evalkit/runner`, then run `bun install`. Existing eval files and local reports do not need to be regenerated. The old scope is a separate npm package and does not automatically redirect to the new one.
 
 ## Automatic discovery
 

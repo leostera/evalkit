@@ -58,7 +58,7 @@ For a whole CLI invocation, use its exit status as well as the individual report
 
 ## Run from code
 
-The local runner also exposes `runEval`, `runMatrix`, and `localReportStore` from `@evalkit/runner` in this monorepo or `@leostera/evalkit/runner` from public Git in standalone projects. Both runner functions return **Effect** values; creating one does not start an eval. Execute it with `Effect.runPromise(...)`:
+The local runner also exposes `runEval`, `runMatrix`, and `localReportStore` from `@evalkit/runner` in this monorepo or `@leostera/evalkit/runner` from npm in standalone projects. Both runner functions return **Effect** values; creating one does not start an eval. Execute it with `Effect.runPromise(...)`:
 
 ```ts
 // From a Bun project rooted beside evals/greeting.eval.ts

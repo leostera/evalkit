@@ -11,9 +11,14 @@ export function SuiteRow({
   onRun?: () => void;
 }) {
   return (
-    <tr onClick={onToggle}>
-      <td>
-        <button className="mono">
+    <tr>
+      <td className="identity-cell">
+        <button
+          type="button"
+          className="table-link mono"
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
           {suite.name ?? suite.id ?? 'Unnamed suite'}
         </button>
       </td>
@@ -21,6 +26,7 @@ export function SuiteRow({
       <td>{expanded ? 'expanded' : 'configured'}</td>
       <td>
         <button
+          type="button"
           disabled={!onRun}
           title={
             onRun ? undefined : 'Run matrix cells individually from their rows'

@@ -39,7 +39,7 @@ afterAll(async () => {
 });
 
 describe('dashboard URL routing', () => {
-  test('navigates from suites to runs and trial URLs', async () => {
+  test('keeps run context while navigating trial and workspace panels', async () => {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
     page.on('request', (request) => {
@@ -82,6 +82,7 @@ describe('dashboard URL routing', () => {
             {
               id: 'run-123',
               evalId: 'greeting',
+              suiteId: 'starter',
               status: 'completed',
               startedAt: new Date().toISOString(),
               completedTrials: 1,
@@ -110,9 +111,16 @@ describe('dashboard URL routing', () => {
                 status: 'completed',
                 startedAt: new Date().toISOString(),
                 score: 1,
+                scores: [],
               },
             ],
           }),
+        });
+      } else if (url.pathname.endsWith('/artifacts')) {
+        void request.respond({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ artifacts: [] }),
         });
       } else if (url.pathname.includes('/events')) {
         void request.respond({
@@ -120,7 +128,10 @@ describe('dashboard URL routing', () => {
           contentType: 'application/json',
           body: JSON.stringify({ events: [] }),
         });
-      } else if (url.pathname.includes('/trials/trial-1')) {
+      } else if (
+        url.pathname ===
+        '/v1/runs/run-123/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22'
+      ) {
         void request.respond({
           status: 200,
           contentType: 'application/json',
@@ -132,13 +143,38 @@ describe('dashboard URL routing', () => {
     });
 
     await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
-    await page.waitForSelector('tbody tr button');
-    await page.$eval('tbody tr button', (button) =>
-      (button as HTMLElement).click(),
+    await page.focus('button.navigation-toggle');
+    await page.keyboard.press('Enter');
+    expect(
+      await page.$eval(
+        '#dashboard-links',
+        (nav) => (nav as HTMLElement).hidden,
+      ),
+    ).toBe(true);
+    expect(
+      await page.$eval('button.navigation-toggle', (button) =>
+        button.getAttribute('aria-expanded'),
+      ),
+    ).toBe('false');
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#dashboard-navigation')?.getBoundingClientRect()
+          .width === 52,
     );
+    await page.keyboard.press('Enter');
+    expect(
+      await page.$eval(
+        '#dashboard-links',
+        (nav) => (nav as HTMLElement).hidden,
+      ),
+    ).toBe(false);
+    await page.waitForSelector('tbody tr button');
+    await page.focus('tbody tr button.table-link');
+    await page.keyboard.press('Enter');
     expect(new URL(page.url()).pathname).toBe('/suites/starter');
     await page.waitForSelector('.nested tbody tr');
-    await page.click('.nested tbody tr');
+    await page.focus('.nested tbody tr button.table-link');
+    await page.keyboard.press('Enter');
     expect(new URL(page.url()).pathname).toBe('/evals/starter%23greeting');
     await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe('/suites/starter');
@@ -153,23 +189,60 @@ describe('dashboard URL routing', () => {
     });
     expect(new URL(page.url()).pathname).toBe('/runs');
     await page.waitForSelector('.table-wrap > table > tbody > tr');
-    await page.click('.table-wrap > table > tbody > tr');
+    await page.type('input[aria-label="Filter runs"]', 'greeting');
+    await page.waitForFunction(
+      () => new URLSearchParams(location.search).get('q') === 'greeting',
+    );
+    await page.focus('.table-wrap > table > tbody > tr button.table-link');
+    await page.keyboard.press('Enter');
     expect(new URL(page.url()).pathname).toBe('/runs/run-123');
     await page.waitForSelector('.nested tbody tr button');
     await page.click('.nested tbody tr button');
-    expect(new URL(page.url()).pathname).toBe(
-      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
-    );
-    await page.reload({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe(
-      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
-    );
-    await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).pathname).toBe('/runs/run-123');
-    await page.goForward({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe(
-      '/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22',
+    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
+    expect(new URL(page.url()).searchParams.get('trial')).toBe(
+      '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
     );
+    await page.waitForSelector('.trial-panel[open] .trial-overview');
+    expect(
+      await page.$eval('.trial-breadcrumbs', (node) => node.textContent),
+    ).toContain('Starter');
+    expect(
+      await page.$eval('.trial-breadcrumbs', (node) => node.textContent),
+    ).toContain('Greeting');
+    expect(await page.$('.table-wrap > table')).not.toBeNull();
+    await page.reload({ waitUntil: 'networkidle0' });
+    await page.waitForSelector('.trial-panel[open] .trial-overview');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(
+      () => !new URLSearchParams(location.search).has('trial'),
+    );
+    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
+    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
+    await page.click('.nested tbody tr button');
+    await page.waitForSelector('.trial-panel[open]');
+    await page.goBack({ waitUntil: 'networkidle0' });
+    expect(new URL(page.url()).searchParams.has('trial')).toBe(false);
+    await page.goForward({ waitUntil: 'networkidle0' });
+    await page.waitForSelector('.trial-panel[open] .trial-overview');
+    await page.click('.trial-panel .trial-overview > button');
+    await page.waitForFunction(
+      () =>
+        new URLSearchParams(location.search).get('view') === 'workspace' &&
+        document.querySelector('.trial-breadcrumbs [aria-current="page"]')
+          ?.textContent === 'Workspace',
+    );
+    expect(
+      await page.$eval(
+        '.trial-breadcrumbs [aria-current="page"]',
+        (node) => node.textContent,
+      ),
+    ).toBe('Workspace');
+    await page.click('.trial-breadcrumbs button');
+    await page.waitForFunction(
+      () => !new URLSearchParams(location.search).has('view'),
+    );
+    await page.waitForSelector('.trial-panel[open] .trial-overview');
   }, 30_000);
 
   test('shows a newly started eval without a page reload', async () => {
@@ -263,7 +336,7 @@ describe('dashboard URL routing', () => {
         await page.$$('section[aria-label="Standalone evals"] select'),
       ).toHaveLength(0);
       const runButton =
-        'section[aria-label="Standalone evals"] tbody tr:first-child button';
+        'section[aria-label="Standalone evals"] tbody tr:first-child button:not(.table-link)';
       expect(
         await page.$eval(
           'section[aria-label="Standalone evals"] thead',
@@ -306,7 +379,9 @@ describe('dashboard URL routing', () => {
             .querySelector('section[aria-label="Standalone evals"] tbody tr')
             ?.textContent?.includes('running'),
       );
-      await page.click('section[aria-label="Standalone evals"] tbody tr');
+      await page.click(
+        'section[aria-label="Standalone evals"] tbody tr button.table-link',
+      );
       expect(new URL(page.url()).pathname).toBe('/evals/echo');
     } finally {
       await page.close();
@@ -442,7 +517,7 @@ describe('dashboard URL routing', () => {
           response.request().method() === 'POST',
       );
       await page.click(
-        'section[aria-label="Standalone evals"] tbody tr:first-child button',
+        'section[aria-label="Standalone evals"] tbody tr:first-child button:not(.table-link)',
       );
       await posted;
       expect(submissions).toEqual([

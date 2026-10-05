@@ -34,7 +34,7 @@
     }
   },
   "bin": {
-    "evalkit": "./dist/cli.mjs"
+    "evalkit": "dist/cli.mjs"
   },
   "dependencies": {
     "effect": "^3.22.2",

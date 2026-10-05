@@ -3,7 +3,7 @@ title: CLI and matrices
 description: Select evals and suites, sweep parameter axes, inspect plans, and use the local dashboard.
 ---
 
-Run the CLI **from the eval project's directory**. In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` directly from the public Git repository and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
+Run the CLI **from the eval project's directory**. In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
 
 ## Run commands
 
@@ -19,13 +19,13 @@ bun run evalkit run-matrix letter-case --dry-run
 bun run evalkit run-matrix letter-case --eval case-transform --select style=upper
 ```
 
-| Command                   | Selection                                                                                                                                                                                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `new <directory>`         | Generate a provider-free project with `bunx https://github.com/leostera/evalkit.git new ./evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add https://github.com/leostera/evalkit`. Never overwrites existing evals. |
-| `run-evals [eval-id,...]` | Run all registered/discovered evals, or select comma-separated IDs/positionals or repeat `--eval <id,...>`. If a config defines a matrix, this command sweeps its selected cells too.                                                                      |
-| `run-matrix <matrix-id>`  | Run a configured or explicitly registered matrix, optionally filtered with `--eval` and axis flags.                                                                                                                                                        |
-| `run-suite <suite-id>`    | Run the evals in an explicitly registered suite. If a project matrix is configured, uses its axes/defaults over the suite's evals; otherwise each runs once.                                                                                               |
-| `serve-dashboard`         | Start the local report viewer and run launcher; `--config` selects a project.                                                                                                                                                                              |
+| Command                   | Selection                                                                                                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new <directory>`         | Generate a provider-free project with `bunx @leostera/evalkit new ./evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add @leostera/evalkit`. Never overwrites existing evals. |
+| `run-evals [eval-id,...]` | Run all registered/discovered evals, or select comma-separated IDs/positionals or repeat `--eval <id,...>`. If a config defines a matrix, this command sweeps its selected cells too.                              |
+| `run-matrix <matrix-id>`  | Run a configured or explicitly registered matrix, optionally filtered with `--eval` and axis flags.                                                                                                                |
+| `run-suite <suite-id>`    | Run the evals in an explicitly registered suite. If a project matrix is configured, uses its axes/defaults over the suite's evals; otherwise each runs once.                                                       |
+| `serve-dashboard`         | Start the local report viewer and run launcher; `--config` selects a project.                                                                                                                                      |
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. A zero-config discovery project has no suites and no named project matrix. See [Project structure](/docs/manual/project-structure/) for registering those.
 

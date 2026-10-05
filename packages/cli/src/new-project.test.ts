@@ -18,8 +18,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
       name: 'existing-project',
       private: true,
       dependencies: {
-        '@leostera/evalkit':
-          'git+https://github.com/leostera/evalkit.git#abc123',
+        '@leostera/evalkit': '^0.0.1',
         zod: '^4.0.0',
       },
       scripts: { test: 'bun test', dashboard: 'echo existing' },
@@ -63,7 +62,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
   }
 });
 
-test('new . adds the Git package to an existing project that has no EvalKit dependency', async () => {
+test('new . adds the npm package to an existing project that has no EvalKit dependency', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'evalkit-existing-'));
   try {
     await mkdir(join(cwd, 'evals'));
@@ -77,7 +76,7 @@ test('new . adds the Git package to an existing project that has no EvalKit depe
     ) as { dependencies: Record<string, string> };
     expect(pkg.dependencies).toEqual({
       hono: '^4.0.0',
-      '@leostera/evalkit': 'git+https://github.com/leostera/evalkit.git',
+      '@leostera/evalkit': '^0.0.1',
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -125,9 +124,7 @@ test('new creates a self-contained, provider-free project without overwriting fi
     ) as {
       dependencies: Record<string, string>;
     };
-    expect(pkg.dependencies['@leostera/evalkit']).toBe(
-      'git+https://github.com/leostera/evalkit.git',
-    );
+    expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.0.1');
     expect(
       await readFile(join(root, 'evals/greeting.eval.ts'), 'utf8'),
     ).toContain("import { defineEval, file, user } from '@leostera/evalkit'");

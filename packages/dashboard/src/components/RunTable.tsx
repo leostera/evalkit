@@ -96,6 +96,12 @@ export function RunTable({
     suites,
     catalog,
   );
+  const [page, setPage] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      window.matchMedia('(min-width: 901px)').matches,
+  );
   const [sort, setSort] = useState<SortState>({
     key: 'started',
     direction: 'desc',
@@ -128,12 +134,20 @@ export function RunTable({
       } as Record<string, unknown>
     )[key];
   });
-  const onSort = (key: string) =>
+  const pageCount = Math.max(1, Math.ceil(sortedRuns.length / 50));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleRuns = sortedRuns.slice(
+    currentPage * 50,
+    (currentPage + 1) * 50,
+  );
+  const onSort = (key: string) => {
     setSort((current) =>
       current.key === key
         ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
         : { key, direction: 'asc' },
     );
+    setPage(0);
+  };
   const toggle = (run: RunSummary) => {
     onOpenRun(run);
     loadTrials(run.id);
@@ -144,7 +158,11 @@ export function RunTable({
     );
   return (
     <div className="runs-layout">
-      <details className="runs-filter-panel" open>
+      <details
+        className="runs-filter-panel"
+        open={filtersOpen}
+        onToggle={(event) => setFiltersOpen(event.currentTarget.open)}
+      >
         <summary>
           Filters{activeSearch.size ? ` (${activeSearch.size} active)` : ''}
         </summary>
@@ -217,8 +235,8 @@ export function RunTable({
                 onSort={onSort}
               />
               <SortableHeader
-                label="Suite"
-                sortKey="suite"
+                label="Status"
+                sortKey="status"
                 sort={sort}
                 onSort={onSort}
               />
@@ -240,12 +258,6 @@ export function RunTable({
               <SortableHeader
                 label="Agent"
                 sortKey="agent"
-                sort={sort}
-                onSort={onSort}
-              />
-              <SortableHeader
-                label="Status"
-                sortKey="status"
                 sort={sort}
                 onSort={onSort}
               />
@@ -273,28 +285,34 @@ export function RunTable({
                 sort={sort}
                 onSort={onSort}
               />
+              <SortableHeader
+                label="Suite"
+                sortKey="suite"
+                sort={sort}
+                onSort={onSort}
+              />
             </tr>
           </thead>
           <tbody>
-            {sortedRuns.map((run) => {
+            {visibleRuns.map((run) => {
               const evaluation = evalFor(run);
               return (
                 <Fragment key={run.id}>
-                  <tr onClick={() => toggle(run)}>
-                    <td>
+                  <tr>
+                    <td className="identity-cell">
                       <button
-                        className="mono"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggle(run);
-                        }}
+                        type="button"
+                        className="table-link mono"
+                        aria-expanded={selectedRunId === run.id}
+                        onClick={() => toggle(run)}
                       >
                         {run.id.slice(0, 8)}
                       </button>
                     </td>
                     <td>
-                      {suites.find((suite) => suite.id === run.suiteId)?.name ??
-                        '—'}
+                      <span className={`status ${run.status}`}>
+                        {run.status}
+                      </span>
                     </td>
                     <td>{evaluation?.name ?? run.evalId}</td>
                     {parameterColumns.map((parameter) => (
@@ -310,11 +328,6 @@ export function RunTable({
                         'Unnamed agent'}
                     </td>
                     <td>
-                      <span className={`status ${run.status}`}>
-                        {run.status}
-                      </span>
-                    </td>
-                    <td>
                       {run.completedTrials}/{run.requestedTrials}
                     </td>
                     <td>{run.score ?? '—'}</td>
@@ -324,6 +337,10 @@ export function RunTable({
                         : `${run.durationMs}ms`}
                     </td>
                     <td>{new Date(run.startedAt).toLocaleString()}</td>
+                    <td>
+                      {suites.find((suite) => suite.id === run.suiteId)?.name ??
+                        '—'}
+                    </td>
                   </tr>
                   {selectedRunId === run.id ? (
                     <tr>
@@ -351,6 +368,29 @@ export function RunTable({
             ) : null}
           </tbody>
         </table>
+        {sortedRuns.length > 50 ? (
+          <nav className="matrix-pages" aria-label="Run pages">
+            <span>
+              Runs {currentPage * 50 + 1}–
+              {Math.min((currentPage + 1) * 50, sortedRuns.length)} of{' '}
+              {sortedRuns.length}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage === 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={currentPage === pageCount - 1}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Next
+            </button>
+          </nav>
+        ) : null}
       </div>
     </div>
   );

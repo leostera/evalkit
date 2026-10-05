@@ -89,7 +89,15 @@ export function MatrixEvalTable(props: {
   onRun(path: string, parameters?: Record<string, unknown>): void;
   onOpenEval(entry: CatalogEval): void;
 }) {
-  if (props.matrix?.constrained)
+  // Keep small local grids immediate; large plans use the bounded planner API.
+  const total = props.matrix
+    ? props.evalIds.length *
+      Object.values(props.matrix.parameters).reduce(
+        (count, choices) => count * choices.length,
+        1,
+      )
+    : 0;
+  if (props.matrix && (props.matrix.constrained || total > 1_000))
     return <ConstrainedMatrixTable {...props} matrix={props.matrix} />;
   return <CartesianMatrixEvalTable {...props} />;
 }

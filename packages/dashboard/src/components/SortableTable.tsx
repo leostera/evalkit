@@ -15,8 +15,21 @@ export function SortableHeader({
 }) {
   const active = sort.key === sortKey;
   return (
-    <th>
-      <button className="table-sort" onClick={() => onSort(sortKey)}>
+    <th
+      scope="col"
+      aria-sort={
+        active
+          ? sort.direction === 'asc'
+            ? 'ascending'
+            : 'descending'
+          : undefined
+      }
+    >
+      <button
+        type="button"
+        className="table-sort"
+        onClick={() => onSort(sortKey)}
+      >
         {label} {active ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}
       </button>
     </th>
