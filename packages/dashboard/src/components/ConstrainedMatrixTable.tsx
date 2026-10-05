@@ -42,6 +42,8 @@ export function ConstrainedMatrixTable({
   const ids = evalIds.join(',');
   useEffect(() => {
     let active = true;
+    // A new query must not display an error or page from the prior query.
+    // oxlint-disable-next-line react/set-state-in-effect
     setError(undefined);
     setResult(undefined);
     void api
@@ -135,7 +137,7 @@ export function ConstrainedMatrixTable({
               onSort={onSort}
             />
             <th>Latest run</th>
-            <th />
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>

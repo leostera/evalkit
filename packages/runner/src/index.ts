@@ -270,7 +270,7 @@ async function runTrial(
     trialId,
     trialIndex: options.trialIndex ?? 0,
     metadata: {
-      ...(definition.metadata ?? {}),
+      ...definition.metadata,
       randomSeed,
     },
     ...(options.parameters ? { parameters: options.parameters } : {}),

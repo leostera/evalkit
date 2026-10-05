@@ -30,7 +30,12 @@ beforeAll(async () => {
     },
   );
   await waitForServer();
-  browser = await puppeteer.launch({ headless: true });
+  // GitHub-hosted Ubuntu runners cannot use Chrome's sandbox. Only the
+  // localhost dashboard test browser runs without it; keep local defaults.
+  browser = await puppeteer.launch({
+    headless: true,
+    args: process.env.CI === 'true' ? ['--no-sandbox'] : [],
+  });
 }, 30_000);
 
 afterAll(async () => {

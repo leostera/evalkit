@@ -247,7 +247,7 @@ function CartesianMatrixEvalTable({
               sort={sort}
               onSort={onSort}
             />
-            <th />
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>

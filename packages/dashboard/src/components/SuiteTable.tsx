@@ -70,7 +70,7 @@ export function SuiteTable({
                 <th>Suite</th>
                 <th>Evals</th>
                 <th>Status</th>
-                <th />
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>

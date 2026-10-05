@@ -27,6 +27,8 @@ export function TrialDetail({
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    // Clear stale evidence while the selected trial's report loads.
+    // oxlint-disable-next-line react/set-state-in-effect
     setLoadError(undefined);
     setEvents([]);
     setDetail(undefined);

@@ -121,7 +121,7 @@ export function TrialPanel({
             {error}
           </p>
         ) : (
-          <p role="status">Loading trial…</p>
+          <output>Loading trial…</output>
         )}
       </div>
     </dialog>
