@@ -2,7 +2,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { starterFiles, starterReadme } from './new-project-template.js';
 
-const gitDependency = 'git+https://github.com/leostera/evalkit.git';
+const npmDependency = '^0.0.1';
 const ignored = ['node_modules/', '_evalkit-results/', '_evalkit-sandbox/'];
 
 const readIfExists = async (path: string): Promise<string | undefined> => {
@@ -131,7 +131,7 @@ async function preparePackage(
     !dependencies['@leostera/evalkit'] &&
     !devDependencies['@leostera/evalkit']
   )
-    dependencies['@leostera/evalkit'] = gitDependency;
+    dependencies['@leostera/evalkit'] = npmDependency;
   if (!dependencies.typescript && !devDependencies.typescript)
     devDependencies.typescript = '^6.0.0';
   if (!dependencies['@types/bun'] && !devDependencies['@types/bun'])

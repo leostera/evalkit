@@ -14,13 +14,13 @@
 - [Results and reports](https://evalkit.leostera.dev/docs/manual/results/): Local manifests, scoring, artifacts, and CI gates.
 - [Troubleshooting](https://evalkit.leostera.dev/docs/manual/troubleshooting/): Common issues and current limitations.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
-- [Git-installable package](https://github.com/leostera/evalkit): The repository root exports `@leostera/evalkit` with authoring API, CLI, and dashboard. npm publication is optional and has not happened yet.
+- [EvalKit package](https://www.npmjs.com/package/@leostera/evalkit): The repository root builds `@leostera/evalkit` with authoring API, CLI, and dashboard.
 - [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported eval discovery, no registry or config.
 - [Configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix): Runnable project with an optional `evalkit.config.ts` and a provider-free parameter sweep.
 
 ## Implementation notes
 
-- Start with `bunx https://github.com/leostera/evalkit.git new ./evals`, then `cd evals && bun install && bun run evals` to run the provider-free eval from a standalone project.
+- Start with `bunx @leostera/evalkit new ./evals`, then `cd evals && bun install && bun run evals` to run the provider-free eval from a standalone project.
 - Authored suites, evals, agents, and matrices use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Fixtures have no ID: their destinations are scoped to an eval's trial workspace. Only runs and trials have generated URIs.
 - The local CLI discovers default-exported `evals/**/*.eval.ts`/`.js` by default. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes discovery and execution; `src/registry.ts` is for an optional explicit registry or suite. A config takes precedence over that file unless it explicitly supplies a registry. Reports are saved under `_evalkit-results/`.
 - Config can define a parameter matrix with `id`, axes, defaults, and execution safety limits. Matrices expand lazily; select by ID with `run-matrix <matrix-id> --eval <eval-id>` and inspect a plan with `--dry-run`. The agent adapter must consume `context.parameters` for a model axis to change the model.

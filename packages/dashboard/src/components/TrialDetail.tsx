@@ -16,6 +16,7 @@ export function TrialDetail({
   onWorkspace(): void;
 }) {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
+  const [loadError, setLoadError] = useState<string>();
   const [detail, setDetail] = useState<{
     manifest: unknown;
     summary: unknown;
@@ -25,15 +26,33 @@ export function TrialDetail({
   >([]);
   useEffect(() => {
     if (!selected) return;
+    let active = true;
+    setLoadError(undefined);
+    setEvents([]);
+    setDetail(undefined);
+    setArtifacts([]);
     void Promise.all([
       api.getTrialEvents(selected.run.id, selected.trial.id),
       api.getTrial(selected.run.id, selected.trial.id),
       api.listArtifacts(selected.run.id, selected.trial.id),
-    ]).then(([nextEvents, nextDetail, nextArtifacts]) => {
-      setEvents(nextEvents);
-      setDetail(nextDetail);
-      setArtifacts(nextArtifacts);
-    });
+    ])
+      .then(([nextEvents, nextDetail, nextArtifacts]) => {
+        if (!active) return;
+        setEvents(nextEvents);
+        setDetail(nextDetail);
+        setArtifacts(nextArtifacts);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setLoadError(
+            cause instanceof Error
+              ? cause.message
+              : 'Unable to load trial details',
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [api, selected]);
   if (!selected)
     return <Empty message="Select a trial from a run to inspect it." />;
@@ -42,7 +61,6 @@ export function TrialDetail({
       <aside className="trial-overview">
         <p className="mono">trial / {selected.trial.id}</p>
         <h2>Trial overview</h2>
-        <button onClick={onWorkspace}>Open candidate workspace →</button>
         <dl className="metadata-list">
           <dt>run</dt>
           <dd>{selected.run.id}</dd>
@@ -63,6 +81,9 @@ export function TrialDetail({
           <dt>events</dt>
           <dd>{events.length}</dd>
         </dl>
+        <button type="button" onClick={onWorkspace}>
+          Open candidate workspace →
+        </button>
         {selected.trial.checkpoints?.length ? (
           <>
             <h3>Checkpoints</h3>
@@ -118,7 +139,15 @@ export function TrialDetail({
                   {score.name}
                 </td>
                 <td>{score.value ?? '—'}</td>
-                <td>{score.passed ? 'passed' : 'failed'}</td>
+                <td>
+                  {score.error
+                    ? `error: ${score.error.message}`
+                    : score.passed === true
+                      ? 'passed'
+                      : score.passed === false
+                        ? 'failed'
+                        : 'not scored'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -150,6 +179,11 @@ export function TrialDetail({
         ) : null}
       </aside>
       <section className="timeline">
+        {loadError ? (
+          <p className="error" role="alert">
+            Unable to load trial details: {loadError}
+          </p>
+        ) : null}
         <div className="timeline-heading">
           <h2>Event timeline</h2>
           <span className="mono">{events.length} events</span>

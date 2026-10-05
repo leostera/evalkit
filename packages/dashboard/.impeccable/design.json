@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T00:00:00.000Z",
+  "title": "Design System: EvalKit dashboard",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "primary",
+        "displayName": "Black ink",
+        "canonical": "#171717"
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "White canvas",
+        "canonical": "#ffffff"
+      },
+      "sidebar": {
+        "role": "neutral",
+        "displayName": "Black navigation",
+        "canonical": "#171717"
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Table rule",
+        "canonical": "#e5e5e5"
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "View title",
+        "purpose": "Compact operational page heading."
+      },
+      "body": {
+        "displayName": "Interface",
+        "purpose": "Controls, navigation, and content."
+      },
+      "data": {
+        "displayName": "Data mono",
+        "purpose": "Run IDs, paths, and raw evidence."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      { "name": "filters-stack", "value": "980px" },
+      { "name": "mobile-navigation", "value": "740px" },
+      { "name": "phone-search", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action inside detail panels.",
+      "html": "<button class=\"ds-btn-primary\">Open workspace</button>",
+      "css": ".ds-btn-primary { background: var(--ink, #171717); color: #fff; border: 1px solid var(--ink, #171717); border-radius: 2px; padding: 7px 11px; font-weight: 600; cursor: pointer; } .ds-btn-primary:hover { background: #333; } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus, #171717); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Scoped search for cells or runs.",
+      "html": "<input class=\"ds-search\" type=\"search\" placeholder=\"Filter runs\" aria-label=\"Filter runs\">",
+      "css": ".ds-search { background: #fff; color: var(--ink, #171717); border: 1px solid var(--line-strong, #b8b8b8); border-radius: 2px; padding: 6px 9px; font-size: 12px; } .ds-search:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Black global rail with an in-rail chevron that compresses the navigation to 52px.",
+      "html": "<aside class=\"ds-nav\"><button aria-label=\"Collapse navigation\" aria-expanded=\"true\">‹</button><nav><a href=\"#\">Evals</a><a class=\"ds-active\" href=\"#\">Runs</a></nav></aside>",
+      "css": ".ds-nav { display: grid; gap: 2px; background: #171717; padding: 12px; } .ds-nav button { background: transparent; color: #fff; border: 0; font-size: 24px; cursor: pointer; } .ds-nav button:focus-visible { outline: 2px solid #fff; } .ds-nav a { color: #bdbdbd; text-decoration: none; border-radius: 2px; padding: 6px 12px; font-size: 13px; } .ds-nav a:hover { background: #2e2e2e; color: #fff; } .ds-nav a.ds-active { background: #343434; color: #fff; font-weight: 700; } .ds-nav a:focus-visible { outline: 2px solid #fff; }"
+    },
+    {
+      "name": "Status label",
+      "kind": "chip",
+      "description": "Textual verdict in black and white.",
+      "html": "<span class=\"ds-status\">Passed</span>",
+      "css": ".ds-status { display: inline-block; border: 1px solid transparent; border-radius: 2px; padding: 2px 6px; background: #ededed; color: #171717; font-size: 10px; font-weight: 650; }"
+    },
+    {
+      "name": "Work surface",
+      "kind": "card",
+      "description": "Flat ruled frame around filters or evidence.",
+      "html": "<div class=\"ds-surface\">Evaluation results</div>",
+      "css": ".ds-surface { background: #fff; border: 1px solid #e5e5e5; border-radius: 2px; color: #171717; padding: 14px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Working surface",
+    "overview": "A black-and-white results workspace, not an eval showcase or themed AI control room. Typography and one-pixel dividers establish hierarchy; the navigation compresses to a slim rail, while trial evidence stays connected to the run table in a contextual panel.",
+    "keyCharacteristics": [
+      "Compact rows",
+      "Explicit text status",
+      "Quiet table rules",
+      "Collapsible monochrome shell"
+    ],
+    "rules": [
+      {
+        "name": "The Evidence Rule",
+        "body": "No visual treatment should imply a score, state, or comparison not recorded in the actual reports.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Privilege saved run identity, status, eval and trial evidence over decorative summaries.",
+      "Retain keyboard-accessible navigation and clear focus in dense layouts.",
+      "Show report states in text, never just tint."
+    ],
+    "donts": [
+      "Add invented metrics or a published-eval gallery to the operations screen.",
+      "Reintroduce green accents, gradient chrome, faux marks, or a hero-metric strip.",
+      "Hide table columns simply to make a phone capture look tidy."
+    ]
+  }
+}

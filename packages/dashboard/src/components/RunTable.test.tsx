@@ -83,6 +83,28 @@ test('runs show a stable union of saved parameter keys, including overrides', ()
   expect(html).toContain('colSpan="13"');
 });
 
+test('large run histories render one page without losing the full count', () => {
+  const many = Array.from({ length: 120 }, (_, index) => ({
+    ...runs[0]!,
+    id: `run-${index}`,
+    startedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+  }));
+  const html = renderToStaticMarkup(
+    <RunTable
+      api={{} as DashboardApi}
+      runs={many}
+      suites={suites}
+      catalog={catalog}
+      onTrial={() => {}}
+      onOpenRun={() => {}}
+    />,
+  );
+  expect(html.match(/aria-expanded="false"/g)).toHaveLength(50);
+  expect(html).toContain('1–50 of 120');
+  expect(html).toContain('50 of 120');
+  expect(html).toContain('aria-sort="descending"');
+});
+
 test('saved parameter facets and URL filters keep historical runs from different matrix states', () => {
   const search = new URLSearchParams();
   search.append('p.model', '"scout"');

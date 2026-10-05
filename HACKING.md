@@ -19,23 +19,23 @@ The pack check builds and exercises the installable artifact in an isolated loca
 
 ## Where things live
 
-| Path                            | Purpose                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------- |
-| `packages/core`                 | Authored evals, agents, rules, trajectories, and report contracts                        |
-| `packages/runner`               | Local execution, isolated workspaces, and report storage                                 |
-| `packages/agents`               | Local Pi adapter and planned (not implemented) Agents SDK transport                      |
-| `packages/cli`                  | CLI implementation and dashboard server                                                  |
-| `packages/dashboard`            | Dashboard frontend                                                                       |
-| `package.json` and `dist/`      | Git-installable public `@leostera/evalkit` package, with compiled CLI, API and dashboard |
-| `packages/evalkit`              | Private build workspace for the root package artifact                                    |
-| `examples/starter`              | Zero-config discovery and provider-free greeting eval, plus Pi-backed evals              |
-| `examples/configured-matrix`    | Provider-free parameter sweep                                                            |
-| `examples/interleaved-scenario` | Provider-free checkpoints, failfast, and judge-agent examples                            |
-| `examples/agents-sdk`           | Planned remote transport example; not runnable yet                                       |
-| `www`                           | Astro website built as Workers Static Assets                                             |
-| `docs/rfds`                     | Design records and proposals                                                             |
+| Path                            | Purpose                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `packages/core`                 | Authored evals, agents, rules, trajectories, and report contracts             |
+| `packages/runner`               | Local execution, isolated workspaces, and report storage                      |
+| `packages/agents`               | Local Pi adapter and planned (not implemented) Agents SDK transport           |
+| `packages/cli`                  | CLI implementation and dashboard server                                       |
+| `packages/dashboard`            | Dashboard frontend                                                            |
+| `package.json` and `dist/`      | publishable `@leostera/evalkit` package, with compiled CLI, API and dashboard |
+| `packages/evalkit`              | Private build workspace for the root package artifact                         |
+| `examples/starter`              | Zero-config discovery and provider-free greeting eval, plus Pi-backed evals   |
+| `examples/configured-matrix`    | Provider-free parameter sweep                                                 |
+| `examples/interleaved-scenario` | Provider-free checkpoints, failfast, and judge-agent examples                 |
+| `examples/agents-sdk`           | Planned remote transport example; not runnable yet                            |
+| `www`                           | Astro website built as Workers Static Assets                                  |
+| `docs/rfds`                     | Design records and proposals                                                  |
 
-The examples use internal workspace packages (`@evalkit/*`). External projects import `@leostera/evalkit` directly from this public Git repository; no npm release is required. `bun run build` compiles the private build workspace and syncs its output into the **tracked root `dist/`**. Keep that artifact current when changing public APIs or the CLI: Git installations do not rely on install-time build scripts. `bun run pack:check` exercises the root package in isolation, including the generated project, its matrix, and type-checking. The authored scaffold lives in `packages/cli/src/new-project.ts`; rebuild and commit root `dist/` whenever you change it. The standalone `bunx https://github.com/leostera/evalkit.git new ./evals` path is the user-facing entry point.
+The examples use internal workspace packages (`@evalkit/*`). External projects import `@leostera/evalkit` from npm. `bun run build` compiles the private build workspace and syncs its output into the **git-ignored root `dist/`**. Build before publishing: the npm tarball includes this output. `bun run pack:check` exercises the root package in isolation, including the generated project, its matrix, and type-checking. The authored scaffold lives in `packages/cli/src/new-project.ts`; rebuild before packing whenever you change it. The standalone `bunx @leostera/evalkit new ./evals` path is the user-facing entry point.
 
 ## Working on evals and reports
 

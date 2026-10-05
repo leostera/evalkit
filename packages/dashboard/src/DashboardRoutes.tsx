@@ -175,7 +175,13 @@ function RunTableRoute(props: {
       selectedRunId={runUuid}
       onTrial={(run, trial) => {
         props.onTrial(run, trial);
-        navigate(`/trials/${encodeURIComponent(trial.id)}`);
+        const next = new URLSearchParams(search);
+        next.set('trial', trial.id);
+        next.delete('view');
+        navigate({
+          pathname: `/runs/${encodeURIComponent(run.id)}`,
+          search: next.toString(),
+        });
       }}
       onOpenRun={(run) =>
         navigate({

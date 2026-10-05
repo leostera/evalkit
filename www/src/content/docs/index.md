@@ -7,10 +7,10 @@ Write an agent task in TypeScript, run it locally, then inspect the messages, sc
 
 ## First run
 
-You need [Bun](https://bun.sh/) 1.4.2 (the version used by this repository). Create a project from the public Git repository; no registry token or model key is needed:
+You need [Bun](https://bun.sh/) 1.4.2 (the version used by this repository). Create a project from npm; no model key is needed:
 
 ```sh
-bunx https://github.com/leostera/evalkit.git new ./evals
+bunx @leostera/evalkit new ./evals
 cd evals
 bun install
 bun run check
@@ -26,12 +26,12 @@ The scaffold includes `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.conf
 Run these commands from its root:
 
 ```sh
-bun add https://github.com/leostera/evalkit
+bun add @leostera/evalkit
 bun run evalkit new .
 bun install
 ```
 
-The scaffold preserves existing scripts, dependencies, and README; it stops before changing anything if a generated path already exists. The Git URL installs the public package without an npm release. For `bunx`, keep the `.git` suffix shown above: Bun 1.4.2 cannot find the executable from the bare HTTPS URL. See [project setup](/docs/manual/project-structure/) for the full contract.
+The scaffold preserves existing scripts, dependencies, and README; it stops before changing anything if a generated path already exists. See [project setup](/docs/manual/project-structure/) for the full contract.
 
 ## Define an eval
 
@@ -57,7 +57,7 @@ export default defineEval({
 });
 ```
 
-Default-export an eval under `evals/` and run it with `bun run evalkit run-evals greeting`. The CLI discovers `evals/**/*.eval.ts` and `.js` files automatically: no registry or config is required. This is the generated `evals/greeting.eval.ts`. Edit it or add another default-exported `.eval.ts` file; `evalkit.config.ts` already defines the `styles` matrix. The `@leostera/evalkit` import resolves from the public Git package installed by `bun install`.
+Default-export an eval under `evals/` and run it with `bun run evalkit run-evals greeting`. The CLI discovers `evals/**/*.eval.ts` and `.js` files automatically: no registry or config is required. This is the generated `evals/greeting.eval.ts`. Edit it or add another default-exported `.eval.ts` file; `evalkit.config.ts` already defines the `styles` matrix. The `@leostera/evalkit` import resolves from the npm package installed by `bun install`.
 
 Learn more: [Project structure and discovery](/docs/manual/project-structure/) · [Scorers and evals](/docs/manual/scoring-and-evals/).
 
@@ -193,4 +193,4 @@ Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
 Use the sidebar to explore the [manual](/docs/manual/) for explicit suites, fixture visibility, scorer contracts, CLI selection, and report processing. The generated project is a runnable reference for project layout and matrix configuration; the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter) and [interleaved scenario](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) show additional eval patterns.
 
-Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport and enforced timeouts are not available. The root Git package is usable without an npm release; see [project setup](/docs/manual/project-structure/).
+Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport and enforced timeouts are not available. Install the public npm package to get started; see [project setup](/docs/manual/project-structure/).

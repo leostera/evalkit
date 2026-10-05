@@ -20,9 +20,15 @@ export function EvalRow({
   status?: RunSummary['status'];
 }) {
   return (
-    <tr onClick={onOpen}>
-      <td>
-        {evaluation?.name ?? id}
+    <tr>
+      <td className="identity-cell">
+        {onOpen ? (
+          <button type="button" className="table-link" onClick={onOpen}>
+            {evaluation?.name ?? id}
+          </button>
+        ) : (
+          (evaluation?.name ?? id)
+        )}
         <small className="mono">{evaluation?.path ?? id}</small>
       </td>
       {parameters.map((value, index) => (
@@ -42,6 +48,7 @@ export function EvalRow({
       <td>
         {onRun || runDisabled ? (
           <button
+            type="button"
             disabled={runDisabled}
             title={
               runDisabled ? 'Matrix configuration is still loading' : undefined
