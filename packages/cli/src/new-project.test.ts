@@ -18,7 +18,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
       name: 'existing-project',
       private: true,
       dependencies: {
-        '@leostera/evalkit': '^0.0.1',
+        '@leostera/evalkit': '^0.0.2',
         zod: '^4.0.0',
       },
       scripts: { test: 'bun test', dashboard: 'echo existing' },
@@ -76,7 +76,7 @@ test('new . adds the npm package to an existing project that has no EvalKit depe
     ) as { dependencies: Record<string, string> };
     expect(pkg.dependencies).toEqual({
       hono: '^4.0.0',
-      '@leostera/evalkit': '^0.0.1',
+      '@leostera/evalkit': '^0.0.2',
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -124,7 +124,7 @@ test('new creates a self-contained, provider-free project without overwriting fi
     ) as {
       dependencies: Record<string, string>;
     };
-    expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.0.1');
+    expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.0.2');
     expect(
       await readFile(join(root, 'evals/greeting.eval.ts'), 'utf8'),
     ).toContain("import { defineEval, file, user } from '@leostera/evalkit'");
