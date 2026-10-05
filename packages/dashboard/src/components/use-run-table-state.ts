@@ -12,6 +12,8 @@ export function useRunFilters(
   const urlQuery = activeSearch.get('q') ?? '';
   const [query, setQuery] = useState(urlQuery);
 
+  // Browser back/forward can change the URL independently of the local draft.
+  // oxlint-disable-next-line react/set-state-in-effect
   useEffect(() => setQuery(urlQuery), [urlQuery]);
   useEffect(() => {
     if (query === urlQuery) return;

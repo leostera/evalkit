@@ -43,6 +43,7 @@
   "scripts": {
     "build": "bun run --filter './packages/*' build && bun scripts/sync-package.ts",
     "check": "bun run --filter './packages/*' check && bun run --filter './examples/*' check",
+    "lint": "oxlint --react-plugin --jsx-a11y-plugin --deny-warnings packages examples scripts www/src",
     "test": "bun test",
     "pack:check": "bun packages/evalkit/scripts/pack-check.ts",
     "format": "prettier --write .",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "oxlint": "1.87.0",
     "prettier": "latest",
     "typescript": "latest"
   }

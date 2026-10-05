@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 
-import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { Effect, Option } from 'effect';
 import { Args, Command, Options } from '@effect/cli';
 import { NodeContext } from '@effect/platform-node';
@@ -13,8 +12,6 @@ import {
   type EvalDefinition,
   type EvalRegistry,
   type AgentRuntimeName,
-  type TrajectoryEvent,
-  type TrialResult,
 } from '@evalkit/core';
 import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
 import { listMatrixCells } from './dashboard-cells.js';
@@ -26,33 +23,6 @@ import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import { normalizeRunOptions, runProjectCommand } from './run-command.js';
 import { newProject } from './new-project.js';
-
-const colorEnabled =
-  process.env.NO_COLOR === undefined &&
-  (process.env.FORCE_COLOR === '1' || process.stdout.isTTY === true);
-
-function color(code: number, value: string): string {
-  return colorEnabled ? `\u001b[${code}m${value}\u001b[0m` : value;
-}
-
-const paint = {
-  blue: (value: string) => color(34, value),
-  cyan: (value: string) => color(36, value),
-  dim: (value: string) => color(2, value),
-  green: (value: string) => color(32, value),
-  magenta: (value: string) => color(35, value),
-  red: (value: string) => color(31, value),
-  yellow: (value: string) => color(33, value),
-};
-
-type TrajectoryMeasurements = {
-  eventCount: number;
-  autEventCount: number;
-  runnerEventCount: number;
-  turnLatencyMs: number;
-  inputTokens: number;
-  outputTokens: number;
-};
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
@@ -69,118 +39,6 @@ function runtimeFor(evaluation: EvalDefinition): AgentRuntimeName | undefined {
     if (evaluation.agent.runtimes?.[runtime]) return runtime;
   }
   return undefined;
-}
-
-function agentLabel(evaluation: EvalDefinition): string {
-  const identity = evaluation.agent.identity;
-  if (!identity) return 'unidentified agent';
-  return [
-    identity.kind,
-    identity.id,
-    identity.version && `v${identity.version}`,
-  ]
-    .filter(Boolean)
-    .join(' / ');
-}
-
-async function measureTrajectory(
-  runId: string,
-  trialId: string,
-): Promise<TrajectoryMeasurements> {
-  const file = resolve(
-    reportRoot,
-    runId,
-    'trials',
-    trialId,
-    'trajectory.jsonl',
-  );
-  const events = (await readFile(file, 'utf8'))
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as TrajectoryEvent);
-  return events.reduce<TrajectoryMeasurements>(
-    (measurements, event) => {
-      measurements.eventCount += 1;
-      if (event.source === 'aut') measurements.autEventCount += 1;
-      else measurements.runnerEventCount += 1;
-      if (event.kind === 'turn-completed') {
-        measurements.turnLatencyMs += event.latencyMs ?? 0;
-        measurements.inputTokens += event.usage?.inputTokens ?? 0;
-        measurements.outputTokens += event.usage?.outputTokens ?? 0;
-      }
-      return measurements;
-    },
-    {
-      eventCount: 0,
-      autEventCount: 0,
-      runnerEventCount: 0,
-      turnLatencyMs: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-    },
-  );
-}
-
-function printEvalStart(evaluation: EvalDefinition): void {
-  console.log(
-    `\n${paint.cyan('◆')} ${paint.cyan(evaluation.name ?? authoringId(evaluation))}`,
-  );
-  console.log(
-    `  ${paint.blue('eval')}     ${paint.dim(authoringId(evaluation))}`,
-  );
-  console.log(
-    `  ${paint.blue('agent')}    ${paint.magenta(agentLabel(evaluation))}`,
-  );
-  const runtime = runtimeFor(evaluation);
-  console.log(
-    `  ${paint.blue('runtime')}  ${paint.green(runtime ?? 'default')} (${runtime ? evaluation.agent.runtimes?.[runtime]?.kind : 'adapter default'})`,
-  );
-  console.log(
-    `  ${paint.blue('input')}    ${evaluation.transcript.length} transcript step(s), ${evaluation.fixtures?.length ?? 0} fixture(s), ${evaluation.scoring.length} scorer(s)`,
-  );
-}
-
-function printResult(
-  evaluation: EvalDefinition,
-  result: TrialResult,
-  durationMs: number,
-  measurements: TrajectoryMeasurements,
-): void {
-  const passed = result.status === 'completed';
-  const symbol = passed ? paint.green('✓') : paint.red('✗');
-  console.log(
-    `  ${symbol} ${passed ? paint.green(result.status) : paint.red(result.status)} in ${paint.dim(`${durationMs}ms`)}`,
-  );
-  for (const score of result.scoring?.results ?? []) {
-    const value = score.value === undefined ? 'error' : `${score.value * 100}%`;
-    const scoreColor =
-      score.error || score.passed === false ? paint.red : paint.green;
-    console.log(
-      `    ${paint.blue('score')}   ${score.name}: ${scoreColor(value)} ${paint.dim(`(${score.durationMs}ms)`)}`,
-    );
-    if (score.explanation)
-      console.log(`            ${paint.dim(score.explanation)}`);
-  }
-  console.log(
-    `    ${paint.blue('events')}  ${measurements.eventCount} total (${measurements.autEventCount} AUT, ${measurements.runnerEventCount} runner)`,
-  );
-  if (
-    measurements.turnLatencyMs ||
-    measurements.inputTokens ||
-    measurements.outputTokens
-  ) {
-    console.log(
-      `    ${paint.blue('usage')}   ${measurements.turnLatencyMs}ms turn latency, ${measurements.inputTokens} input tokens, ${measurements.outputTokens} output tokens`,
-    );
-  }
-  console.log(
-    `    ${paint.blue('report')}  ${paint.dim(result.reportLocation)}`,
-  );
-  if (result.error)
-    console.log(
-      `    ${paint.red('error')}   ${result.error.name}: ${result.error.message}`,
-    );
-  void evaluation;
 }
 
 async function runEvals(options: {

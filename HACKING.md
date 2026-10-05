@@ -7,15 +7,18 @@ This is the repository development guide. If you just want to run an eval, start
 Install [Bun](https://bun.sh/), then from the repository root:
 
 ```sh
-bun install
+bun install --frozen-lockfile
+bun run format:check
+bun run lint
 bun run check
+bun run --cwd www check
 bun test
 bun run build
 bun run pack:check
 bun run --cwd www build
 ```
 
-The pack check builds and exercises the installable artifact in an isolated local project; it does **not** publish it. Website builds do **not** deploy the Worker. To try a provider-free eval, run `bun run greeting` from `examples/starter/`. Run `bun run dashboard` there in a second terminal to inspect its reports.
+These are the same gates as the `Check` GitHub Action. The dashboard routing test needs Chrome: locally install a Puppeteer-compatible Chrome or set `PUPPETEER_EXECUTABLE_PATH` to your browser. On GitHub-hosted runners, the test uses `--no-sandbox` because Chrome's sandbox is unavailable there; this does not change production browser behavior. The pack check builds and exercises the installable artifact in an isolated local project; it does **not** publish it. Website builds do **not** deploy the Worker. To try a provider-free eval, run `bun run greeting` from `examples/starter/`. Run `bun run dashboard` there in a second terminal to inspect its reports.
 
 ## Where things live
 
