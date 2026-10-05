@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import puppeteer, { type Browser } from 'puppeteer';
+import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 const port = 5174;
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -17,6 +17,14 @@ async function waitForServer(): Promise<void> {
     await Bun.sleep(100);
   }
   throw new Error('Dashboard preview server did not start');
+}
+
+async function waitForPath(page: Page, pathname: string): Promise<void> {
+  await page.waitForFunction(
+    (expected) => location.pathname === expected,
+    {},
+    pathname,
+  );
 }
 
 beforeAll(async () => {
@@ -176,13 +184,13 @@ describe('dashboard URL routing', () => {
     await page.waitForSelector('tbody tr button');
     await page.focus('tbody tr button.table-link');
     await page.keyboard.press('Enter');
-    expect(new URL(page.url()).pathname).toBe('/suites/starter');
+    await waitForPath(page, '/suites/starter');
     await page.waitForSelector('.nested tbody tr');
     await page.focus('.nested tbody tr button.table-link');
     await page.keyboard.press('Enter');
-    expect(new URL(page.url()).pathname).toBe('/evals/starter%23greeting');
+    await waitForPath(page, '/evals/starter%23greeting');
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).pathname).toBe('/suites/starter');
+    await waitForPath(page, '/suites/starter');
 
     await page.evaluate(() => {
       const button = [...document.querySelectorAll('nav a')].find(
@@ -192,7 +200,7 @@ describe('dashboard URL routing', () => {
         throw new Error('runs navigation missing');
       button.click();
     });
-    expect(new URL(page.url()).pathname).toBe('/runs');
+    await waitForPath(page, '/runs');
     await page.waitForSelector('.table-wrap > table > tbody > tr');
     await page.type('input[aria-label="Filter runs"]', 'greeting');
     await page.waitForFunction(
@@ -200,9 +208,12 @@ describe('dashboard URL routing', () => {
     );
     await page.focus('.table-wrap > table > tbody > tr button.table-link');
     await page.keyboard.press('Enter');
-    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
+    await waitForPath(page, '/runs/run-123');
     await page.waitForSelector('.nested tbody tr button');
     await page.click('.nested tbody tr button');
+    await page.waitForFunction(() =>
+      new URLSearchParams(location.search).has('trial'),
+    );
     expect(new URL(page.url()).pathname).toBe('/runs/run-123');
     expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
     expect(new URL(page.url()).searchParams.get('trial')).toBe(
