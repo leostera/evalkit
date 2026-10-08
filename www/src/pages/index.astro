@@ -1,72 +1,485 @@
 ---
+import { Code } from 'astro:components';
 import Site from '../layouts/Site.astro';
-import { heroDefinition } from '../content/snippets';
+import Icon from '../components/Icon.astro';
+import {
+  heroDefinition,
+  scaffoldCommand,
+  setupCommands,
+  codeTheme,
+} from '../content/snippets';
 ---
 
 <Site
-  title="EvalKit — author agent evals as code"
-  description="A local-first kit for writing agent evals as code. Version definitions with your team, reuse fixtures and predicate judges, compare model settings, and inspect saved results."
+  title="EvalKit — Open-source evals for AI agents"
+  description="Define agent evals in TypeScript. Run them locally, compare parameters, and inspect every score, event, and artifact. Free and open source. MIT licensed."
   active="home"
 >
   <section class="hero wrap" aria-labelledby="hero-title">
-    <div class="hero-copy">
-      <h1 id="hero-title">Write evals <em>as code</em></h1>
-      <p class="hero-lede">Define an agent task in TypeScript, run it locally, and inspect the evidence it leaves behind. Your definitions belong in Git; your results stay on disk.</p>
+    <div class="hero-heading">
+      <h1 id="hero-title">
+        Open-source evals
+        <br />
+        for <span>AI agents.</span>
+      </h1>
+      <div class="hero-copy">
+        <p>
+          Write the task. Run the agent.
+          <br class="desktop-break" /> Know what actually happened.
+        </p>
+        <p class="hero-detail">
+          A TypeScript kit for repeatable evaluations, reusable scorers, and
+          results you can inspect. On your machine. In your repo.
+        </p>
+      </div>
+    </div>
+    <div class="hero-tools">
       <div class="hero-actions">
-        <a class="button button-primary" href="/docs/">Run your first eval <span aria-hidden="true">↗</span></a>
-        <a class="button button-quiet" href="https://github.com/leostera/evalkit">View source <span aria-hidden="true">→</span></a>
+        <a class="button button-primary" href="/docs/">
+          Run your first eval <Icon name="arrow" />
+        </a>
+        <a
+          class="button button-quiet"
+          href="https://github.com/leostera/evalkit"
+        >
+          <Icon name="github" /> View source
+        </a>
+      </div>
+      <div class="install-command">
+        <code>{scaffoldCommand}</code>
+        <button
+          class="copy-command"
+          data-copy={scaffoldCommand}
+          aria-label="Copy project creation command"
+          hidden
+        >
+          <Icon name="copy" />
+        </button>
       </div>
     </div>
-    <div class="hero-code">
-      <div class="code-card">
-        <div class="code-header"><span>examples/starter/evals/greeting.eval.ts</span><span class="code-header-right">TypeScript</span></div>
-        <pre><code>{heroDefinition}</code></pre>
+    <div class="hero-notes">
+      <a href="https://github.com/leostera/evalkit/blob/main/LICENSE">
+        MIT licensed
+      </a>
+      <span>No EvalKit account</span>
+      <span>Starter needs no model key</span>
+      <span>Bun + TypeScript</span>
+    </div>
+    <p class="copy-status" role="status" aria-live="polite"></p>
+
+    <div class="evidence-workbench" aria-label="Recorded greeting evaluation">
+      <div class="workbench-bar">
+        <div class="workbench-title">
+          <span class="status-dot" aria-hidden="true"></span> A run is more than
+          a score.
+        </div>
+        <span class="recording-label">
+          Recorded starter run · not a live demo
+        </span>
       </div>
-      <a class="hero-code-source" href="https://github.com/leostera/evalkit/blob/main/examples/starter/evals/greeting.eval.ts">Open the runnable source <span aria-hidden="true">↗</span></a>
+      <div class="workbench-body">
+        <div class="run-outline">
+          <div class="run-label">
+            greeting{' '}
+            <span class="status-pass">
+              <Icon name="check" /> Passed
+            </span>
+          </div>
+          <p>
+            The agent responded. The scorer checked it.
+            <br />
+            The evidence stayed on disk.
+          </p>
+          <dl class="run-facts">
+            <div>
+              <dt>Agent</dt>
+              <dd>Greeting Agent</dd>
+            </div>
+            <div>
+              <dt>Scorer</dt>
+              <dd>returns a greeting</dd>
+            </div>
+            <div>
+              <dt>Trial</dt>
+              <dd>1 of 1</dd>
+            </div>
+            <div>
+              <dt>Events recorded</dt>
+              <dd>11</dd>
+            </div>
+          </dl>
+          <a class="text-link" href="/docs/manual/results/">
+            How to read a run <Icon name="arrow" />
+          </a>
+        </div>
+        <div class="evidence-detail">
+          <div
+            class="evidence-tabs"
+            role="tablist"
+            aria-label="Recorded run evidence"
+            hidden
+          >
+            <button
+              id="tab-score"
+              role="tab"
+              aria-selected="true"
+              aria-controls="panel-score"
+            >
+              Scoring
+            </button>
+            <button
+              id="tab-events"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-events"
+              tabindex="-1"
+            >
+              Trajectory
+            </button>
+            <button
+              id="tab-files"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-files"
+              tabindex="-1"
+            >
+              Files
+            </button>
+          </div>
+          <section
+            id="panel-score"
+            class="evidence-panel"
+            aria-labelledby="tab-score"
+          >
+            <h2>See why it passed.</h2>
+            <div class="response">
+              <span>Assistant response</span>
+              <code>Hello from EvalKit: Ada</code>
+            </div>
+            <div class="score-line">
+              <span>returns a greeting</span>
+              <strong class="status-pass">
+                <Icon name="check" /> 1 / 1 · Passed
+              </strong>
+            </div>
+            <p class="evidence-explanation">
+              “The AUT should return the expected greeting.”
+            </p>
+            <code class="file-path">trials/&lt;trial-id&gt;/scoring.json</code>
+          </section>
+          <section
+            id="panel-events"
+            class="evidence-panel"
+            aria-labelledby="tab-events"
+          >
+            <h2>Follow the agent’s steps.</h2>
+            <ol class="event-list">
+              <li>
+                <code>trial-started</code>
+                <span>runner</span>
+              </li>
+              <li>
+                <code>turn-started</code>
+                <span>agent</span>
+              </li>
+              <li class="message-event">
+                <code>Hello from EvalKit: Ada</code>
+                <span>assistant</span>
+              </li>
+              <li>
+                <code>scorer-completed</code>
+                <span>value: 1</span>
+              </li>
+              <li>
+                <code>trial-completed</code>
+                <span>runner</span>
+              </li>
+            </ol>
+            <p class="evidence-explanation">
+              5 of 11 recorded events shown. Full events are saved in order.
+            </p>
+            <code class="file-path">
+              trials/&lt;trial-id&gt;/trajectory.jsonl
+            </code>
+          </section>
+          <section
+            id="panel-files"
+            class="evidence-panel"
+            aria-labelledby="tab-files"
+          >
+            <h2>Keep the underlying files.</h2>
+            <dl class="file-list">
+              <div>
+                <dt>
+                  <code>summary.json</code>
+                </dt>
+                <dd>Run status and pass/fail counts</dd>
+              </div>
+              <div>
+                <dt>
+                  <code>scoring.json</code>
+                </dt>
+                <dd>Scorer values and explanations</dd>
+              </div>
+              <div>
+                <dt>
+                  <code>trajectory.jsonl</code>
+                </dt>
+                <dd>The ordered event stream</dd>
+              </div>
+              <div>
+                <dt>
+                  <code>artifacts/candidate/</code>
+                </dt>
+                <dd>Files from the agent workspace</dd>
+              </div>
+            </dl>
+            <code class="file-path">_evalkit-results/&lt;run-id&gt;/</code>
+          </section>
+        </div>
+      </div>
+      <div class="workbench-footer">
+        <span>Real output from the repository’s greeting example.</span>
+        <a href="https://github.com/leostera/evalkit/tree/main/examples/starter">
+          Inspect the example <Icon name="external" />
+        </a>
+      </div>
     </div>
   </section>
 
-  <section class="section wrap workflow" id="how-it-works" aria-labelledby="workflow-title">
+  <section class="section wrap workflow" aria-labelledby="workflow-title">
     <div class="section-intro">
-      <h2 id="workflow-title">From definition to evidence.</h2>
-      <p>Write the test alongside your app, then inspect what the agent actually did. No hosted account is required.</p>
+      <h2 id="workflow-title">
+        Your eval suite.
+        <br />
+        Just another part of your codebase.
+      </h2>
+      <p>
+        Define behavior in TypeScript, review it in a pull request, and rerun it
+        when your agent changes.
+      </p>
     </div>
-    <div class="workflow-list">
-      <article class="workflow-item">
-        <h3>Define the task</h3>
-        <div><p>Describe the transcript, trial policy, and success criteria in TypeScript. Review changes to the eval like any other code.</p><a href="/docs/manual/scoring-and-evals/">Evals and scoring <span aria-hidden="true">→</span></a></div>
-      </article>
-      <article class="workflow-item">
-        <h3>Keep inputs separate</h3>
-        <div><p>Reuse fixtures across trials. Give the agent only candidate-visible files; keep reference answers in the evaluator workspace.</p><a href="/docs/manual/fixtures/">Fixtures and visibility <span aria-hidden="true">→</span></a></div>
-      </article>
-      <article class="workflow-item">
-        <h3>Change a parameter</h3>
-        <div><p>Run the same eval across selected matrix settings. Your agent adapter decides how each parameter changes its behavior.</p><a href="/docs/manual/cli-and-matrices/">Matrices and runs <span aria-hidden="true">→</span></a></div>
-      </article>
+    <div class="workflow-layout">
+      <div class="workflow-steps">
+        <article>
+          <h3>Define what good looks like.</h3>
+          <p>
+            Compose an agent, input fixtures, a transcript, and scoring rules.
+            Start with deterministic checks you can read and debug.
+          </p>
+          <a class="text-link" href="/docs/manual/scoring-and-evals/">
+            Evals and scoring <Icon name="arrow" />
+          </a>
+        </article>
+        <article>
+          <h3>Change one thing. Run it again.</h3>
+          <p>
+            Sweep parameter settings with a matrix. Your adapter applies each
+            setting; EvalKit keeps each cell’s results separate.
+          </p>
+          <a class="text-link" href="/docs/manual/cli-and-matrices/">
+            Parameter matrices <Icon name="arrow" />
+          </a>
+        </article>
+        <article>
+          <h3>Give the agent only what it needs.</h3>
+          <p>
+            Reuse fixtures across isolated trials. Keep reference answers in the
+            evaluator workspace, out of the agent’s inputs.
+          </p>
+          <a class="text-link" href="/docs/manual/fixtures/">
+            Fixtures and visibility <Icon name="arrow" />
+          </a>
+        </article>
+      </div>
+      <div class="code-example">
+        <div class="code-header">
+          <span>evals/greeting.eval.ts</span>
+          <span>TypeScript</span>
+        </div>
+        <Code code={heroDefinition} lang="ts" theme={codeTheme} />
+        <div class="code-caption">
+          Included in the generated project.{' '}
+          <a href="https://github.com/leostera/evalkit/blob/main/packages/cli/src/new-project-template.ts">
+            View template <Icon name="external" />
+          </a>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="section wrap output-section" aria-labelledby="output-title">
-    <div class="section-intro">
-      <h2 id="output-title">The run is yours to inspect.</h2>
-      <p>EvalKit writes a local report, not a score hidden behind a service. Read the event stream, check why a rule passed, or open the files the agent produced.</p>
-      <a class="text-link" href="/docs/manual/results/">Understand reports <span aria-hidden="true">→</span></a>
-    </div>
-    <div class="report" aria-label="Example report file structure">
-      <div class="report-heading">_evalkit-results/&lt;run-id&gt;/</div>
-      <div class="report-row"><code>summary.json</code><span>Run-level counts and status</span></div>
-      <div class="report-heading report-nested">trials/&lt;trial-id&gt;/</div>
-      <div class="report-row report-nested"><code>trajectory.jsonl</code><span>Recorded events in order</span></div>
-      <div class="report-row report-nested"><code>scoring.json</code><span>Values, explanations, evidence</span></div>
-      <div class="report-row report-nested"><code>artifacts/candidate/</code><span>Files from the agent workspace</span></div>
+  <section class="dashboard-section" aria-labelledby="dashboard-title">
+    <div class="wrap">
+      <div class="section-intro dashboard-intro">
+        <div>
+          <h2 id="dashboard-title">Don’t stop at pass or fail.</h2>
+          <p>
+            Open the local dashboard. Follow a trial from its score to the
+            messages, events, and files behind it.
+          </p>
+        </div>
+        <a class="text-link" href="/docs/manual/results/">
+          Explore reports <Icon name="arrow" />
+        </a>
+      </div>
+      <figure class="dashboard-figure">
+        <a
+          href="/images/dashboard-trial.png"
+          aria-label="Open full-size screenshot of the local dashboard"
+        >
+          <img
+            src="/images/dashboard-trial.png"
+            alt="EvalKit local dashboard showing the starter greeting trial, its passing predicate score, runtime, 11 recorded events, and candidate artifacts."
+            width="2560"
+            height="1380"
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
+        <figcaption>
+          <span>Actual local dashboard · repository greeting example</span>
+          <a href="/images/dashboard-trial.png">
+            View full size <Icon name="external" />
+          </a>
+        </figcaption>
+      </figure>
     </div>
   </section>
 
-  <section class="cta-band" aria-labelledby="cta-title">
-    <div class="wrap cta-content">
-      <div><h2 id="cta-title">Start with a working eval.</h2><p>The scaffold runs without a model key. Bring your own agent when you're ready.</p></div>
-      <a class="button button-dark" href="/docs/">Read the getting-started guide <span aria-hidden="true">↗</span></a>
+  <section class="section wrap ownership" aria-labelledby="ownership-title">
+    <div>
+      <h2 id="ownership-title">
+        Your evals.
+        <br />
+        Your infrastructure.
+        <br />
+        <span>No platform required.</span>
+      </h2>
+      <p>
+        EvalKit is free, open-source software. Run it locally, inspect the
+        implementation, and make it yours.
+      </p>
+      <a
+        class="text-link"
+        href="https://github.com/leostera/evalkit/blob/main/LICENSE"
+      >
+        Read the MIT license <Icon name="arrow" />
+      </a>
+    </div>
+    <dl class="ownership-list">
+      <div>
+        <dt>Definitions in Git</dt>
+        <dd>Review and version evals alongside the agent they test.</dd>
+      </div>
+      <div>
+        <dt>Results on disk</dt>
+        <dd>
+          JSON summaries, JSONL trajectories, and workspace artifacts. No hosted
+          account required.
+        </dd>
+      </div>
+      <div>
+        <dt>Bring your own agent</dt>
+        <dd>
+          Connect your system with an adapter. You choose the model and where it
+          runs.
+        </dd>
+      </div>
+      <div>
+        <dt>Free software. No hidden platform tier.</dt>
+        <dd>
+          MIT licensed. Any model-provider or infrastructure costs remain yours.
+        </dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="getting-started" aria-labelledby="start-title">
+    <div class="wrap start-layout">
+      <div>
+        <h2 id="start-title">
+          Start with a run.
+          <br />
+          Not a signup.
+        </h2>
+        <p>
+          The generated greeting eval runs without a model key. Get a result
+          first. Bring your own agent next.
+        </p>
+        <a class="button button-primary" href="/docs/">
+          Get started <Icon name="arrow" />
+        </a>
+        <p class="prerequisite">
+          Requires <a href="https://bun.sh/">Bun 1.4.2</a> · Run commands in
+          your new project.
+        </p>
+      </div>
+      <div class="setup-code">
+        <div class="code-header">
+          <span>Terminal</span>
+          <span>Local setup</span>
+        </div>
+        <Code code={setupCommands} lang="sh" theme={codeTheme} />
+      </div>
     </div>
   </section>
 </Site>
+
+<script>
+  const status = document.querySelector<HTMLElement>('.copy-status');
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-copy]')
+    .forEach((button) => {
+      button.hidden = false;
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy ?? '');
+          if (status)
+            status.textContent =
+              'Command copied. Paste it into your terminal to create a project.';
+        } catch {
+          if (status)
+            status.textContent =
+              'Could not copy. Select the command above and copy it manually.';
+        }
+      });
+    });
+  const tablist = document.querySelector<HTMLElement>('.evidence-tabs');
+  const tabs = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  );
+  const activate = (tab: HTMLButtonElement, focus = false) => {
+    for (const item of tabs) {
+      const selected = item === tab;
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      const panel = document.getElementById(
+        item.getAttribute('aria-controls') ?? '',
+      );
+      if (panel) {
+        panel.hidden = !selected;
+        panel.setAttribute('role', 'tabpanel');
+        panel.tabIndex = 0;
+      }
+    }
+    if (focus) tab.focus();
+  };
+  if (tablist && tabs[0]) {
+    tablist.hidden = false;
+    activate(tabs[0]);
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab));
+      tab.addEventListener('keydown', (event) => {
+        let next: number;
+        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        else if (event.key === 'ArrowLeft')
+          next = (index - 1 + tabs.length) % tabs.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = tabs.length - 1;
+        else return;
+        event.preventDefault();
+        activate(tabs[next]!, true);
+      });
+    });
+  }
+</script>
