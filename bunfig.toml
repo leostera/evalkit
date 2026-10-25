@@ -1,0 +1,7 @@
+# EvalKit installs only public packages from npmjs.org, overriding any
+# user-level registry or scope mappings (e.g. private gateways).
+[install]
+registry = "https://registry.npmjs.org/"
+
+[install.scopes]
+"@cloudflare" = "https://registry.npmjs.org/"
