@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { Button, Table } from '@cloudflare/kumo';
+import { ArrowRightIcon } from '@phosphor-icons/react';
+import { useMemo } from 'react';
 import type { RunSummary, TrialSummary } from '../api.js';
-import {
-  SortableHeader,
-  useSortedRows,
-  type SortState,
-} from './SortableTable.js';
+import { NestedTable, TableMessage } from './DataTable.js';
+import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
+import { StatusBadge } from './StatusBadge.js';
 
 export function TrialTable({
   run,
@@ -15,7 +15,7 @@ export function TrialTable({
   trials: TrialSummary[];
   onTrial(run: RunSummary, trial: TrialSummary): void;
 }) {
-  const [sort, setSort] = useState<SortState>({
+  const { sort, toggleSort: onSort } = useSort({
     key: 'index',
     direction: 'asc',
   });
@@ -42,16 +42,10 @@ export function TrialTable({
       started: trial.startedAt,
     }[key as 'index' | 'status' | 'aggregate' | 'runtime' | 'started'];
   });
-  const onSort = (key: string) =>
-    setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' },
-    );
   return (
-    <table className="nested data-table">
-      <thead>
-        <tr>
+    <NestedTable>
+      <Table.Header variant="compact">
+        <Table.Row>
           <SortableHeader
             label="Trial"
             sortKey="index"
@@ -91,33 +85,50 @@ export function TrialTable({
             sort={sort}
             onSort={onSort}
           />
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody>
+          <Table.Head className="text-right">Details</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
         {sorted.map((trial) => (
-          <tr key={trial.id}>
-            <td>{trial.index + 1}</td>
-            <td>
-              <span className={`status ${trial.status}`}>{trial.status}</span>
-            </td>
-            <td>{trial.score ?? '—'}</td>
+          <Table.Row key={trial.id}>
+            <Table.Cell className="tabular-nums">{trial.index + 1}</Table.Cell>
+            <Table.Cell>
+              <StatusBadge status={trial.status} />
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {trial.score ?? '—'}
+            </Table.Cell>
             {scorerNames.map((name) => (
-              <td key={name}>
+              <Table.Cell key={name} className="tabular-nums">
                 {(trial.scores ?? []).find((score) => score.name === name)
                   ?.value ?? '—'}
-              </td>
+              </Table.Cell>
             ))}
-            <td>
+            <Table.Cell className="tabular-nums">
               {trial.durationMs === undefined ? '—' : `${trial.durationMs}ms`}
-            </td>
-            <td>{new Date(trial.startedAt).toLocaleString()}</td>
-            <td>
-              <button onClick={() => onTrial(run, trial)}>View trial →</button>
-            </td>
-          </tr>
+            </Table.Cell>
+            <Table.Cell className="whitespace-nowrap tabular-nums">
+              {new Date(trial.startedAt).toLocaleString()}
+            </Table.Cell>
+            <Table.Cell className="text-right">
+              <Button
+                size="xs"
+                variant="secondary"
+                className="view-trial"
+                onClick={() => onTrial(run, trial)}
+              >
+                View trial
+                <ArrowRightIcon aria-hidden className="size-3" />
+              </Button>
+            </Table.Cell>
+          </Table.Row>
         ))}
-      </tbody>
-    </table>
+        {!sorted.length ? (
+          <TableMessage colSpan={scorerNames.length + 6}>
+            No trials saved yet.
+          </TableMessage>
+        ) : null}
+      </Table.Body>
+    </NestedTable>
   );
 }

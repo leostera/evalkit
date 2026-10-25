@@ -1,5 +1,10 @@
+import { Button, Table } from '@cloudflare/kumo';
+import { PlayIcon } from '@phosphor-icons/react';
 import type { CatalogEval, RunSummary } from '../api.js';
 import { agentName } from './agentName.js';
+import { monoClass, tableLinkClass } from './DataTable.js';
+import { StatusBadge } from './StatusBadge.js';
+
 export function EvalRow({
   id,
   evaluation,
@@ -19,36 +24,44 @@ export function EvalRow({
   onOpen?: () => void;
   status?: RunSummary['status'];
 }) {
+  const name = evaluation?.name ?? id;
+  const path = evaluation?.path ?? id;
   return (
-    <tr>
-      <td className="identity-cell">
-        {onOpen ? (
-          <button type="button" className="table-link" onClick={onOpen}>
-            {evaluation?.name ?? id}
-          </button>
-        ) : (
-          (evaluation?.name ?? id)
-        )}
-        <small className="mono">{evaluation?.path ?? id}</small>
-      </td>
+    <Table.Row>
+      <Table.Cell>
+        <div className="flex flex-col">
+          {onOpen ? (
+            <button type="button" className={tableLinkClass} onClick={onOpen}>
+              {name}
+            </button>
+          ) : (
+            <span className="font-medium">{name}</span>
+          )}
+          {path !== name ? (
+            <span className={`${monoClass} text-kumo-subtle`}>{path}</span>
+          ) : null}
+        </div>
+      </Table.Cell>
       {parameters.map((value, index) => (
-        <td key={index} className="mono">
+        <Table.Cell key={index} className={monoClass}>
           {typeof value === 'string' ? value : JSON.stringify(value)}
-        </td>
+        </Table.Cell>
       ))}
-      <td>{agentName(evaluation)}</td>
-      <td>
+      <Table.Cell>{agentName(evaluation)}</Table.Cell>
+      <Table.Cell>
         {evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ||
           'default'}
-      </td>
-      <td>{trials ?? evaluation?.trialCount ?? '—'}</td>
-      <td>
-        {status ? <span className={`status ${status}`}>{status}</span> : '—'}
-      </td>
-      <td>
+      </Table.Cell>
+      <Table.Cell className="tabular-nums">
+        {trials ?? evaluation?.trialCount ?? '—'}
+      </Table.Cell>
+      <Table.Cell>{status ? <StatusBadge status={status} /> : '—'}</Table.Cell>
+      <Table.Cell className="text-right">
         {onRun || runDisabled ? (
-          <button
-            type="button"
+          <Button
+            size="xs"
+            variant="secondary"
+            icon={<PlayIcon weight="fill" />}
             disabled={runDisabled}
             title={
               runDisabled ? 'Matrix configuration is still loading' : undefined
@@ -59,9 +72,9 @@ export function EvalRow({
             }}
           >
             Run eval
-          </button>
+          </Button>
         ) : null}
-      </td>
-    </tr>
+      </Table.Cell>
+    </Table.Row>
   );
 }

@@ -1,4 +1,8 @@
+import { Button, Table } from '@cloudflare/kumo';
+import { CaretRightIcon, PlayIcon } from '@phosphor-icons/react';
 import type { SuiteSummary } from '../api.js';
+import { tableLinkClass } from './DataTable.js';
+
 export function SuiteRow({
   suite,
   expanded,
@@ -11,22 +15,27 @@ export function SuiteRow({
   onRun?: () => void;
 }) {
   return (
-    <tr>
-      <td className="identity-cell">
+    <Table.Row variant={expanded ? 'selected' : 'default'}>
+      <Table.Cell>
         <button
           type="button"
-          className="table-link mono"
+          className={`${tableLinkClass} inline-flex items-center gap-1.5`}
           aria-expanded={expanded}
           onClick={onToggle}
         >
+          <CaretRightIcon
+            aria-hidden
+            className={`size-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          />
           {suite.name ?? suite.id ?? 'Unnamed suite'}
         </button>
-      </td>
-      <td>{suite.evalIds.length}</td>
-      <td>{expanded ? 'expanded' : 'configured'}</td>
-      <td>
-        <button
-          type="button"
+      </Table.Cell>
+      <Table.Cell className="tabular-nums">{suite.evalIds.length}</Table.Cell>
+      <Table.Cell className="text-right">
+        <Button
+          size="xs"
+          variant="secondary"
+          icon={<PlayIcon weight="fill" />}
           disabled={!onRun}
           title={
             onRun ? undefined : 'Run matrix cells individually from their rows'
@@ -37,8 +46,8 @@ export function SuiteRow({
           }}
         >
           Run suite
-        </button>
-      </td>
-    </tr>
+        </Button>
+      </Table.Cell>
+    </Table.Row>
   );
 }

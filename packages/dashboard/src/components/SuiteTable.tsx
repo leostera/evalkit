@@ -1,3 +1,4 @@
+import { Table } from '@cloudflare/kumo';
 import { Fragment, useState } from 'react';
 import type {
   CatalogEval,
@@ -6,7 +7,9 @@ import type {
   RunSummary,
   SuiteSummary,
 } from '../api.js';
+import { DataTable } from './DataTable.js';
 import { Empty } from './Empty.js';
+import { ErrorBanner } from './ErrorBanner.js';
 import { MatrixEvalTable } from './MatrixEvalTable.js';
 import { SuiteRow } from './SuiteRow.js';
 
@@ -31,15 +34,17 @@ export function SuiteTable({
 }) {
   const [expanded, setExpanded] = useState<string>();
   const [runError, setRunError] = useState<string>();
+  const reportStartFailure = (fallback: string) => (error: unknown) =>
+    setRunError(error instanceof Error ? error.message : fallback);
   const runEval = (path: string, parameters?: Record<string, unknown>) => {
     setRunError(undefined);
     void api
       .runEval(path, parameters)
-      .catch((error: unknown) =>
-        setRunError(
-          error instanceof Error ? error.message : 'Unable to start eval',
-        ),
-      );
+      .catch(reportStartFailure('Unable to start eval'));
+  };
+  const runSuite = (id: string) => {
+    setRunError(undefined);
+    void api.runSuite(id).catch(reportStartFailure('Unable to start suite'));
   };
   const expandedSuite = selectedSuiteId ?? expanded;
   const standalone = catalog.filter(
@@ -52,28 +57,24 @@ export function SuiteTable({
   return (
     <>
       {matrix ? (
-        <p>
+        <p className="text-[13px] text-kumo-subtle">
           Each row is one configured matrix cell. Run one row at a time; use the
           CLI dry-run for larger selections.
         </p>
       ) : null}
-      {runError ? (
-        <p className="error" role="alert">
-          {runError}
-        </p>
-      ) : null}
+      {runError ? <ErrorBanner message={runError} /> : null}
       {suites.length > 0 ? (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Suite</th>
-                <th>Evals</th>
-                <th>Status</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <section aria-label="Suites" className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-kumo-strong">Suites</h2>
+          <DataTable>
+            <Table.Header variant="compact">
+              <Table.Row>
+                <Table.Head>Suite</Table.Head>
+                <Table.Head>Evals</Table.Head>
+                <Table.Head className="text-right">Actions</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
               {suites.map((suite) => (
                 <Fragment key={suite.id}>
                   <SuiteRow
@@ -86,23 +87,12 @@ export function SuiteTable({
                       onOpenSuite(suite.id);
                     }}
                     onRun={
-                      matrix === null
-                        ? () =>
-                            void api
-                              .runSuite(suite.id)
-                              .catch((error: unknown) =>
-                                setRunError(
-                                  error instanceof Error
-                                    ? error.message
-                                    : 'Unable to start suite',
-                                ),
-                              )
-                        : undefined
+                      matrix === null ? () => runSuite(suite.id) : undefined
                     }
                   />
                   {expandedSuite === suite.id ? (
-                    <tr key={`${suite.id}-evals`}>
-                      <td colSpan={4}>
+                    <Table.Row>
+                      <Table.Cell colSpan={3} className="bg-kumo-elevated">
                         <MatrixEvalTable
                           api={api}
                           evalIds={suite.evalIds}
@@ -113,29 +103,29 @@ export function SuiteTable({
                           onRun={runEval}
                           onOpenEval={onOpenEval}
                         />
-                      </td>
-                    </tr>
+                      </Table.Cell>
+                    </Table.Row>
                   ) : null}
                 </Fragment>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </Table.Body>
+          </DataTable>
+        </section>
       ) : null}
       {standalone.length > 0 ? (
-        <section aria-label="Standalone evals">
-          <h2>Standalone evals</h2>
-          <div className="table-wrap">
-            <MatrixEvalTable
-              api={api}
-              evalIds={standalone.map((evaluation) => evaluation.id)}
-              catalog={catalog}
-              matrix={matrix}
-              runs={runs}
-              onRun={runEval}
-              onOpenEval={onOpenEval}
-            />
-          </div>
+        <section aria-label="Standalone evals" className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-kumo-strong">
+            Standalone evals
+          </h2>
+          <MatrixEvalTable
+            api={api}
+            evalIds={standalone.map((evaluation) => evaluation.id)}
+            catalog={catalog}
+            matrix={matrix}
+            runs={runs}
+            onRun={runEval}
+            onOpenEval={onOpenEval}
+          />
         </section>
       ) : null}
     </>

@@ -9,6 +9,11 @@ import type {
 } from '../api.js';
 import { SuiteTable } from './SuiteTable.js';
 
+const sortLabels = (html: string) =>
+  [...html.matchAll(/class="table-sort[^"]*">([^<]+)</g)].map(
+    (match) => match[1],
+  );
+
 const standalone: CatalogEval = {
   id: 'echo',
   name: 'Echo Worker',
@@ -91,8 +96,8 @@ test('a standalone eval shows the latest run status', () => {
       },
     ],
   );
-  expect(html).toContain('class="status running"');
-  expect(html).not.toContain('class="status passed"');
+  expect(html).toContain('data-status="running"');
+  expect(html).not.toContain('data-status="passed"');
 });
 
 test('matrix cells are rows with a column per axis and no filter selects', () => {
@@ -127,16 +132,16 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
     },
   ];
   const html = render([], [standalone], runs, matrix);
-  expect(html).toContain('class="table-sort">model ↕</button>');
-  expect(html).toContain('class="table-sort">mode ↕</button>');
+  expect(sortLabels(html)).toContain('model');
+  expect(sortLabels(html)).toContain('mode');
   expect(html).toContain('aria-label="Filter matrix cells"');
   expect(html).not.toContain('<select');
   expect(html.match(/Run eval/g)).toHaveLength(4);
   expect(html).toContain('with-docs');
   expect(html).toContain('without-docs');
-  expect(html.match(/<td>3<\/td>/g)).toHaveLength(4);
-  expect(html.match(/class="status passed"/g)).toHaveLength(1);
-  expect(html.match(/class="status failed"/g)).toHaveLength(1);
+  expect(html.match(/<td class="tabular-nums">3<\/td>/g)).toHaveLength(4);
+  expect(html.match(/data-status="passed"/g)).toHaveLength(1);
+  expect(html.match(/data-status="failed"/g)).toHaveLength(1);
   expect(html).not.toContain('disabled=""');
 });
 
@@ -158,8 +163,8 @@ test('suite members also display one row per configured matrix cell', () => {
     { id: 'benchmark', parameters: { model: ['glm', 'scout'] } },
     'starter',
   );
-  expect(html).toContain('class="nested"');
-  expect(html).toContain('class="table-sort">model ↕</button>');
+  expect(html).toContain('class="nested ');
+  expect(sortLabels(html)).toContain('model');
   expect(html.match(/Run eval/g)).toHaveLength(2);
   expect(html).not.toContain('<select');
 });

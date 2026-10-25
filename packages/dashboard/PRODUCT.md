@@ -20,11 +20,11 @@ The dashboard runs from an EvalKit project through `serve-dashboard`. It reads l
 
 ## Capabilities and Constraints
 
-Keep the existing workflows, deep links, functionality, and information density. Trial and workspace deep links remain valid; the in-run investigation stays in a side panel instead of discarding the results view. This request is a visual and navigation redesign, not a claim that the current backend already provides scalable run comparison or pagination. Matrix cells and saved runs are inspectable; saved reports can include sensitive data. Report outputs are local, not automatically published. Dense tables need accessible keyboard and touch paths, clear run/scorer status, and responsive overflow.
+Keep the existing workflows, deep links, functionality, and information density. Trial and workspace deep links remain valid; the in-run investigation stays in a side panel instead of discarding the results view. Matrix cells and saved runs are inspectable; saved reports can include sensitive data. Report outputs are local, not automatically published. Dense tables need accessible keyboard and touch paths, clear run/scorer status, and responsive overflow.
 
 ## Brand Commitments
 
-Keep the EvalKit name and product-specific terminology. The user wants a black-and-white developer-tool interface without decorative AI-dashboard styling or the old editorial treatment, with a quick collapse control inside the navigation rail and a breadcrumb path through suite, eval, run, trial, and workspace. https://supabase.com/evals is a visual reference only: its published-eval catalog is explicitly _not_ the model for an operational EvalKit workspace handling large run histories and comparisons. Do not copy its branding or gallery-oriented information architecture.
+Keep the EvalKit name and product-specific terminology. The interface uses Cloudflare's Kumo design system: clean, clear, functional and information-dense, without decorative AI-dashboard styling. https://supabase.com/evals is a visual reference only: its published-eval catalog is explicitly _not_ the model for an operational EvalKit workspace handling large run histories and comparisons.
 
 ## Evidence on Hand
 

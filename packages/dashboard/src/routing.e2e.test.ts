@@ -19,6 +19,18 @@ async function waitForServer(): Promise<void> {
   throw new Error('Dashboard preview server did not start');
 }
 
+/** Kumo renders breadcrumbs twice (phone and wide layouts); click the visible copy. */
+async function clickVisible(page: Page, selector: string): Promise<void> {
+  await page.$$eval(selector, (nodes) => {
+    const node = nodes.find(
+      (candidate) => (candidate as HTMLElement).offsetParent !== null,
+    );
+    if (!(node instanceof HTMLElement))
+      throw new Error('No visible element matched');
+    node.click();
+  });
+}
+
 async function waitForPath(page: Page, pathname: string): Promise<void> {
   await page.waitForFunction(
     (expected) => location.pathname === expected,
@@ -158,12 +170,7 @@ describe('dashboard URL routing', () => {
     await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
     await page.focus('button.navigation-toggle');
     await page.keyboard.press('Enter');
-    expect(
-      await page.$eval(
-        '#dashboard-links',
-        (nav) => (nav as HTMLElement).hidden,
-      ),
-    ).toBe(true);
+    await page.waitForSelector('#dashboard-navigation[data-state="collapsed"]');
     expect(
       await page.$eval('button.navigation-toggle', (button) =>
         button.getAttribute('aria-expanded'),
@@ -172,15 +179,10 @@ describe('dashboard URL routing', () => {
     await page.waitForFunction(
       () =>
         document.querySelector('#dashboard-navigation')?.getBoundingClientRect()
-          .width === 52,
+          .width === 57,
     );
     await page.keyboard.press('Enter');
-    expect(
-      await page.$eval(
-        '#dashboard-links',
-        (nav) => (nav as HTMLElement).hidden,
-      ),
-    ).toBe(false);
+    await page.waitForSelector('#dashboard-navigation[data-state="expanded"]');
     await page.waitForSelector('tbody tr button');
     await page.focus('tbody tr button.table-link');
     await page.keyboard.press('Enter');
@@ -194,19 +196,19 @@ describe('dashboard URL routing', () => {
 
     await page.evaluate(() => {
       const button = [...document.querySelectorAll('nav a')].find(
-        (node) => node.textContent === 'runs',
+        (node) => node.textContent === 'Runs',
       );
       if (!(button instanceof HTMLElement))
         throw new Error('runs navigation missing');
       button.click();
     });
     await waitForPath(page, '/runs');
-    await page.waitForSelector('.table-wrap > table > tbody > tr');
+    await page.waitForSelector('.data-table > table > tbody > tr');
     await page.type('input[aria-label="Filter runs"]', 'greeting');
     await page.waitForFunction(
       () => new URLSearchParams(location.search).get('q') === 'greeting',
     );
-    await page.focus('.table-wrap > table > tbody > tr button.table-link');
+    await page.focus('.data-table > table > tbody > tr button.table-link');
     await page.keyboard.press('Enter');
     await waitForPath(page, '/runs/run-123');
     await page.waitForSelector('.nested tbody tr button');
@@ -226,7 +228,7 @@ describe('dashboard URL routing', () => {
     expect(
       await page.$eval('.trial-breadcrumbs', (node) => node.textContent),
     ).toContain('Greeting');
-    expect(await page.$('.table-wrap > table')).not.toBeNull();
+    expect(await page.$('.data-table > table')).not.toBeNull();
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.trial-panel[open] .trial-overview');
     await page.keyboard.press('Escape');
@@ -241,7 +243,7 @@ describe('dashboard URL routing', () => {
     expect(new URL(page.url()).searchParams.has('trial')).toBe(false);
     await page.goForward({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.trial-panel[open] .trial-overview');
-    await page.click('.trial-panel .trial-overview > button');
+    await page.click('.trial-panel .open-workspace');
     await page.waitForFunction(
       () =>
         new URLSearchParams(location.search).get('view') === 'workspace' &&
@@ -254,7 +256,7 @@ describe('dashboard URL routing', () => {
         (node) => node.textContent,
       ),
     ).toBe('Workspace');
-    await page.click('.trial-breadcrumbs button');
+    await clickVisible(page, '.trial-breadcrumbs a[href*="trial="]');
     await page.waitForFunction(
       () => !new URLSearchParams(location.search).has('view'),
     );
@@ -384,7 +386,7 @@ describe('dashboard URL routing', () => {
         () =>
           location.pathname === '/runs' &&
           [
-            ...document.querySelectorAll('.table-wrap > table > tbody > tr'),
+            ...document.querySelectorAll('.data-table > table > tbody > tr'),
           ].some((row) => row.textContent?.includes('running')),
       );
       await page.click('nav a[href="/suites"]');
@@ -478,13 +480,13 @@ describe('dashboard URL routing', () => {
             'section[aria-label="Standalone evals"] tbody tr',
           ).length === 50,
       );
-      expect(
-        await page.$eval('.matrix-pages', (nav) => nav.textContent),
-      ).toContain('1–50 of 102');
-      await page.click('.matrix-pages button:last-child');
-      expect(
-        await page.$eval('.matrix-pages', (nav) => nav.textContent),
-      ).toContain('51–100 of 102');
+      expect(await page.$eval('.pager', (nav) => nav.textContent)).toContain(
+        '1–50 of 102',
+      );
+      await page.click('.pager button[aria-label="Next page"]');
+      expect(await page.$eval('.pager', (nav) => nav.textContent)).toContain(
+        '51–100 of 102',
+      );
       expect(
         await page.$eval(
           'section[aria-label="Standalone evals"] tbody tr:first-child',
@@ -495,7 +497,7 @@ describe('dashboard URL routing', () => {
       const filter = 'input[aria-label="Filter matrix cells"]';
       await page.type(filter, 'passed');
       expect(
-        await page.$eval('.matrix-filter span', (span) => span.textContent),
+        await page.$eval('.search-count', (span) => span.textContent),
       ).toContain('1 of 102');
       expect(
         await page.$eval(
@@ -506,9 +508,9 @@ describe('dashboard URL routing', () => {
       await page.$eval(filter, (input) => (input as HTMLInputElement).select());
       await page.keyboard.type('model-2');
       expect(
-        await page.$eval('.matrix-filter span', (span) => span.textContent),
+        await page.$eval('.search-count', (span) => span.textContent),
       ).toContain('22 of 102');
-      expect(await page.$('.matrix-pages')).toBeNull();
+      expect(await page.$('.pager')).toBeNull();
       await page.click(
         'section[aria-label="Standalone evals"] th:nth-child(2) button',
       );
@@ -607,23 +609,23 @@ describe('dashboard URL routing', () => {
         else void request.continue();
       });
       await page.goto(`${baseUrl}/runs`, { waitUntil: 'networkidle0' });
-      const rows = '.table-wrap > table > tbody > tr';
+      const rows = '.data-table > table > tbody > tr';
       await page.waitForFunction(
         () =>
-          document.querySelectorAll('.table-wrap > table > tbody > tr')
+          document.querySelectorAll('.data-table > table > tbody > tr')
             .length === 3,
       );
       expect(
-        await page.$eval('.table-wrap thead', (head) => head.textContent),
+        await page.$eval('.data-table thead', (head) => head.textContent),
       ).toContain('retries');
-      await page.click('.table-wrap th:nth-child(5) button'); // retries ascending, numeric
+      await page.click('.data-table th:nth-child(5) button'); // retries ascending, numeric
       expect(
         await page.$eval(`${rows}:nth-child(3)`, (row) => row.textContent),
       ).toContain('10');
       const input = 'input[aria-label="Filter runs"]';
       await page.type(input, 'model glm');
       expect(
-        await page.$eval('.matrix-filter span', (span) => span.textContent),
+        await page.$eval('.search-count', (span) => span.textContent),
       ).toContain('1 of 3 runs');
       expect(await page.$eval(rows, (row) => row.textContent)).toContain(
         'run-high',

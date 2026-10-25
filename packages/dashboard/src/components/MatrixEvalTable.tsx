@@ -1,3 +1,4 @@
+import { Table } from '@cloudflare/kumo';
 import { useState } from 'react';
 import type {
   CatalogEval,
@@ -7,12 +8,16 @@ import type {
 } from '../api.js';
 import { ConstrainedMatrixTable } from './ConstrainedMatrixTable.js';
 import { agentName } from './agentName.js';
+import { TableMessage } from './DataTable.js';
 import { EvalRow } from './EvalRow.js';
 import {
-  SortableHeader,
-  useSortedRows,
-  type SortState,
-} from './SortableTable.js';
+  fixedCellColumns,
+  MatrixCellFrame,
+  MatrixCellHeader,
+} from './MatrixCellHeader.js';
+import { Pager } from './Pager.js';
+import { SearchField } from './SearchField.js';
+import { useSort, useSortedRows } from './SortableTable.js';
 
 const PAGE_SIZE = 50;
 type Axis = [string, unknown[]];
@@ -121,10 +126,9 @@ function CartesianMatrixEvalTable({
 }) {
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortState>({
-    key: 'eval',
-    direction: 'asc',
-  });
+  const { sort, toggleSort } = useSort({ key: 'eval', direction: 'asc' }, () =>
+    setPage(0),
+  );
   // Keep the project's declared axis order in both columns and cells.
   const axes: Axis[] = matrix ? Object.entries(matrix.parameters) : [];
   const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
@@ -179,78 +183,25 @@ function CartesianMatrixEvalTable({
     currentPage * PAGE_SIZE,
     (currentPage + 1) * PAGE_SIZE,
   );
-  const onSort = (key: string) => {
-    setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' },
-    );
-    setPage(0);
-  };
   return (
-    <>
-      <label className="matrix-filter">
-        Filter cells
-        <input
-          type="search"
-          aria-label="Filter matrix cells"
-          placeholder="Eval, parameter, agent or status"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(0);
-          }}
+    <div className="flex flex-col gap-2">
+      <SearchField
+        label="Filter matrix cells"
+        placeholder="Eval, parameter, agent or status"
+        value={query}
+        count={`${sorted.length} of ${total} cells`}
+        onChange={(next) => {
+          setQuery(next);
+          setPage(0);
+        }}
+      />
+      <MatrixCellFrame nested={nested}>
+        <MatrixCellHeader
+          axes={axes.map(([axis]) => axis)}
+          sort={sort}
+          onSort={toggleSort}
         />
-        <span>
-          {sorted.length} of {total} cells
-        </span>
-      </label>
-      <table className={nested ? 'nested' : 'data-table'}>
-        <thead>
-          <tr>
-            <SortableHeader
-              label="Eval"
-              sortKey="eval"
-              sort={sort}
-              onSort={onSort}
-            />
-            {axes.map(([axis]) => (
-              <SortableHeader
-                key={axis}
-                label={axis}
-                sortKey={`axis:${axis}`}
-                sort={sort}
-                onSort={onSort}
-              />
-            ))}
-            <SortableHeader
-              label="Agent"
-              sortKey="agent"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Runtime"
-              sortKey="runtime"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Trials"
-              sortKey="trials"
-              sort={sort}
-              onSort={onSort}
-            />
-            <SortableHeader
-              label="Latest run"
-              sortKey="status"
-              sort={sort}
-              onSort={onSort}
-            />
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+        <Table.Body>
           {rows.length ? (
             rows.map((row) => {
               const evaluation = evaluationFor(row);
@@ -277,33 +228,20 @@ function CartesianMatrixEvalTable({
               );
             })
           ) : (
-            <tr>
-              <td colSpan={axes.length + 6}>No matching cells.</td>
-            </tr>
+            <TableMessage colSpan={axes.length + fixedCellColumns}>
+              No matching cells.
+            </TableMessage>
           )}
-        </tbody>
-      </table>
-      {sorted.length > PAGE_SIZE ? (
-        <nav className="matrix-pages" aria-label="Matrix cells pages">
-          <span>
-            Cells {currentPage * PAGE_SIZE + 1}–
-            {Math.min((currentPage + 1) * PAGE_SIZE, sorted.length)} of{' '}
-            {sorted.length}
-          </span>
-          <button
-            disabled={currentPage === 0}
-            onClick={() => setPage(currentPage - 1)}
-          >
-            Previous
-          </button>
-          <button
-            disabled={currentPage === pageCount - 1}
-            onClick={() => setPage(currentPage + 1)}
-          >
-            Next
-          </button>
-        </nav>
-      ) : null}
-    </>
+        </Table.Body>
+      </MatrixCellFrame>
+      <Pager
+        label="Matrix cells pages"
+        noun="Cells"
+        page={currentPage}
+        pageSize={PAGE_SIZE}
+        total={sorted.length}
+        onPage={setPage}
+      />
+    </div>
   );
 }

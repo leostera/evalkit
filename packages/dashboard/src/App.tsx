@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  BrowserRouter,
-  NavLink,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import { DashboardRoutes } from './DashboardRoutes.js';
+import { DashboardShell } from './components/DashboardShell.js';
+import { ErrorBanner } from './components/ErrorBanner.js';
 import type { SelectedTrial } from './components/types.js';
 import { TrialPanel } from './components/TrialPanel.js';
 import type {
@@ -16,17 +13,6 @@ import type {
   RunSummary,
   SuiteSummary,
 } from './api.js';
-
-function screenTitle(pathname: string): string {
-  if (pathname.startsWith('/trials/')) return 'Trial detail';
-  if (pathname.startsWith('/workspaces/')) return 'Candidate workspace';
-  if (pathname.startsWith('/evals/')) return 'Eval detail';
-  if (pathname.startsWith('/agents')) return 'Agents';
-  if (pathname.startsWith('/fixtures')) return 'Fixtures';
-  if (pathname.startsWith('/runs') || pathname.startsWith('/runs/'))
-    return 'Runs';
-  return 'Suites & evals';
-}
 
 export function App({ api }: { api: DashboardApi }) {
   return (
@@ -49,7 +35,6 @@ function Dashboard({ api }: { api: DashboardApi }) {
   const runsSignature = useRef('');
   const [selected, setSelected] = useState<SelectedTrial>();
   const [error, setError] = useState<string>();
-  const [navigationOpen, setNavigationOpen] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -147,74 +132,17 @@ function Dashboard({ api }: { api: DashboardApi }) {
   }, [api, location.pathname, panelTrialId, runs, selected]);
 
   return (
-    <main
-      className={`dashboard-shell${navigationOpen ? '' : ' navigation-collapsed'}`}
-    >
-      <aside id="dashboard-navigation">
-        <div className="nav-top">
-          <NavLink className="brand" to="/suites" hidden={!navigationOpen}>
-            evalkit
-          </NavLink>
-          <button
-            type="button"
-            className="navigation-toggle"
-            aria-controls="dashboard-links"
-            aria-expanded={navigationOpen}
-            aria-label={
-              navigationOpen ? 'Collapse navigation' : 'Expand navigation'
-            }
-            title={navigationOpen ? 'Collapse navigation' : 'Expand navigation'}
-            onClick={() => setNavigationOpen((open) => !open)}
-          >
-            <span aria-hidden="true">{navigationOpen ? '‹' : '›'}</span>
-          </button>
-        </div>
-        <nav
-          id="dashboard-links"
-          aria-label="Dashboard"
-          hidden={!navigationOpen}
-        >
-          <NavLink
-            className={({ isActive }) => (isActive ? 'active' : '')}
-            to="/suites"
-          >
-            suites &amp; evals
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => (isActive ? 'active' : '')}
-            to="/agents"
-          >
-            agents
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => (isActive ? 'active' : '')}
-            to="/fixtures"
-          >
-            fixtures
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => (isActive ? 'active' : '')}
-            to="/runs"
-          >
-            runs
-          </NavLink>
-        </nav>
-      </aside>
-      <section className="content">
-        <header>
-          <h1>{screenTitle(location.pathname)}</h1>
-        </header>
-        {error ? <p className="error">{error}</p> : null}
-        <DashboardRoutes
-          api={api}
-          catalog={catalog}
-          suites={suites}
-          matrix={matrix}
-          runs={runs}
-          selected={selected}
-          onTrial={(run, trial) => setSelected({ run, trial })}
-        />
-      </section>
+    <DashboardShell>
+      {error ? <ErrorBanner message={error} /> : null}
+      <DashboardRoutes
+        api={api}
+        catalog={catalog}
+        suites={suites}
+        matrix={matrix}
+        runs={runs}
+        selected={selected}
+        onTrial={(run, trial) => setSelected({ run, trial })}
+      />
       {panelTrialId ? (
         <TrialPanel
           api={api}
@@ -240,13 +168,8 @@ function Dashboard({ api }: { api: DashboardApi }) {
             next.set('view', 'workspace');
             navigate({ pathname: location.pathname, search: next.toString() });
           }}
-          onTrialView={() => {
-            const next = new URLSearchParams(location.search);
-            next.delete('view');
-            navigate({ pathname: location.pathname, search: next.toString() });
-          }}
         />
       ) : null}
-    </main>
+    </DashboardShell>
   );
 }

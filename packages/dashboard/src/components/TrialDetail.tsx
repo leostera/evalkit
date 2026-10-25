@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react';
-import type { DashboardApi, TrajectoryEvent } from '../api.js';
-import type { SelectedTrial } from './types.js';
+import { Button, Table } from '@cloudflare/kumo';
+import { ArrowRightIcon } from '@phosphor-icons/react';
+import { useEffect, useState, type ReactNode } from 'react';
+import type { DashboardApi, TrajectoryEvent, TrialSummary } from '../api.js';
 import { ArtifactRow } from './ArtifactRow.js';
+import { monoClass, NestedTable } from './DataTable.js';
+import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
+import { ErrorBanner } from './ErrorBanner.js';
 import { EventCard } from './EventCard.js';
+import { StatusBadge } from './StatusBadge.js';
+import type { SelectedTrial } from './types.js';
+
 export function TrialDetail({
   api,
   selected,
@@ -58,137 +65,94 @@ export function TrialDetail({
   }, [api, selected]);
   if (!selected)
     return <Empty message="Select a trial from a run to inspect it." />;
+  const { run, trial } = selected;
   return (
-    <section className="trial-inspector">
-      <aside className="trial-overview">
-        <p className="mono">trial / {selected.trial.id}</p>
-        <h2>Trial overview</h2>
-        <dl className="metadata-list">
-          <dt>run</dt>
-          <dd>{selected.run.id}</dd>
-          <dt>eval</dt>
-          <dd>{evalName ?? 'Unnamed eval'}</dd>
-          <dt>trial number</dt>
-          <dd>{selected.trial.index + 1}</dd>
-          <dt>status</dt>
-          <dd>{selected.trial.status}</dd>
-          <dt>aggregate score</dt>
-          <dd>{selected.trial.score ?? '—'}</dd>
-          <dt>runtime</dt>
-          <dd>
-            {selected.trial.durationMs === undefined
-              ? '—'
-              : `${selected.trial.durationMs}ms`}
-          </dd>
-          <dt>events</dt>
-          <dd>{events.length}</dd>
-        </dl>
-        <button type="button" onClick={onWorkspace}>
-          Open candidate workspace →
-        </button>
-        {selected.trial.checkpoints?.length ? (
-          <>
-            <h3>Checkpoints</h3>
-            <table className="compact-table">
-              <thead>
-                <tr>
-                  <th>Step</th>
-                  <th>Rule</th>
-                  <th>Value</th>
-                  <th>Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selected.trial.checkpoints.map((check) => (
-                  <tr key={`${check.step}-${check.name}`}>
-                    <td>{check.step + 1}</td>
-                    <td>
-                      {check.kind}: {check.name}
-                      {check.matchedToolCall
-                        ? ` (event ${check.matchedToolCall.eventIndex + 1})`
-                        : ''}
-                    </td>
-                    <td>{check.value ?? '—'}</td>
-                    <td>
-                      {check.status}
-                      {check.error ? `: ${check.error.message}` : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
+    <section className="trial-inspector grid gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+      <aside className="trial-overview flex min-w-0 flex-col gap-4">
+        <DetailList
+          items={[
+            [
+              'Run',
+              <span key="run" className={monoClass}>
+                {run.id}
+              </span>,
+            ],
+            ['Eval', evalName ?? 'Unnamed eval'],
+            ['Trial', trial.index + 1],
+            ['Status', <StatusBadge key="status" status={trial.status} />],
+            ['Aggregate score', trial.score ?? '—'],
+            [
+              'Runtime',
+              trial.durationMs === undefined ? '—' : `${trial.durationMs}ms`,
+            ],
+            ['Events', events.length],
+          ]}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          className="open-workspace self-start"
+          onClick={onWorkspace}
+        >
+          Open candidate workspace
+          <ArrowRightIcon aria-hidden className="size-3.5" />
+        </Button>
+        {trial.checkpoints?.length ? (
+          <EvidenceSection title="Checkpoints">
+            <CheckpointTable checkpoints={trial.checkpoints} />
+          </EvidenceSection>
         ) : null}
-        {selected.trial.skippedScorers?.length ? (
-          <p>
-            Skipped final scorers: {selected.trial.skippedScorers.join(', ')}
-          </p>
-        ) : null}
-        <h3>Final scoring</h3>
-        <table className="compact-table">
-          <thead>
-            <tr>
-              <th>Scorer</th>
-              <th>Value</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {selected.trial.scores.map((score) => (
-              <tr key={score.name}>
-                <td>
-                  {score.kind ? `${score.kind}: ` : ''}
-                  {score.name}
-                </td>
-                <td>{score.value ?? '—'}</td>
-                <td>
-                  {score.error
-                    ? `error: ${score.error.message}`
-                    : score.passed === true
-                      ? 'passed'
-                      : score.passed === false
-                        ? 'failed'
-                        : 'not scored'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <EvidenceSection title="Final scoring">
+          <ScoreTable scores={trial.scores} />
+          {trial.skippedScorers?.length ? (
+            <p className="text-xs text-kumo-subtle">
+              Skipped final scorers: {trial.skippedScorers.join(', ')}
+            </p>
+          ) : null}
+        </EvidenceSection>
         {artifacts.length ? (
-          <>
-            <h3>Artifacts</h3>
-            <table className="compact-table">
-              <thead>
-                <tr>
-                  <th>Path</th>
-                  <th>Kind</th>
-                  <th>Size</th>
-                </tr>
-              </thead>
-              <tbody>
+          <EvidenceSection title="Artifacts">
+            <NestedTable wrap>
+              <Table.Header variant="compact">
+                <Table.Row>
+                  <Table.Head>Path</Table.Head>
+                  <Table.Head>Kind</Table.Head>
+                  <Table.Head>Size</Table.Head>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
                 {artifacts.map((artifact) => (
                   <ArtifactRow key={artifact.path} artifact={artifact} />
                 ))}
-              </tbody>
-            </table>
-          </>
+              </Table.Body>
+            </NestedTable>
+          </EvidenceSection>
         ) : null}
         {detail ? (
-          <details className="raw-details">
-            <summary>Raw trial summary</summary>
-            <pre>{JSON.stringify(detail.summary, null, 2)}</pre>
+          <details className="raw-details text-xs">
+            <summary className="cursor-pointer font-medium text-kumo-subtle select-none">
+              Raw trial summary
+            </summary>
+            <pre className="mt-2 overflow-x-auto rounded-md bg-kumo-elevated px-3 py-2 font-mono">
+              {JSON.stringify(detail.summary, null, 2)}
+            </pre>
           </details>
         ) : null}
       </aside>
-      <section className="timeline">
+      <section className="timeline flex min-w-0 flex-col gap-2">
         {loadError ? (
-          <p className="error" role="alert">
-            Unable to load trial details: {loadError}
-          </p>
+          <ErrorBanner
+            title="Unable to load trial details"
+            message={loadError}
+          />
         ) : null}
-        <div className="timeline-heading">
-          <h2>Event timeline</h2>
-          <span className="mono">{events.length} events</span>
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-kumo-strong">
+            Event timeline
+          </h3>
+          <span className="text-xs text-kumo-subtle tabular-nums">
+            {events.length} events
+          </span>
         </div>
         {events.map((event, index) => (
           <EventCard
@@ -199,5 +163,116 @@ export function TrialDetail({
         ))}
       </section>
     </section>
+  );
+}
+
+function EvidenceSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold text-kumo-strong">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function CheckpointTable({
+  checkpoints,
+}: {
+  checkpoints: NonNullable<TrialSummary['checkpoints']>;
+}) {
+  return (
+    <NestedTable wrap>
+      <Table.Header variant="compact">
+        <Table.Row>
+          <Table.Head>Step</Table.Head>
+          <Table.Head>Rule</Table.Head>
+          <Table.Head>Value</Table.Head>
+          <Table.Head>Result</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {checkpoints.map((check) => (
+          <Table.Row key={`${check.step}-${check.name}`}>
+            <Table.Cell className="tabular-nums">{check.step + 1}</Table.Cell>
+            <Table.Cell>
+              <span className="text-kumo-subtle">{check.kind}:</span>{' '}
+              {check.name}
+              {check.matchedToolCall
+                ? ` (event ${check.matchedToolCall.eventIndex + 1})`
+                : ''}
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {check.value ?? '—'}
+            </Table.Cell>
+            <Table.Cell>
+              <StatusBadge status={check.status} />
+              {check.error ? (
+                <p className="mt-1 text-xs text-kumo-danger">
+                  {check.error.message}
+                </p>
+              ) : null}
+            </Table.Cell>
+          </Table.Row>
+        ))}
+      </Table.Body>
+    </NestedTable>
+  );
+}
+
+/** Never reports a pass unless the scorer recorded one. */
+function scoreResult(score: TrialSummary['scores'][number]): string {
+  if (score.error) return 'error';
+  if (score.passed === true) return 'passed';
+  if (score.passed === false) return 'failed';
+  return 'not scored';
+}
+
+function ScoreTable({ scores }: { scores: TrialSummary['scores'] }) {
+  return (
+    <NestedTable wrap>
+      <Table.Header variant="compact">
+        <Table.Row>
+          <Table.Head>Scorer</Table.Head>
+          <Table.Head>Value</Table.Head>
+          <Table.Head>Result</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {scores.map((score) => (
+          <Table.Row key={score.name}>
+            <Table.Cell>
+              {score.kind ? (
+                <span className="text-kumo-subtle">{score.kind}: </span>
+              ) : null}
+              {score.name}
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {score.value ?? '—'}
+            </Table.Cell>
+            <Table.Cell>
+              <StatusBadge status={scoreResult(score)} />
+              {score.error ? (
+                <p className="mt-1 text-xs text-kumo-danger">
+                  {score.error.message}
+                </p>
+              ) : null}
+            </Table.Cell>
+          </Table.Row>
+        ))}
+        {!scores.length ? (
+          <Table.Row>
+            <Table.Cell colSpan={3} className="text-kumo-subtle">
+              No final scorers.
+            </Table.Cell>
+          </Table.Row>
+        ) : null}
+      </Table.Body>
+    </NestedTable>
   );
 }

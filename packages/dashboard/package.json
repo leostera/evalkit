@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "NODE_ENV=production vite build",
     "check": "tsc --noEmit",
     "dev": "vite",
     "test:e2e": "bun test src/routing.e2e.test.ts"
   },
   "dependencies": {
+    "@cloudflare/kumo": "^2.15.0",
     "@evalkit/core": "workspace:*",
+    "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -18,8 +20,10 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "puppeteer": "^25.11.0"
+    "puppeteer": "^25.11.0",
+    "tailwindcss": "^4.3.3"
   }
 }
