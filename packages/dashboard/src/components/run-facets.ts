@@ -1,4 +1,5 @@
-import { canonicalParameters, type JsonValue } from '@evalkit/core';
+import type { JsonValue } from '@evalkit/core';
+import { canonicalParameters } from '@evalkit/core/canonical-json';
 import type { RunSummary } from '../api.js';
 
 export const MISSING = '@missing'; // distinct from every canonical JSON value

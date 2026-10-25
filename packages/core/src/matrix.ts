@@ -4,28 +4,9 @@ import {
   type JsonObject,
   type JsonValue,
 } from './index.js';
+import { canonicalParameters } from './canonical-json.js';
 
-/** Canonical JSON: keys sorted recursively, array order preserved. Rejects non-JSON inputs. */
-export function canonicalParameters(value: JsonValue): string {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean')
-    return JSON.stringify(value);
-  if (typeof value === 'number' && Number.isFinite(value))
-    return JSON.stringify(value);
-  if (Array.isArray(value))
-    return `[${value.map(canonicalParameters).join(',')}]`;
-  if (
-    typeof value === 'object' &&
-    Object.getPrototypeOf(value) === Object.prototype
-  ) {
-    return `{${Object.keys(value)
-      .sort()
-      .map(
-        (key) => `${JSON.stringify(key)}:${canonicalParameters(value[key]!)}`,
-      )
-      .join(',')}}`;
-  }
-  throw new Error('Matrix parameters must be finite JSON values');
-}
+export { canonicalParameters };
 
 export type MatrixSelection = {
   /** Base eval IDs. Unknown values fail before dispatch. */
