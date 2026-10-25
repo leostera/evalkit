@@ -8,6 +8,11 @@ import type {
 } from '../api.js';
 import { filterRuns, runParameterColumns, RunTable } from './RunTable.js';
 
+const sortLabels = (html: string) =>
+  [...html.matchAll(/class="table-sort[^"]*">([^<]+)</g)].map(
+    (match) => match[1],
+  );
+
 const catalog: CatalogEval[] = [
   {
     id: 'greeting',
@@ -76,7 +81,7 @@ test('runs show a stable union of saved parameter keys, including overrides', ()
     />,
   );
   for (const key of runParameterColumns(runs))
-    expect(html).toContain(`class="table-sort">${key} ↕</button>`);
+    expect(sortLabels(html)).toContain(key);
   expect(html).toContain('aria-label="Filter runs"');
   expect(html).toContain('{&quot;docs&quot;:true}');
   expect(html).toContain('false');

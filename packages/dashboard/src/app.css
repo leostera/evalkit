@@ -1,0 +1,16 @@
+/* Kumo's theme tokens must load before Tailwind (see Kumo installation docs).
+   Tailwind does not scan node_modules, so point it at Kumo's components. */
+@source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@import '@cloudflare/kumo/styles/tailwind';
+@import 'tailwindcss';
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-kumo-base text-kumo-default antialiased;
+  }
+}

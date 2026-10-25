@@ -1,15 +1,20 @@
+import { Table } from '@cloudflare/kumo';
 import type { CatalogEval } from '../api.js';
+import { monoClass } from './DataTable.js';
+
 export function FixtureRow({
   fixture,
 }: {
   fixture: CatalogEval['fixtures'][number] & { path: string };
 }) {
   return (
-    <tr>
-      <td>{fixture.source}</td>
-      <td>{fixture.destination ?? '—'}</td>
-      <td>{fixture.visibility ?? 'dynamic'}</td>
-      <td className="mono">{fixture.path}</td>
-    </tr>
+    <Table.Row>
+      <Table.Cell className={monoClass}>{fixture.source}</Table.Cell>
+      <Table.Cell className={monoClass}>
+        {fixture.destination ?? '—'}
+      </Table.Cell>
+      <Table.Cell>{fixture.visibility ?? 'dynamic'}</Table.Cell>
+      <Table.Cell className={monoClass}>{fixture.path}</Table.Cell>
+    </Table.Row>
   );
 }

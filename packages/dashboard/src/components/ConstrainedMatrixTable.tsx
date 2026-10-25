@@ -1,3 +1,4 @@
+import { Table } from '@cloudflare/kumo';
 import { useEffect, useState } from 'react';
 import type {
   CatalogEval,
@@ -6,8 +7,17 @@ import type {
   MatrixSummary,
   RunSummary,
 } from '../api.js';
+import { TableMessage } from './DataTable.js';
+import { ErrorBanner } from './ErrorBanner.js';
 import { EvalRow } from './EvalRow.js';
-import { SortableHeader, type SortState } from './SortableTable.js';
+import {
+  fixedCellColumns,
+  MatrixCellFrame,
+  MatrixCellHeader,
+} from './MatrixCellHeader.js';
+import { Pager } from './Pager.js';
+import { SearchField } from './SearchField.js';
+import { useSort } from './SortableTable.js';
 
 const PAGE_SIZE = 50;
 
@@ -17,7 +27,7 @@ export function ConstrainedMatrixTable({
   catalog,
   matrix,
   runs,
-  nested,
+  nested = false,
   onRun,
   onOpenEval,
 }: {
@@ -32,10 +42,9 @@ export function ConstrainedMatrixTable({
 }) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState>({
-    key: 'eval',
-    direction: 'asc',
-  });
+  const { sort, toggleSort } = useSort({ key: 'eval', direction: 'asc' }, () =>
+    setPage(0),
+  );
   const [result, setResult] = useState<MatrixCellPage>();
   const [error, setError] = useState<string>();
   const dimensions = matrix.dimensions ?? Object.keys(matrix.parameters);
@@ -74,73 +83,28 @@ export function ConstrainedMatrixTable({
     runs
       .filter((run) => run.matrixId === matrix.id && run.cellKey === key)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]?.status;
-  const onSort = (key: string) => {
-    setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' },
-    );
-    setPage(0);
-  };
+  const columns = dimensions.length + fixedCellColumns;
   return (
-    <>
-      <label className="matrix-filter">
-        Filter cells
-        <input
-          type="search"
-          aria-label="Filter matrix cells"
-          placeholder="Eval, parameter or agent"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(0);
-          }}
+    <div className="flex flex-col gap-2">
+      <SearchField
+        label="Filter matrix cells"
+        placeholder="Eval, parameter or agent"
+        value={query}
+        count={`${result?.total ?? 0} of ${result?.planned ?? 0} eligible cells`}
+        onChange={(next) => {
+          setQuery(next);
+          setPage(0);
+        }}
+      />
+      {error ? <ErrorBanner message={error} /> : null}
+      <MatrixCellFrame nested={nested}>
+        <MatrixCellHeader
+          axes={dimensions}
+          sort={sort}
+          onSort={toggleSort}
+          planned
         />
-        <span>
-          {result?.total ?? 0} of {result?.planned ?? 0} eligible cells
-        </span>
-      </label>
-      {error ? (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <table className={nested ? 'nested' : 'data-table'}>
-        <thead>
-          <tr>
-            <SortableHeader
-              label="Eval"
-              sortKey="eval"
-              sort={sort}
-              onSort={onSort}
-            />
-            {dimensions.map((key) => (
-              <SortableHeader
-                key={key}
-                label={key}
-                sortKey={`axis:${key}`}
-                sort={sort}
-                onSort={onSort}
-              />
-            ))}
-            <SortableHeader
-              label="Agent"
-              sortKey="agent"
-              sort={sort}
-              onSort={onSort}
-            />
-            <th>Runtime</th>
-            <SortableHeader
-              label="Trials"
-              sortKey="trials"
-              sort={sort}
-              onSort={onSort}
-            />
-            <th>Latest run</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+        <Table.Body>
           {result?.cells.map((cell) => {
             const evaluation = catalogById.get(cell.evalId);
             return (
@@ -172,34 +136,21 @@ export function ConstrainedMatrixTable({
             );
           })}
           {!result && !error ? (
-            <tr>
-              <td colSpan={dimensions.length + 6}>Loading cells…</td>
-            </tr>
+            <TableMessage colSpan={columns}>Loading cells…</TableMessage>
           ) : null}
           {result && !result.cells.length ? (
-            <tr>
-              <td colSpan={dimensions.length + 6}>No matching cells.</td>
-            </tr>
+            <TableMessage colSpan={columns}>No matching cells.</TableMessage>
           ) : null}
-        </tbody>
-      </table>
-      {result && result.total > PAGE_SIZE ? (
-        <nav className="matrix-pages" aria-label="Matrix cells pages">
-          <span>
-            Cells {page * PAGE_SIZE + 1}–
-            {Math.min((page + 1) * PAGE_SIZE, result.total)} of {result.total}
-          </span>
-          <button disabled={page === 0} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          <button
-            disabled={(page + 1) * PAGE_SIZE >= result.total}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </button>
-        </nav>
-      ) : null}
-    </>
+        </Table.Body>
+      </MatrixCellFrame>
+      <Pager
+        label="Matrix cells pages"
+        noun="Cells"
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={result?.total ?? 0}
+        onPage={setPage}
+      />
+    </div>
   );
 }

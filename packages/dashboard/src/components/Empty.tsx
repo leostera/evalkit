@@ -1,7 +1,18 @@
-export function Empty({ message }: { message: string }) {
+import { Empty as KumoEmpty } from '@cloudflare/kumo';
+
+export function Empty({
+  message,
+  description,
+}: {
+  message: string;
+  description?: string;
+}) {
   return (
-    <div className="empty">
-      <p>{message}</p>
-    </div>
+    <KumoEmpty
+      size="sm"
+      title={message}
+      description={description}
+      className="py-12"
+    />
   );
 }
