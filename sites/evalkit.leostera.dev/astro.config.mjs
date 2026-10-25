@@ -13,7 +13,8 @@ export default defineConfig({
       favicon: '/favicon.svg',
       disable404Route: true,
       editLink: {
-        baseUrl: 'https://github.com/leostera/evalkit/edit/main/www/',
+        baseUrl:
+          'https://github.com/leostera/evalkit/edit/main/sites/evalkit.leostera.dev/',
       },
       customCss: ['./src/styles/starlight.css'],
       head: [

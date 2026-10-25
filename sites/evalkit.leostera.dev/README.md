@@ -6,20 +6,20 @@ From the monorepo root:
 
 ```sh
 bun install
-bun run --cwd www dev       # local Astro development server
-bun run --cwd www check     # Astro/TypeScript checks
-bun run --cwd www build     # static site in www/dist/
+bun run --cwd sites/evalkit.leostera.dev dev       # local Astro development server
+bun run --cwd sites/evalkit.leostera.dev check     # Astro/TypeScript checks
+bun run --cwd sites/evalkit.leostera.dev build     # static site in sites/evalkit.leostera.dev/dist/
 ```
 
 The Cloudflare Workers configuration is [`wrangler.jsonc`](wrangler.jsonc). It serves Astro's prerendered `dist/` via Workers Static Assets; no Cloudflare Astro SSR adapter or Worker script is necessary. `workers_dev` is explicitly `false`; the Custom Domain is `evalkit.leostera.dev`. Deployment is manual, not automatic in CI. With access to the `leostera` Cloudflare account:
 
 ```sh
 bun test scripts/website-snippets.test.ts
-bun run --cwd www check
-bun run --cwd www build
-bun run --cwd www wrangler whoami
-bun run --cwd www wrangler deploy --dry-run
-bun run --cwd www wrangler deploy --keep-vars --strict
+bun run --cwd sites/evalkit.leostera.dev check
+bun run --cwd sites/evalkit.leostera.dev build
+bun run --cwd sites/evalkit.leostera.dev wrangler whoami
+bun run --cwd sites/evalkit.leostera.dev wrangler deploy --dry-run
+bun run --cwd sites/evalkit.leostera.dev wrangler deploy --keep-vars --strict
 ```
 
 Verify the account before deployment. Build/check/preview commands alone do not publish anything. The homepage example test checks that its public-package definition stays synchronized with the generated starter.

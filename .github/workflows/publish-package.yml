@@ -22,11 +22,11 @@ jobs:
       - run: bun run format:check
       - run: bun run lint
       - run: bun run check
-      - run: bun run --cwd www check
+      - run: bun run --cwd sites/evalkit.leostera.dev check
       - run: bun test
       - run: bun run build
       - run: bun run pack:check
-      - run: bun run --cwd www build
+      - run: bun run --cwd sites/evalkit.leostera.dev build
       - name: Publish package
         run: npm publish
         env:

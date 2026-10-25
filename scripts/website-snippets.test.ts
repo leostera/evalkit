@@ -4,7 +4,7 @@ import {
   heroDefinition,
   scaffoldCommand,
   setupCommands,
-} from '../www/src/content/snippets';
+} from '../sites/evalkit.leostera.dev/src/content/snippets';
 
 function tokens(source: string): string[] {
   // Compare identifiers, literals and punctuation independently of layout.
