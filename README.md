@@ -43,7 +43,7 @@ Runs create `_evalkit-results/` and `_evalkit-sandbox/` in the generated project
 
 ## Explore more
 
-- [Get started](www/src/content/docs/index.md) and the [manual](www/src/content/docs/manual/) explain adapters, fixtures, scoring, reports, and the CLI.
+- [Get started](sites/evalkit.leostera.dev/src/content/docs/index.md) and the [manual](sites/evalkit.leostera.dev/src/content/docs/manual/) explain adapters, fixtures, scoring, reports, and the CLI.
 - [Interleaved scenario](examples/interleaved-scenario/) has a passing write/revise flow, an intentional failfast failure, and a provider-free fake judge agent.
 - [Configured matrix](examples/configured-matrix/) shows a runnable parameter sweep without model credentials.
 - [HACKING.md](HACKING.md) covers the repository layout, builds, and tests for contributors.

@@ -12,7 +12,7 @@
   "workspaces": [
     "packages/*",
     "examples/*",
-    "www"
+    "sites/*"
   ],
   "publishConfig": {
     "access": "public",
@@ -43,7 +43,7 @@
   "scripts": {
     "build": "bun run --filter './packages/*' build && bun scripts/sync-package.ts",
     "check": "bun run --filter './packages/*' check && bun run --filter './examples/*' check",
-    "lint": "oxlint --react-plugin --jsx-a11y-plugin --deny-warnings packages examples scripts www/src",
+    "lint": "oxlint --react-plugin --jsx-a11y-plugin --deny-warnings packages examples scripts sites/evalkit.leostera.dev/src",
     "test": "bun test",
     "pack:check": "bun packages/evalkit/scripts/pack-check.ts",
     "format": "prettier --write .",
