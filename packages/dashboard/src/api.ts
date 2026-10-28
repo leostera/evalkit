@@ -69,6 +69,15 @@ export type RunSummary = {
   durationMs?: number;
   /** The eval is no longer in the project (`evalkit tidy`); hidden by default. */
   archived?: boolean;
+  /** Repository and commit the run's eval code came from. */
+  source?: {
+    repo: string;
+    project: string;
+    commit: string;
+    ref?: string;
+    committedAt?: string;
+    dirty: boolean;
+  };
 };
 
 export type WorkspaceEntry = {

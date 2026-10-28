@@ -1,7 +1,7 @@
 # RFD0006 - Commit Provenance and Share Server
 
 - Feature Name: `commit-provenance-and-share-server`
-- Status: Draft
+- Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-10-28`
 - Updated: `2026-10-28`

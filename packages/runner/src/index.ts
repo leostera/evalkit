@@ -24,6 +24,8 @@ import {
   type ResourceKind,
   type RunWriter,
   type RunMetadata,
+  type RunCatalog,
+  type RunSource,
   type ScoreResult,
   type TrialScoring,
   type Uuid,
@@ -59,6 +61,10 @@ export type RunEvalOptions = {
   semaphore?: Effect.Semaphore;
   /** Base directory for persistent local trial workspaces. Omit for an ephemeral OS temp workspace. */
   workspaceRoot?: string;
+  /** Repository and commit the eval code came from, recorded in the manifest. */
+  source?: RunSource;
+  /** The project's evals and suites at run time, saved beside the manifest. */
+  catalog?: RunCatalog;
   now?: () => Date;
 };
 
@@ -120,11 +126,12 @@ function runMetadata(
   startedAt: string,
 ): RunMetadata {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+    ...(options.source ? { source: options.source } : {}),
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     parameters: options.parameters,
     matrix: options.matrix,
@@ -177,6 +184,7 @@ async function executeRun(
   const runId = options.runId ?? createId('run');
   const runWriter = await options.report.startRun(
     runMetadata(definition, options, runId, aggregateStartedAt.toISOString()),
+    { catalog: options.catalog },
   );
   const trialEffects = Array.from(
     { length: requestedTrials },
@@ -281,9 +289,10 @@ async function runTrial(
     options.runWriter ??
     (await options.report.startRun(
       runMetadata(definition, options, runId, startedAt),
+      { catalog: options.catalog },
     ));
   const trialWriter = await runWriter.startTrial({
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId,
     runUri: canonicalId('run', runId),
     trialId,

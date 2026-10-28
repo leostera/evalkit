@@ -23,6 +23,8 @@ import type {
 } from '@evalkit/core';
 
 const MANIFEST_FILE = 'manifest.json';
+/** The project's evals and suites when the run started (schema version 4+). */
+export const CATALOG_FILE = 'catalog.json';
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -133,10 +135,12 @@ class LocalRunWriter implements RunWriter {
 /** Persists each run as a local tree rooted below `rootDirectory`. */
 export function localReportStore(rootDirectory: string): ReportStore {
   return {
-    async startRun(metadata: RunMetadata): Promise<RunWriter> {
+    async startRun(metadata, context): Promise<RunWriter> {
       assertPathSegment(metadata.runId, 'runId');
       const directory = path.resolve(rootDirectory, metadata.runId);
       await mkdir(directory, { recursive: true });
+      if (context?.catalog)
+        await writeJson(path.join(directory, CATALOG_FILE), context.catalog);
       await writeJson(path.join(directory, MANIFEST_FILE), {
         ...Schema.encodeSync(RunMetadataSchema)(metadata),
         status: 'running',

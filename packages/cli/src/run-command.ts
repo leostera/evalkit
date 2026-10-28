@@ -10,6 +10,7 @@ import {
 } from '@evalkit/core';
 import { localReportStore, runMatrix } from '@evalkit/runner';
 import { runnerLogs } from './terminal.js';
+import { detectSource, runCatalog, shortSource } from './source.js';
 import { loadProject } from './project.js';
 
 export function parseRunArgs(args: string[]) {
@@ -197,7 +198,28 @@ export async function runProjectCommand(
     throw new Error(
       `Selected ${cells} cells. Narrow the selection, inspect --dry-run, or pass --all.`,
     );
-  if (!values.json) console.log(`Running ${cells} cell(s) from ${plan.matrix}`);
+  const reportDir = resolve(
+    project.root,
+    project.config.reportDir ?? '_evalkit-results',
+  );
+  const sandboxDir = resolve(
+    project.root,
+    project.config.sandboxDir ?? '_evalkit-sandbox',
+  );
+  const source = await detectSource(project.root, {
+    outputDirs: [
+      reportDir,
+      sandboxDir,
+      resolve(project.root, '_evalkit-dashboard'),
+    ],
+  });
+  if (!values.json)
+    console.log(
+      `Running ${cells} cell(s) from ${plan.matrix}` +
+        (source
+          ? ` at ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
+          : ' (untracked: not in a git repository)'),
+    );
   const summary = await Effect.runPromise(
     runnerLogs(
       runMatrix(matrix, {
@@ -207,13 +229,10 @@ export async function runProjectCommand(
         trials,
         ...(suiteId ? { suiteId } : {}),
         ...(values.local ? { runtime: 'local' as const } : {}),
-        report: localReportStore(
-          resolve(project.root, project.config.reportDir ?? '_evalkit-results'),
-        ),
-        workspaceRoot: resolve(
-          project.root,
-          project.config.sandboxDir ?? '_evalkit-sandbox',
-        ),
+        ...(source ? { source } : {}),
+        catalog: runCatalog(registry),
+        report: localReportStore(reportDir),
+        workspaceRoot: sandboxDir,
         onResult: (cell, result) => {
           if (values.json)
             console.log(
