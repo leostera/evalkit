@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { authoringId, type EvalRegistry } from '@evalkit/core';
+import { dashboardIndex } from '@evalkit/share';
 import { createDashboardReportReader } from './dashboard-reports.js';
 
 /** Marks a directory as EvalKit-owned so a rebuild may safely replace it. */
@@ -96,13 +97,14 @@ export async function buildDashboard(
       const trialIds: string[] = [];
       for (const [index, run] of runs.entries()) {
         progress(`run ${index + 1}/${runs.length} · ${run.id.slice(0, 8)}`);
-        const runTrials = await reports.listTrials(run.id);
-        await write(`runs/${run.id}/trials.json`, { trials: runTrials });
-        for (const trial of runTrials) {
-          trials += 1;
-          trialIds.push(trial.id);
-          files += await snapshotTrial(reports, write, data, run.id, trial.id);
-        }
+        const written = await snapshotRun(
+          reports,
+          run.id,
+          directorySink(resolve(data, 'runs', run.id)),
+        );
+        trials += written.trialIds.length;
+        files += written.files;
+        trialIds.push(...written.trialIds);
       }
       return {
         runs: runs.length,
@@ -182,37 +184,75 @@ function count(value: number, noun: string): string {
   return `${value} ${noun}${value === 1 ? '' : 's'}`;
 }
 
-/** Writes one trial's JSON views and candidate files; returns the file count. */
-async function snapshotTrial(
+/** Receives one run's snapshot files, at paths relative to the run. */
+export type SnapshotSink = {
+  json(path: string, value: unknown): Promise<void>;
+  bytes(path: string, data: Uint8Array): Promise<void>;
+};
+
+/** Writes a run's snapshot below `root` (static builds). */
+export function directorySink(root: string): SnapshotSink {
+  const target = (path: string) => {
+    const file = resolve(root, path);
+    if (!file.startsWith(`${resolve(root)}${sep}`))
+      throw new Error(`Invalid snapshot path: ${path}`);
+    return file;
+  };
+  return {
+    async json(path, value) {
+      const file = target(path);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, `${JSON.stringify(value)}\n`);
+    },
+    async bytes(path, data) {
+      const file = target(path);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, data);
+    },
+  };
+}
+
+/**
+ * One run's snapshot, shared by `evalkit build` (files on disk) and
+ * `evalkit share` (an upload bundle): `trials.json`, then per trial
+ * `detail.json`, `events.json`, `artifacts.json`, `workspace.json`, and the
+ * candidate files under `workspace/`. Evaluator workspaces are never read.
+ */
+export async function snapshotRun(
   reports: ReturnType<typeof createDashboardReportReader>,
-  write: (path: string, value: unknown) => Promise<void>,
-  data: string,
   runId: string,
-  trialId: string,
-): Promise<number> {
-  const base = `runs/${runId}/trials/${trialId}`;
-  await write(`${base}/detail.json`, await reports.trialDetail(runId, trialId));
-  await write(`${base}/events.json`, {
-    events: await reports.trajectory(runId, trialId),
-  });
-  await write(`${base}/artifacts.json`, {
-    artifacts: await reports.listArtifacts(runId, trialId),
-  });
-  const workspace = await reports.listCandidateWorkspace(runId, trialId);
-  await write(`${base}/workspace.json`, workspace);
-  const root = resolve(data, base, 'workspace');
+  sink: SnapshotSink,
+  options: { workspaceFiles?: boolean } = {},
+): Promise<{ trialIds: string[]; files: number }> {
+  const trials = await reports.listTrials(runId);
+  await sink.json('trials.json', { trials });
   let files = 0;
-  for (const entry of workspace) {
-    if (entry.kind !== 'file') continue;
-    const target = resolve(root, entry.path);
-    if (!target.startsWith(`${root}${sep}`))
-      throw new Error(`Invalid workspace path: ${entry.path}`);
-    const response = await reports.candidateFile(runId, trialId, entry.path);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, new Uint8Array(await response.arrayBuffer()));
-    files += 1;
+  for (const trial of trials) {
+    const base = `trials/${trial.id}`;
+    await sink.json(
+      `${base}/detail.json`,
+      await reports.trialDetail(runId, trial.id),
+    );
+    await sink.json(`${base}/events.json`, {
+      events: await reports.trajectory(runId, trial.id),
+    });
+    await sink.json(`${base}/artifacts.json`, {
+      artifacts: await reports.listArtifacts(runId, trial.id),
+    });
+    const workspace = await reports.listCandidateWorkspace(runId, trial.id);
+    await sink.json(`${base}/workspace.json`, workspace);
+    if (options.workspaceFiles === false) continue;
+    for (const entry of workspace) {
+      if (entry.kind !== 'file') continue;
+      const response = await reports.candidateFile(runId, trial.id, entry.path);
+      await sink.bytes(
+        `${base}/workspace/${entry.path}`,
+        new Uint8Array(await response.arrayBuffer()),
+      );
+      files += 1;
+    }
   }
-  return files;
+  return { trialIds: trials.map((trial) => trial.id), files };
 }
 
 /** Total size and file count of a directory, for the build summary. */
@@ -232,24 +272,9 @@ export async function directorySize(
   return { bytes, files };
 }
 
-/**
- * Select the static API and make every URL relative to `<base href>`, which
- * points at the snapshot root. The app derives its router basename from it.
- */
+/** A snapshot page whose `<base href>` points at the snapshot root. */
 export function staticIndex(html: string, base = './'): string {
-  const result = html
-    .replace(
-      '<html lang="en">',
-      '<html lang="en" data-evalkit-snapshot="static">',
-    )
-    .replace('<head>', `<head>\n    <base href="${base}" />`)
-    .replaceAll('"/assets/', '"./assets/');
-  if (
-    !result.includes('data-evalkit-snapshot="static"') ||
-    !result.includes('<base href=')
-  )
-    throw new Error('Bundled dashboard index.html has an unexpected shape');
-  return result;
+  return dashboardIndex(html, { base });
 }
 
 async function prepareOutDir(outDir: string): Promise<void> {

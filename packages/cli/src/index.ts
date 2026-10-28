@@ -28,7 +28,9 @@ import {
   runProjectCommand,
 } from './run-command.js';
 import { tidyReports } from './tidy.js';
-import { detectSource, runCatalog } from './source.js';
+import { detectSource, runCatalog, shortSource } from './source.js';
+import { selectRuns, shareRuns } from './share-command.js';
+import { createDirectoryShareApp, repoKey } from '@evalkit/share';
 import { newProject } from './new-project.js';
 import {
   banner,
@@ -734,6 +736,144 @@ const tidyCommand = Command.make('tidy', { config }, ({ config }) =>
     catch: (error) => error,
   }),
 );
+const shareServeCommand = Command.make(
+  'serve',
+  {
+    dir: Options.text('dir').pipe(Options.withDefault('_evalkit-share')),
+    port: Options.integer('port').pipe(Options.withDefault(4318)),
+  },
+  ({ dir, port }) =>
+    Effect.tryPromise({
+      try: async () => {
+        const root = resolve(process.cwd(), dir);
+        const app = await createDirectoryShareApp({
+          dir: root,
+          dashboardRoot: dashboardAssets(),
+        });
+        let server: ReturnType<typeof Bun.serve>;
+        try {
+          server = Bun.serve({ port, fetch: app.fetch });
+        } catch (error) {
+          if ((error as { code?: string }).code === 'EADDRINUSE')
+            throw new Error(
+              `Port ${port} is already in use. Choose another: evalkit share serve --port 4319`,
+            );
+          throw error;
+        }
+        banner('share serve', VERSION);
+        console.log(
+          `  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(`http://localhost:${server.port}`)}`,
+        );
+        console.log(
+          `  ${cyan('➜')}  ${bold('Storage:'.padEnd(9))}${relative(process.cwd(), root) || '.'}`,
+        );
+        console.log(
+          `\n  ${dim(`Upload with share.url = "http://localhost:${server.port}". No authentication: keep it private.`)}\n`,
+        );
+      },
+      catch: (error) => error,
+    }),
+);
+
+const shareCommand = Command.make(
+  'share',
+  {
+    config,
+    all: Options.boolean('all'),
+    allowDirty: Options.boolean('allow-dirty'),
+    noWorkspace: Options.boolean('no-workspace'),
+  },
+  ({ config, all, allowDirty, noWorkspace }) =>
+    Effect.tryPromise({
+      try: async () => {
+        const started = performance.now();
+        banner('share', VERSION);
+        await loadProjectStep(Option.getOrUndefined(config));
+        const serverUrl =
+          process.env.EVALKIT_SHARE_URL ?? project!.config.share?.url;
+        if (!serverUrl)
+          throw new Error(
+            'No share server configured. Set share: { url } in evalkit.config.ts or EVALKIT_SHARE_URL.',
+          );
+        const head = await step(
+          'Source',
+          () =>
+            detectSource(projectRoot, {
+              outputDirs: [
+                reportRoot,
+                sandboxRoot,
+                resolve(projectRoot, '_evalkit-dashboard'),
+              ],
+            }),
+          (source) =>
+            source
+              ? `${repoKey(source)} @ ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
+              : 'not a git repository',
+        );
+        if (!head)
+          throw new Error(
+            'evalkit share needs to know the commit: run it inside a git repository or set EVALKIT_SOURCE_REPO and EVALKIT_SOURCE_COMMIT. `evalkit build` works without one.',
+          );
+        const registry = project!.registry;
+        const selection = await step(
+          'Runs',
+          async () =>
+            selectRuns(
+              await createDashboardReportReader(
+                reportRoot,
+                registry,
+              ).listRuns(),
+              head,
+              { all, allowDirty },
+            ),
+          (value) =>
+            [
+              `${plural(value.selected.length, 'run')} to share`,
+              value.otherCommits && !all
+                ? `${value.otherCommits} from other commits`
+                : '',
+              value.dirty ? `${value.dirty} dirty skipped` : '',
+              value.untracked ? `${value.untracked} untracked skipped` : '',
+              value.archived ? `${value.archived} archived skipped` : '',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+        );
+        if (!selection.selected.length)
+          throw new Error(
+            selection.dirty
+              ? `No committed runs for ${shortSource(head)}: ${plural(selection.dirty, 'run')} came from uncommitted changes. Commit and rerun \`evalkit run\`, or pass --allow-dirty.`
+              : `No runs for ${shortSource(head)}. Run \`evalkit run\` first${all ? '' : ', or pass --all to share runs from other commits'}.`,
+          );
+        const result = await shareRuns({
+          serverUrl,
+          reportRoot,
+          registry,
+          runs: selection.selected,
+          workspaceFiles: !noWorkspace,
+          step,
+        });
+        for (const failure of result.failed)
+          console.log(
+            `  ${yellow('✗')} ${failure.runId.slice(0, 8)} ${dim(failure.error)}`,
+          );
+        const commits = new Set(
+          selection.selected.map((run) => run.source.commit),
+        );
+        const target = new URL(
+          `/${repoKey(head)}${commits.size === 1 ? `/-/${[...commits][0]}` : ''}`,
+          serverUrl,
+        ).href;
+        console.log(
+          `\n  ${bold(result.failed.length ? 'Shared with errors' : 'Shared')} in ${duration(performance.now() - started)}\n`,
+        );
+        console.log(`  ${cyan('➜')}  ${cyan(target)}\n`);
+        if (result.failed.length) process.exitCode = 1;
+      },
+      catch: (error) => error,
+    }),
+).pipe(Command.withSubcommands([shareServeCommand]));
+
 const app = Command.make('evalkit').pipe(
   Command.withSubcommands([
     newCommand,
@@ -741,6 +881,7 @@ const app = Command.make('evalkit').pipe(
     devCommand,
     buildCommand,
     tidyCommand,
+    shareCommand,
   ]),
 );
 const cli = Command.run(app, { name: 'EvalKit', version: VERSION });

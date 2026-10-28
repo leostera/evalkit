@@ -1,7 +1,7 @@
 # RFD0006 - Commit Provenance and Share Server
 
 - Feature Name: `commit-provenance-and-share-server`
-- Status: Accepted
+- Status: Implementing
 - Author: `leostera`
 - Start Date: `2026-10-28`
 - Updated: `2026-10-28`
@@ -199,7 +199,7 @@ flowchart TD
 
 #### Upload protocol
 
-The CLI reuses the snapshot writer from `evalkit build`. It packs each run's snapshot data into its own gzip-compressed tar and uploads runs one at a time. That gives progress per run, keeps request bodies well under Worker limits, and lets a failed upload be retried by itself.
+The CLI reuses the snapshot writer from `evalkit build`. It packs each run's snapshot data into its own gzip-compressed **run bundle** (an `EKBUNDLE` header, a JSON file list, then the file bytes; simpler to validate than tar and with no path-length limit) and uploads runs one at a time. That gives progress per run, keeps request bodies well under Worker limits, and lets a failed upload be retried by itself.
 
 ```mermaid
 sequenceDiagram
@@ -210,8 +210,8 @@ sequenceDiagram
   participant B as Files (R2 / directory)
   CLI->>CLI: detect source (HEAD), select runs
   loop each selected run
-    CLI->>CLI: snapshot run → run.tar.gz<br/>(run.json, catalog.json, trials/**)
-    CLI->>S: POST /api/v1/uploads<br/>x-evalkit-repo, x-evalkit-commit, body: run.tar.gz
+    CLI->>CLI: snapshot run → bundle<br/>(run.json, catalog.json, trials.json, trials/**)
+    CLI->>S: POST /api/v1/uploads<br/>body: gzip run bundle
     S->>I: hasRun(runId)?
     alt already indexed
       S-->>CLI: 200 { status: "exists" }
@@ -225,7 +225,7 @@ sequenceDiagram
   CLI->>CLI: print https://…/{repo}/-/{sha}
 ```
 
-- **Validation on the server:** the server checks every archive entry. It rejects absolute paths, `..`, non-regular files and unknown top-level names, and it checks that the run's `source` matches the headers.
+- **Validation on the server:** every bundle path must be one of the snapshot files (`run.json`, `catalog.json`, `trials.json`, `trials/<uuid>/{detail,events,artifacts,workspace}.json`, `trials/<uuid>/workspace/**`). Anything else, `..` and empty segments included, rejects the whole upload. Repository and commit come from `run.json`'s `source`, which must have a full 40-character SHA.
 - **Write ordering:** files go to R2 first and the index row is written last. A run exists for readers only once it is indexed, so a crash mid-upload leaves at most unreferenced files, which a retry overwrites.
 
 ### 3. Storage: files in R2, metadata in a Durable Object
@@ -319,18 +319,21 @@ erDiagram
 
 #### Routes
 
-| Method & path                             | Response                                                                                        |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `POST /api/v1/uploads`                    | Store one run archive. `201 created` or `200 exists`; `400` for an invalid archive.             |
-| `GET /api/v1/repos`                       | Index query: known repositories (JSON). `GET /` renders them as a list.                         |
-| `POST /api/v1/reindex`                    | Rebuild the index from R2 (operator action).                                                    |
-| `GET /<repo>`                             | `302` → latest commit by `committedAt`.                                                         |
-| `GET /<repo>/-/commits.json`              | Index query. Commits, newest first: `{ commit, ref, committedAt, runs, passed, failed }`.       |
-| `GET /<repo>/-/<ref-or-short-sha>/<rest>` | `302` → `/<repo>/-/<full-sha>/<rest>`: the latest commit for a ref, or a unique SHA prefix ≥ 7. |
-| `GET /<repo>/-/<sha>/data/runs.json`      | Index query: the commit's run summaries.                                                        |
-| `GET /<repo>/-/<sha>/data/<path>`         | The stored object (catalog, trials, events, workspace files).                                   |
-| `GET /<repo>/-/<sha>/<anything else>`     | Dashboard `index.html` with `<base href="/<repo>/-/<sha>/">`.                                   |
-| `GET /_evalkit/assets/*`                  | Dashboard JS/CSS (shared by all repos; long-lived cache).                                       |
+The Worker is a small JSON API plus the dashboard app. Workers static assets serve `/assets/*` directly; every other path is handled by the Worker.
+
+| Method & path                                     | Response                                                                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/uploads`                            | Store one run bundle. `201 created` or `200 exists`; `400` for an invalid bundle.                         |
+| `POST /api/v1/reindex`                            | Rebuild the index from stored `run.json` files (operator action).                                         |
+| `GET /api/v1/repos`                               | Index query: known repositories.                                                                          |
+| `GET /api/v1/repos/<repo>/-/commits`              | Index query: commits, newest first: `{ commit, ref, committedAt, runs, passed, failed }`.                 |
+| `GET /api/v1/repos/<repo>/-/<sha>/data/runs.json` | Index query: the commit's run summaries.                                                                  |
+| `GET /api/v1/repos/<repo>/-/<sha>/data/<path>`    | The commit catalog or a stored run file. Candidate files are served as `octet-stream` with a sandbox CSP. |
+| `GET /<repo>`                                     | `302` → latest commit.                                                                                    |
+| `GET /<repo>/-/<ref-or-short-sha>/<rest>`         | `302` → `/<repo>/-/<full-sha>/<rest>`: the latest commit for a ref, or a unique SHA prefix ≥ 7.           |
+| `GET /<anything else>`                            | The dashboard app, with `<base href>` and `data-evalkit-share` telling it where its data lives.           |
+
+The dashboard renders the repository list at `/` and a "nothing shared" message for an unknown repository or ref. The server renders no HTML of its own.
 
 `/-/` separates the repository path, which may contain nested groups, from the commit, as in GitLab URLs.
 
@@ -343,25 +346,27 @@ flowchart TB
   ui --> static["createStaticDashboardApi(baseUrl)<br/>read-only · data/*.json under base href"]
   static --> b["evalkit build<br/>base = snapshot root"]
   static --> s["share server<br/>base = /{repo}/-/{sha}/"]
-  s --> picker["+ version picker<br/>reads ../commits.json"]
+  s --> picker["+ version picker<br/>reads /api/v1/repos/{repo}/-/commits"]
 ```
 
-The share server serves the same URL shape as a snapshot, with data under `<base href>/data/…`, so `createStaticDashboardApi` works unchanged. The only UI change is the version picker. It appears when `commits.json` exists next to the base, and it can later read local commits in `dev` and `build`.
+On the share server, `createStaticDashboardApi` reads `<data>/data/…` from the API instead of `<base href>/data/…`, and the router basename still comes from `<base href>`. The only new UI is the repository list and the version picker. The picker appears when the page names a commits URL, and it can later read local commits in `dev` and `build`.
 
 #### Package
 
 ```
 packages/share/
-├── src/app.ts        createShareApp({ files, index, assets }) → Hono app (all routes above)
-├── src/storage.ts    Storage interface: get, put, head, list(prefix, delimiter)
-├── src/r2.ts         R2 storage
-├── src/fs.ts         directory storage (Bun/Node; used by tests and `evalkit share serve`)
-├── src/index-db.ts   ShareIndex queries + schema migrations over a small SQL executor
-├── src/index-do.ts   ShareIndex Durable Object (ctx.storage.sql)
-├── src/index-bun.ts  ShareIndex on bun:sqlite (local server and tests)
-├── src/archive.ts    streaming tar.gz reader with path validation
-├── src/worker.ts     Worker entry: files = env.RESULTS (R2), index = env.INDEX (DO), assets = env.ASSETS
-└── wrangler.jsonc    template: R2 binding, SQLite DO binding + migration, static assets
+├── src/app.ts            createShareApp({ files, index, assets }) → Hono app (all routes above)
+├── src/bundle.ts         run bundle encode/decode (CLI and server)
+├── src/paths.ts          allowed bundle paths, repository keys
+├── src/files.ts          ShareFiles interface + R2 implementation
+├── src/fs-files.ts       directory implementation (`evalkit share serve`, tests)
+├── src/index-db.ts       index schema + queries over a small synchronous SQL interface
+├── src/index-do.ts       ShareIndex Durable Object (ctx.storage.sql) + its client
+├── src/index-bun.ts      index on bun:sqlite
+├── src/html.ts           dashboard index.html rewriting (shared with `evalkit build`)
+├── src/node.ts           Bun host: directory files + SQLite + bundled dashboard
+├── src/worker.ts         Worker entry: RESULTS (R2), INDEX (DO), ASSETS (static assets)
+└── wrangler.example.jsonc deployment template
 ```
 
 ```mermaid
@@ -387,7 +392,7 @@ flowchart LR
 3. Files in R2 are written once and never changed. All metadata changes go through the single `ShareIndex` Durable Object, which serializes them.
 4. The index can always be rebuilt from R2. It holds no information that is not also in a stored `run.json`.
 5. Results never enter a git repository.
-6. Uploads never include evaluator workspaces or files outside the snapshot format, and the server rejects archive paths that escape their run.
+6. Uploads never include evaluator workspaces or files outside the snapshot format, and the server rejects bundle paths that escape their run.
 7. Dirty runs are never uploaded without `--allow-dirty`, and they are always labelled in the UI and excluded from a commit's pass rate.
 8. The dashboard bundle and the static API are shared by `build` and the share server, with no separate share UI.
 
@@ -408,7 +413,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  p1["1 · Provenance<br/>source + run catalog<br/>schemaVersion 4"] --> p2["2 · @evalkit/share<br/>files (R2/fs), index (DO/SQLite),<br/>archive, routes"]
+  p1["1 · Provenance<br/>source + run catalog<br/>schemaVersion 4"] --> p2["2 · @evalkit/share<br/>files (R2/fs), index (DO/SQLite),<br/>bundles, routes"]
   p2 --> p3["3 · evalkit share<br/>selection, upload, URL"]
   p3 --> p4["4 · Version picker<br/>commits.json in UI"]
   p4 --> p5["5 · Docs + e2e<br/>run → share → browser"]
@@ -424,7 +429,7 @@ flowchart LR
 
 ## Drawbacks
 
-- **The snapshot JSON becomes a storage format.** Shared commits stay in R2 for a long time, so the dashboard must keep reading old formats. Mitigation: the archive records a format version, and the static API keeps readers for older versions.
+- **The snapshot JSON becomes a storage format.** Shared commits stay in R2 for a long time, so the dashboard must keep reading old formats. Mitigation: the bundle records a format version, and the static API keeps readers for older versions.
 - **Two stores to keep consistent.** Files live in R2 and metadata in the Durable Object. The write order (files, then index) and `reindex` keep them consistent, but an operator now has two things to back up and reason about.
 - **One index instance.** A single Durable Object serializes every upload and index query. That's plenty for a private team server (each upload is one short transaction), but a very large deployment would need to shard the index per repository.
 - **No auth.** This is safe only on a private network. Anyone who can reach the server can upload.

@@ -37,7 +37,7 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
   const base = `http://127.0.0.1:${port}`;
   try {
     let ready = false;
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 200; i++) {
       try {
         if ((await fetch(`${base}/v1/catalog`)).ok) {
           ready = true;

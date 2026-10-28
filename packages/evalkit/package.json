@@ -15,6 +15,7 @@
     "@evalkit/cli": "workspace:*",
     "@evalkit/core": "workspace:*",
     "@evalkit/runner": "workspace:*",
-    "tsdown": "^0.23.0"
+    "tsdown": "^0.23.0",
+    "@evalkit/share": "workspace:*"
   }
 }

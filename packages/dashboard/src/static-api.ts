@@ -14,7 +14,13 @@ export function createStaticDashboardApi(options: {
   const url = (path: string) => new URL(`data/${path}`, options.baseUrl);
   const file = async (path: string) => {
     const response = await send(url(path));
-    if (!response.ok) throw new Error(`Snapshot file is missing: data/${path}`);
+    if (!response.ok)
+      // Listings are always shared; `evalkit share --no-workspace` leaves out contents.
+      throw new Error(
+        path.includes('/workspace/')
+          ? 'This file is listed, but its contents were not shared.'
+          : `Snapshot file is missing: data/${path}`,
+      );
     return response;
   };
   const json = async <T>(path: string): Promise<T> =>
