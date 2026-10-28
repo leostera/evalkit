@@ -104,6 +104,18 @@ https://evals.example.com/
             └─ trials/<trial-id>, workspaces/<trial-id>
 ```
 
+### What gets uploaded
+
+Exactly what `evalkit build` puts in a snapshot, per run. All of it goes to R2:
+
+| Uploaded to R2                                                                                           | Never uploaded                                 |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Run summary, scores, checkpoints, and the run's eval catalog                                             | Evaluator workspaces (hidden answers, rubrics) |
+| Trial details and full trajectories (messages, tool calls, evidence)                                     | `_evalkit-sandbox/` (live trial working dirs)  |
+| **Candidate workspace files**: the trial's `artifacts/candidate/` snapshot, shown on the Workspaces page | Anything outside `_evalkit-results/`           |
+
+Candidate files make up most of an upload's size. `evalkit share --no-workspace` leaves them out. The Workspaces page then lists the file names with sizes and notes that the contents were not shared.
+
 The dashboard header gets a **version picker** listing the repository's commits (newest first, with ref, time and pass rate). Picking one moves to `/<repo>/-/<sha>/…` and keeps the current page when it exists.
 
 ## Reference-level explanation
@@ -182,6 +194,7 @@ flowchart TD
 ```
 
 - Skipped runs are counted in the output, for example `2 untracked · 1 dirty skipped`.
+- `--no-workspace` uploads runs without candidate file contents. File listings (`workspace.json`) are still uploaded.
 - If nothing is selected, the command exits with an error and explains why, for example "No runs for HEAD 3a01fda; run `evalkit run` first".
 
 #### Upload protocol
