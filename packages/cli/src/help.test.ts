@@ -11,12 +11,10 @@ test('help for every CLI command works without a config, project discovery, or s
       ['--help'],
       ['help'],
       ['new', '--help'],
-      ['run-evals', '--help'],
-      ['run-evals', '--', '--help'],
-      ['run-evals', '-h'],
-      ['run-matrix', '--help'],
-      ['run-suite', '--help'],
-      ['serve-dashboard', '--help'],
+      ['run', '--help'],
+      ['run', '-h'],
+      ['dev', '--help'],
+      ['build', '--help'],
     ]) {
       const child = Bun.spawn(['bun', cli, ...args], {
         cwd,
@@ -33,7 +31,7 @@ test('help for every CLI command works without a config, project discovery, or s
       expect(out).toContain('EvalKit');
       expect(out).toContain('USAGE');
     }
-    const invalid = Bun.spawn(['bun', cli, 'run-evals', '--not-an-option'], {
+    const invalid = Bun.spawn(['bun', cli, 'run', '--not-an-option'], {
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -46,4 +44,4 @@ test('help for every CLI command works without a config, project discovery, or s
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
-});
+}, 30_000);

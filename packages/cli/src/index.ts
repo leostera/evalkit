@@ -14,6 +14,7 @@ import {
   type AgentRuntimeName,
 } from '@evalkit/core';
 import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
+import { buildDashboard } from './dashboard-build.js';
 import { listMatrixCells } from './dashboard-cells.js';
 import {
   createDashboardReportReader,
@@ -317,14 +318,33 @@ function registerDashboardAssets(app: Hono, dashboardRoot: string): void {
   });
 }
 
-async function serveDashboard(): Promise<void> {
-  const registry = await loadRegistry();
+/** The npm package bundles the UI beside cli.mjs; the monorepo uses its Vite build. */
+function dashboardAssets(): string {
   const bundledDashboard = new URL('./dashboard/', import.meta.url);
-  const dashboardRoot = fileURLToPath(
+  const root = fileURLToPath(
     existsSync(bundledDashboard)
       ? bundledDashboard
       : new URL('../../dashboard/dist/', import.meta.url),
   );
+  if (!existsSync(resolve(root, 'index.html')))
+    throw new Error(
+      `Dashboard assets not found at ${root}; run \`bun run build\` in the EvalKit repository`,
+    );
+  return root;
+}
+
+async function useProject(configPath: string | undefined): Promise<void> {
+  project = await loadProject(projectRoot, configPath);
+  projectRoot = project.root;
+  reportRoot = resolve(
+    projectRoot,
+    project.config.reportDir ?? '_evalkit-results',
+  );
+}
+
+async function serveDashboard(): Promise<void> {
+  const registry = await loadRegistry();
+  const dashboardRoot = dashboardAssets();
   const app = new Hono();
   const dashboardMatrix = project?.config.matrix
     ? registry.matrices.at(-1)
@@ -367,6 +387,8 @@ const config = Options.text('config').pipe(Options.optional);
 const runOptions = {
   config,
   eval: Options.text('eval').pipe(Options.repeated),
+  suite: Options.text('suite').pipe(Options.optional),
+  matrix: Options.text('matrix').pipe(Options.optional),
   model: Options.text('model').pipe(Options.repeated),
   mode: Options.text('mode').pipe(Options.repeated),
   select: Options.text('select').pipe(Options.repeated),
@@ -384,6 +406,8 @@ const runOptions = {
 type RunOptions = {
   config: Option.Option<string>;
   eval: string[];
+  suite: Option.Option<string>;
+  matrix: Option.Option<string>;
   model: string[];
   mode: string[];
   select: string[];
@@ -405,6 +429,8 @@ function runInput(options: RunOptions, positionals: string[]) {
     {
       config: Option.getOrUndefined(options.config),
       eval: options.eval,
+      suite: Option.getOrUndefined(options.suite),
+      matrix: Option.getOrUndefined(options.matrix),
       model: options.model,
       mode: options.mode,
       select: options.select,
@@ -422,39 +448,18 @@ function runInput(options: RunOptions, positionals: string[]) {
     positionals,
   );
 }
-const execute = (
-  command: string,
-  input: ReturnType<typeof normalizeRunOptions>,
-) =>
+const execute = (input: ReturnType<typeof normalizeRunOptions>) =>
   Effect.tryPromise({
-    try: () => runProjectCommand(command, [], process.cwd(), input),
+    try: () => runProjectCommand([], process.cwd(), input),
     catch: (error) => error,
   });
-const evalsCommand = Command.make(
-  'run-evals',
+const runCommand = Command.make(
+  'run',
   {
     ...runOptions,
     evalIds: Args.text({ name: 'eval-id' }).pipe(Args.repeated),
   },
-  ({ evalIds, ...options }) => execute('run-evals', runInput(options, evalIds)),
-);
-const matrixCommand = Command.make(
-  'run-matrix',
-  {
-    ...runOptions,
-    matrixId: Args.text({ name: 'matrix-id' }),
-  },
-  ({ matrixId, ...options }) =>
-    execute('run-matrix', runInput(options, [matrixId])),
-);
-const suiteCommand = Command.make(
-  'run-suite',
-  {
-    ...runOptions,
-    suiteId: Args.text({ name: 'suite-id' }),
-  },
-  ({ suiteId, ...options }) =>
-    execute('run-suite', runInput(options, [suiteId])),
+  ({ evalIds, ...options }) => execute(runInput(options, evalIds)),
 );
 const newCommand = Command.make(
   'new',
@@ -472,33 +477,45 @@ const newCommand = Command.make(
       catch: (error) => error,
     }),
 );
-const dashboardCommand = Command.make(
-  'serve-dashboard',
-  { config },
-  ({ config }) =>
+const devCommand = Command.make('dev', { config }, ({ config }) =>
+  Effect.tryPromise({
+    try: async () => {
+      await useProject(Option.getOrUndefined(config));
+      await serveDashboard();
+    },
+    catch: (error) => error,
+  }),
+);
+const buildCommand = Command.make(
+  'build',
+  { config, out: Options.text('out').pipe(Options.optional) },
+  ({ config, out }) =>
     Effect.tryPromise({
       try: async () => {
-        project = await loadProject(projectRoot, Option.getOrUndefined(config));
-        projectRoot = project.root;
-        reportRoot = resolve(
-          projectRoot,
-          project.config.reportDir ?? '_evalkit-results',
+        await useProject(Option.getOrUndefined(config));
+        const result = await buildDashboard({
+          registry: project!.registry,
+          reportRoot,
+          dashboardRoot: dashboardAssets(),
+          outDir: resolve(
+            projectRoot,
+            Option.getOrElse(out, () => '_evalkit-dashboard'),
+          ),
+        });
+        console.log(
+          `Built a read-only dashboard snapshot at ${result.outDir}\n` +
+            `  ${result.runs} run(s), ${result.trials} trial(s), ${result.files} candidate file(s)\n` +
+            'Serve it with any static file server. It contains report messages, scores, evidence,\n' +
+            'and candidate files (never evaluator workspaces): review it before sharing.',
         );
-        await serveDashboard();
       },
       catch: (error) => error,
     }),
 );
 const app = Command.make('evalkit').pipe(
-  Command.withSubcommands([
-    newCommand,
-    evalsCommand,
-    matrixCommand,
-    suiteCommand,
-    dashboardCommand,
-  ]),
+  Command.withSubcommands([newCommand, runCommand, devCommand, buildCommand]),
 );
-const cli = Command.run(app, { name: 'EvalKit', version: '0.1.0' });
+const cli = Command.run(app, { name: 'EvalKit', version: '0.2.0' });
 const argv = process.argv.slice();
 if (argv[2] === 'help') argv.splice(2, 1, '--help');
 // Preserve the CLI's existing help spelling while letting @effect/cli render it.

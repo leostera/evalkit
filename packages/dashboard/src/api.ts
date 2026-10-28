@@ -121,6 +121,8 @@ type FetchLike = (
 ) => Promise<Response>;
 
 export interface DashboardApi {
+  /** True for a static `evalkit build` snapshot, which cannot start runs. */
+  readOnly?: boolean;
   listCatalog(): Promise<CatalogEval[]>;
   getMatrix(): Promise<MatrixSummary | null>;
   listMatrixCells(query: MatrixCellQuery): Promise<MatrixCellPage>;

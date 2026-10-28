@@ -21,6 +21,7 @@ bun run check        # type-check the project
 bun run evals         # both configured styles
 bun run matrix:plan  # inspect the matrix without executing it
 bun run dashboard     # in a second terminal
+bun run dashboard:build  # optional read-only snapshot to share
 ```
 
 Already have a Bun project? From its root you can instead run:

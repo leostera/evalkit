@@ -81,7 +81,8 @@ test('CLI plans only eligible cells for configured and suite matrices', async ()
     [
       'bun',
       resolve(import.meta.dir, 'index.ts'),
-      'run-matrix',
+      'run',
+      '--matrix',
       'platforms',
       '--dry-run',
     ],
@@ -101,7 +102,8 @@ test('CLI plans only eligible cells for configured and suite matrices', async ()
     [
       'bun',
       resolve(import.meta.dir, 'index.ts'),
-      'run-matrix',
+      'run',
+      '--matrix',
       'platforms',
       '--select',
       'os=windows',
@@ -136,6 +138,9 @@ test('parser handles values before positionals and rejects unknown or invalid fl
     ['--max-tokens'],
     ['--max-tokens', '-1'],
     ['--trials', '1.5'],
+    ['--suite', 'one', '--matrix', 'two'],
+    ['--suite', 'one', 'eval-id'],
+    ['--matrix', 'one', 'eval-id'],
     ['--typo'],
   ])
     expect(() => parseRunArgs(args)).toThrow();
@@ -149,7 +154,7 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
     `export default {matrix:{id:'models',parameters:{model:['a','b'],mode:['without-docs','with-docs']}},execution:{maxCells:1}};`,
   );
   const cli = resolve(import.meta.dir, 'index.ts');
-  const invoke = async (args: string[], command = 'run-evals') => {
+  const invoke = async (args: string[], command = 'run') => {
     const child = Bun.spawn(['bun', cli, command, ...args], {
       cwd: root,
       stdout: 'pipe',
@@ -169,19 +174,17 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
   expect(byId.status).toBe(0);
   expect(JSON.parse(byId.out).evals).toEqual(['task-1']);
   expect(JSON.parse(byId.out).cells).toBe(4);
-  const matrix = await invoke(
-    [
-      'models',
-      '--eval',
-      'task-1',
-      '--model',
-      'a',
-      '--mode',
-      'with-docs',
-      '--dry-run',
-    ],
-    'run-matrix',
-  );
+  const matrix = await invoke([
+    '--matrix',
+    'models',
+    '--eval',
+    'task-1',
+    '--model',
+    'a',
+    '--mode',
+    'with-docs',
+    '--dry-run',
+  ]);
   expect(matrix.status).toBe(0);
   expect(JSON.parse(matrix.out).matrix).toBe('models');
   expect(JSON.parse(matrix.out).cells).toBe(1);

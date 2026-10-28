@@ -16,7 +16,7 @@ Help users operate evaluation campaigns at scale: launch evals, scan potentially
 
 ## Operating Context
 
-The dashboard runs from an EvalKit project through `serve-dashboard`. It reads local reports and catalog definitions. The working views are Suites & Evals, Agents, Fixtures, Runs, Trial detail, and Candidate workspace. Trial evidence and candidate workspace open in a contextual panel from a run, with a URL-preserved investigation path.
+The dashboard runs from an EvalKit project through `dev`. It reads local reports and catalog definitions. The working views are Suites & Evals, Agents, Fixtures, Runs, Trial detail, and Candidate workspace. Trial evidence and candidate workspace open in a contextual panel from a run, with a URL-preserved investigation path.
 
 ## Capabilities and Constraints
 

@@ -19,6 +19,8 @@ export function parseRunArgs(args: string[]) {
     options: {
       config: { type: 'string' },
       eval: { type: 'string', multiple: true },
+      suite: { type: 'string' },
+      matrix: { type: 'string' },
       model: { type: 'string', multiple: true },
       mode: { type: 'string', multiple: true },
       select: { type: 'string', multiple: true },
@@ -42,6 +44,8 @@ export function normalizeRunOptions(
   values: {
     config?: string;
     eval?: string[];
+    suite?: string;
+    matrix?: string;
     model?: string[];
     mode?: string[];
     select?: string[];
@@ -97,6 +101,10 @@ export function normalizeRunOptions(
     if (index < 1) throw new Error('--param requires name=JSON');
     parameters[value.slice(0, index)] = JSON.parse(value.slice(index + 1));
   }
+  if (values.suite && values.matrix)
+    throw new Error('--suite and --matrix cannot be used together');
+  if ((values.suite || values.matrix) && positionals.length)
+    throw new Error('Use --eval to select evals with --suite or --matrix');
   return {
     values,
     positionals,
@@ -108,7 +116,6 @@ export function normalizeRunOptions(
 }
 
 export async function runProjectCommand(
-  command: string,
   args: string[],
   cwd = process.cwd(),
   parsed = parseRunArgs(args),
@@ -122,16 +129,9 @@ export async function runProjectCommand(
     values.eval?.flatMap((value) => value.split(',')) ?? [];
   let matrix;
   let suiteId: string | undefined;
-  if (command === 'run-matrix') {
-    if (positionals.length !== 1)
-      throw new Error('run-matrix requires one matrix ID');
-    matrix = registry.matrices.find((m) => m.id === positionals[0]);
-    if (!matrix) throw new Error(`Unknown matrix: ${positionals[0]}`);
-  } else if (command === 'run-suite') {
-    if (positionals.length !== 1)
-      throw new Error('run-suite requires one suite ID');
-    const suite = registry.suites.find((s) => s.id === positionals[0]);
-    if (!suite) throw new Error(`Unknown suite: ${positionals[0]}`);
+  if (values.suite) {
+    const suite = registry.suites.find((item) => item.id === values.suite);
+    if (!suite) throw new Error(`Unknown suite: ${values.suite}`);
     suiteId = authoringId(suite);
     matrix = defineEvalMatrix({
       id: 'default',
@@ -141,6 +141,9 @@ export async function runProjectCommand(
       cases: project.config.matrix?.cases,
       exclude: project.config.matrix?.exclude,
     });
+  } else if (values.matrix) {
+    matrix = registry.matrices.find((item) => item.id === values.matrix);
+    if (!matrix) throw new Error(`Unknown matrix: ${values.matrix}`);
   } else {
     requestedEvals.push(...positionals.flatMap((value) => value.split(',')));
     matrix = project.config.matrix
@@ -166,7 +169,7 @@ export async function runProjectCommand(
       (axis === 'model' || axis === 'mode') &&
       choices.length === 1 &&
       !project.config.matrix &&
-      command !== 'run-matrix'
+      !values.matrix
     )
       selection.overrides![axis] = choices[0]!;
     else throw new Error(`Unknown matrix axis: ${axis}`);

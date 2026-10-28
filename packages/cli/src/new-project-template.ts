@@ -105,11 +105,12 @@ bun run check        # type-check your eval, agent, scorer, and config
 bun run evals        # run the example across both styles
 bun run matrix:plan  # inspect the matrix without running it
 bun run matrix       # run the configured matrix
-bun run dashboard    # inspect local reports
+bun run dashboard    # inspect local reports and launch runs
+bun run dashboard:build  # write a read-only, shareable snapshot
 \`\`\`
 
-EvalKit installs from the public GitHub repository; no registry token is needed.
-Reports and trial workspaces stay local and are ignored by Git.
-Commit \`bun.lock\` to pin the resolved EvalKit Git revision.
+EvalKit installs from npm. Reports, trial workspaces, and dashboard snapshots stay local
+and are ignored by Git. A snapshot in \`_evalkit-dashboard/\` contains report messages,
+scores, evidence, and candidate files (never evaluator workspaces): review it before sharing.
 `;
 }

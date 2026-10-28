@@ -18,7 +18,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
       name: 'existing-project',
       private: true,
       dependencies: {
-        '@leostera/evalkit': '^0.1.0',
+        '@leostera/evalkit': '^0.2.0',
         zod: '^4.0.0',
       },
       scripts: { test: 'bun test', dashboard: 'echo existing' },
@@ -38,9 +38,10 @@ test('new . initializes an existing Bun project without clobbering its dependenc
     expect(generated.scripts).toEqual({
       test: 'bun test',
       dashboard: 'echo existing',
-      evals: 'evalkit run-evals greeting --local',
-      matrix: 'evalkit run-matrix styles --local',
-      'matrix:plan': 'evalkit run-matrix styles --dry-run',
+      evals: 'evalkit run greeting --local',
+      matrix: 'evalkit run --matrix styles --local',
+      'matrix:plan': 'evalkit run --matrix styles --dry-run',
+      'dashboard:build': 'evalkit build',
       check: 'tsc --noEmit',
     });
     expect(await readFile(join(cwd, 'README.md'), 'utf8')).toBe('Keep me!\n');
@@ -76,7 +77,7 @@ test('new . adds the npm package to an existing project that has no EvalKit depe
     ) as { dependencies: Record<string, string> };
     expect(pkg.dependencies).toEqual({
       hono: '^4.0.0',
-      '@leostera/evalkit': '^0.1.0',
+      '@leostera/evalkit': '^0.2.0',
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -124,7 +125,7 @@ test('new creates a self-contained, provider-free project without overwriting fi
     ) as {
       dependencies: Record<string, string>;
     };
-    expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.1.0');
+    expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.2.0');
     expect(
       await readFile(join(root, 'evals/greeting.eval.ts'), 'utf8'),
     ).toContain("import { defineEval, file, user } from '@leostera/evalkit'");

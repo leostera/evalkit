@@ -5,9 +5,9 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "evals": "evalkit run-evals --local",
-    "greeting": "evalkit run-evals greeting --local --trials 1",
-    "dashboard": "evalkit serve-dashboard"
+    "evals": "evalkit run --local",
+    "greeting": "evalkit run greeting --local --trials 1",
+    "dashboard": "evalkit dev"
   },
   "dependencies": {
     "@evalkit/agents": "workspace:*",

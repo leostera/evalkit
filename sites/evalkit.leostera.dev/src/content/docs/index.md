@@ -17,7 +17,7 @@ bun run check
 bun run evals
 ```
 
-`bun run evals` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run matrix:plan`. To browse results, start `bun run dashboard` in another terminal. Reports are saved under `_evalkit-results/` in the project you just created.
+`bun run evals` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run matrix:plan`. To browse results, start `bun run dashboard` in another terminal; `bun run dashboard:build` writes a read-only snapshot you can host and share. Reports are saved under `_evalkit-results/` in the project you just created.
 
 The scaffold includes `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Run commands **from the eval project directory** so discovery, fixtures, and reports resolve there. See [CLI and matrices](/docs/manual/cli-and-matrices/) for selection and safety limits.
 
@@ -57,7 +57,7 @@ export default defineEval({
 });
 ```
 
-Default-export an eval under `evals/` and run it with `bun run evalkit run-evals greeting`. The CLI discovers `evals/**/*.eval.ts` and `.js` files automatically: no registry or config is required. This is the generated `evals/greeting.eval.ts`. Edit it or add another default-exported `.eval.ts` file; `evalkit.config.ts` already defines the `styles` matrix. The `@leostera/evalkit` import resolves from the npm package installed by `bun install`.
+Default-export an eval under `evals/` and run it with `bun run evalkit run greeting`. The CLI discovers `evals/**/*.eval.ts` and `.js` files automatically: no registry or config is required. This is the generated `evals/greeting.eval.ts`. Edit it or add another default-exported `.eval.ts` file; `evalkit.config.ts` already defines the `styles` matrix. The `@leostera/evalkit` import resolves from the npm package installed by `bun install`.
 
 Learn more: [Project structure and discovery](/docs/manual/project-structure/) · [Scorers and evals](/docs/manual/scoring-and-evals/).
 
@@ -182,7 +182,7 @@ A matrix lazily expands evals × parameter axes into independent cells. The gene
 ```sh
 bun run matrix:plan
 bun run matrix
-bun run evalkit run-matrix styles --eval greeting --select style=shout
+bun run evalkit run --matrix styles --eval greeting --select style=shout
 ```
 
 A selected parameter only affects the AUT when its adapter reads and applies it. The built-in `piAgent()` does not automatically switch models based on a `model` parameter. Cell keys and effective parameters are saved with the reports.

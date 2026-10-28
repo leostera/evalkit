@@ -8,4 +8,5 @@ dist
 coverage
 _evalkit-results
 _evalkit-sandbox
+_evalkit-dashboard
 .wrangler

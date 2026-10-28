@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  HashRouter,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 
 import { DashboardRoutes } from './DashboardRoutes.js';
 import { DashboardShell } from './components/DashboardShell.js';
@@ -15,10 +20,12 @@ import type {
 } from './api.js';
 
 export function App({ api }: { api: DashboardApi }) {
+  // Static snapshots can be hosted under any path without SPA rewrites.
+  const Router = api.readOnly ? HashRouter : BrowserRouter;
   return (
-    <BrowserRouter>
+    <Router>
       <Dashboard api={api} />
-    </BrowserRouter>
+    </Router>
   );
 }
 
@@ -133,6 +140,12 @@ function Dashboard({ api }: { api: DashboardApi }) {
 
   return (
     <DashboardShell>
+      {api.readOnly ? (
+        <p className="text-[13px] text-kumo-subtle" role="note">
+          Read-only snapshot built with <code>evalkit build</code>. Runs cannot
+          be started here.
+        </p>
+      ) : null}
       {error ? <ErrorBanner message={error} /> : null}
       <DashboardRoutes
         api={api}
