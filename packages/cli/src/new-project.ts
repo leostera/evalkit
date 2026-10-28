@@ -8,6 +8,7 @@ const ignored = [
   '_evalkit-results/',
   '_evalkit-sandbox/',
   '_evalkit-dashboard/',
+  '_evalkit-share/',
 ];
 
 const readIfExists = async (path: string): Promise<string | undefined> => {

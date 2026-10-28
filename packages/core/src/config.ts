@@ -14,6 +14,8 @@ export type EvalkitConfig = {
   execution?: { concurrency?: number; trials?: number; maxCells?: number };
   reportDir?: string;
   sandboxDir?: string;
+  /** Where `evalkit share` uploads results. `EVALKIT_SHARE_URL` overrides it. */
+  share?: { url: string };
 };
 
 /** Pure, typed project configuration. Loading/discovery belongs to the CLI. */

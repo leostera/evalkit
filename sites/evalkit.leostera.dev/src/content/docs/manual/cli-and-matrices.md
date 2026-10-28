@@ -29,6 +29,7 @@ bun run evalkit run --suite conversation-basics
 | `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                          |
 | `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                              |
 | `tidy`              | Mark runs of evals that are no longer in the project as archived. See [Archiving removed evals](#archiving-removed-evals).                                                                                         |
+| `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                  |
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. A zero-config discovery project has no suites and no named project matrix. See [Project structure](/docs/manual/project-structure/) for registering those.
 
@@ -125,6 +126,65 @@ Before building, `build` asks whether to run the evals first so the snapshot has
 The snapshot uses clean URLs such as `/runs/<id>`: it writes one small page per known route (`runs/<id>.html`, `trials/<id>.html`, and so on), each with a relative `<base href>`. Any static host that serves `/x` from `x.html` works under any mount path without SPA rewrite rules: `bunx serve _evalkit-dashboard`, Workers Static Assets, Cloudflare Pages, and GitHub Pages all do this. Opening `index.html` directly from disk does not work, because browsers block `fetch()` from `file://` pages.
 
 Rebuilding replaces a directory that `evalkit build` created earlier; the command refuses to overwrite any other non-empty directory. A snapshot is not filtered or redacted: user and assistant messages, tool arguments and results, scorer evidence, judge events, and candidate files are all included. Review it, or build from a report directory that contains only the runs you intend to publish, before sharing it.
+
+## Sharing results
+
+Every run records which commit produced it: the repository, the eval project's path inside it, the commit SHA, the branch, and whether there were uncommitted changes. In CI it reads GitLab or GitHub variables, otherwise it asks git. `evalkit run` prints it (`Running 2 cell(s) from default at 3a01fda (main)`). Results are only tagged with the commit. They never go into your repository.
+
+`evalkit share` uploads the results for the current commit to a share server that your team runs, then prints where to see them:
+
+```sh
+bun run evalkit run
+bun run evalkit share
+#   ✓ Source     gitlab.example.com/team/evals @ 3a01fda (main)
+#   ✓ Runs       4 runs to share
+#   ✓ Uploading  4 new · 0 already shared · 1.2 MB
+#   ➜  https://evals.example.com/gitlab.example.com/team/evals/-/3a01fda7c2…
+```
+
+Point the project at the server in `evalkit.config.ts`, or set `EVALKIT_SHARE_URL` (useful in CI):
+
+```ts
+export default defineConfig({ share: { url: 'https://evals.example.com' } });
+```
+
+- **Which runs:** runs at the current commit. Runs made with uncommitted changes are skipped unless you pass `--allow-dirty`, and they are then labelled and left out of the commit's pass rate. `--all` also uploads runs from other commits. Untracked runs (no git) and archived runs are never uploaded.
+- **What is uploaded:** the same data as `evalkit build`: run summaries, scores, checkpoints, trajectories, and candidate workspace files. Evaluator workspaces are never uploaded. `--no-workspace` leaves out candidate file contents and keeps their listing.
+- **Safe to repeat:** uploading a run again does nothing, so rerunning `share` after a failure only sends what's missing. Concurrent CI jobs for the same commit don't interfere.
+
+On the server, `/<repo>` opens the latest commit, `/<repo>/-/<branch>` opens the latest commit on that branch, and a version picker in the header switches between commits. An eval project inside a larger repository gets its own address, `/<repo>/~<path>`.
+
+### Running a share server
+
+The share server is a small Worker: a JSON API plus the same dashboard. It keeps files in R2 and an index of repositories, commits and runs in a SQLite Durable Object. It has **no authentication**, so deploy it on a private network (for example, behind Cloudflare Access).
+
+```ts
+// worker.ts, in a directory with @leostera/evalkit installed
+export { default, ShareIndex } from '@leostera/evalkit/share/worker';
+```
+
+```jsonc
+// wrangler.jsonc
+{
+  "name": "evalkit-share",
+  "main": "worker.ts",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "node_modules/@leostera/evalkit/dist/dashboard",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*", "!/assets/*"],
+  },
+  "r2_buckets": [{ "binding": "RESULTS", "bucket_name": "evalkit-share" }],
+  "durable_objects": {
+    "bindings": [{ "name": "INDEX", "class_name": "ShareIndex" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShareIndex"] }],
+}
+```
+
+Create the bucket (`npx wrangler r2 bucket create evalkit-share`), then run `npx wrangler deploy`. The index can always be rebuilt from R2 with `POST /api/v1/reindex`.
+
+To try it without Cloudflare, `bun run evalkit share serve` runs the same server on port 4318, storing everything in `_evalkit-share/` (`--dir`, `--port`).
 
 ## Archiving removed evals
 

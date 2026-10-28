@@ -31,6 +31,14 @@
     "./runner": {
       "types": "./dist/runner.d.mts",
       "import": "./dist/runner.mjs"
+    },
+    "./share": {
+      "types": "./dist/share.d.mts",
+      "import": "./dist/share.mjs"
+    },
+    "./share/worker": {
+      "types": "./dist/share-worker.d.mts",
+      "import": "./dist/share-worker.mjs"
     }
   },
   "bin": {

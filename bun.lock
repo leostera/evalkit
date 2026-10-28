@@ -69,6 +69,7 @@
       "dependencies": {
         "@effect/cli": "^0.77.2",
         "@effect/platform-node": "^0.108.2",
+        "@evalkit/share": "workspace:*",
         "effect": "^3.22.2",
         "hono": "^4.11.6",
       },
@@ -132,6 +133,7 @@
         "@evalkit/cli": "workspace:*",
         "@evalkit/core": "workspace:*",
         "@evalkit/runner": "workspace:*",
+        "@evalkit/share": "workspace:*",
         "tsdown": "^0.23.0",
       },
     },
@@ -147,6 +149,16 @@
       "optionalPeers": [
         "@evalkit/core",
       ],
+    },
+    "packages/share": {
+      "name": "@evalkit/share",
+      "version": "0.0.1",
+      "dependencies": {
+        "hono": "^4.11.6",
+      },
+      "devDependencies": {
+        "miniflare": "4.20260730.0",
+      },
     },
     "sites/evalkit.leostera.dev": {
       "name": "@evalkit/www",
@@ -427,6 +439,8 @@
     "@evalkit/package-build": ["@evalkit/package-build@workspace:packages/evalkit"],
 
     "@evalkit/runner": ["@evalkit/runner@workspace:packages/runner"],
+
+    "@evalkit/share": ["@evalkit/share@workspace:packages/share"],
 
     "@evalkit/www": ["@evalkit/www@workspace:sites/evalkit.leostera.dev"],
 

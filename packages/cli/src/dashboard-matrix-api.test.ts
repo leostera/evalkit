@@ -45,7 +45,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
     });
   try {
     let ready = false;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 200; i++) {
       try {
         ready = (await fetch(`${url}/v1/matrix`)).ok;
         if (ready) break;

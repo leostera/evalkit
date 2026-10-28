@@ -1,0 +1,23 @@
+// A share server Worker. Copy this file and worker.ts into a directory with
+// `@leostera/evalkit` installed, create the bucket, then `npx wrangler deploy`.
+//
+//   // worker.ts
+//   export { default, ShareIndex } from '@leostera/evalkit/share/worker';
+//
+// No authentication: deploy it on a private network (e.g. behind Access).
+{
+  "name": "evalkit-share",
+  "main": "worker.ts",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    // The dashboard bundled in the package; served as-is for /assets/*.
+    "directory": "node_modules/@leostera/evalkit/dist/dashboard",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*", "!/assets/*"],
+  },
+  "r2_buckets": [{ "binding": "RESULTS", "bucket_name": "evalkit-share" }],
+  "durable_objects": {
+    "bindings": [{ "name": "INDEX", "class_name": "ShareIndex" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShareIndex"] }],
+}

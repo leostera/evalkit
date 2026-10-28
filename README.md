@@ -22,6 +22,7 @@ bun run evals         # both configured styles
 bun run matrix:plan  # inspect the matrix without executing it
 bun run dashboard     # in a second terminal
 bun run dashboard:build  # optional read-only snapshot to share
+bun run evalkit share     # optional: upload this commit's results to your share server
 ```
 
 Already have a Bun project? From its root you can instead run:

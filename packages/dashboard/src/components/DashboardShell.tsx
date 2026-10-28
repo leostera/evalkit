@@ -64,7 +64,14 @@ export function screenTitle(pathname: string): string {
   return activeSection(pathname).label;
 }
 
-export function DashboardShell({ children }: { children: ReactNode }) {
+export function DashboardShell({
+  children,
+  header,
+}: {
+  children: ReactNode;
+  /** Extra controls on the right of the page header. */
+  header?: ReactNode;
+}) {
   const { pathname } = useLocation();
   const active = activeSection(pathname);
   return (
@@ -107,6 +114,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <h1 className="text-base font-semibold text-kumo-strong">
               {screenTitle(pathname)}
             </h1>
+            {header}
           </header>
           <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 md:px-6">
             {children}

@@ -143,6 +143,17 @@ export default defineEval({
   ) as { failed: number };
   if (summary.failed !== 0) throw new Error('The external eval failed');
   await checkStaticDashboard(projectRoot, runs[0]!);
+  // The share server entry points resolve from the installed package.
+  const share = run(
+    [
+      'bun',
+      '-e',
+      "const s = await import('@leostera/evalkit/share'); const w = await import('@leostera/evalkit/share/worker'); console.log(typeof s.createShareApp, typeof w.default.fetch, typeof w.ShareIndex);",
+    ],
+    projectRoot,
+  );
+  if (!share.includes('function function function'))
+    throw new Error(`Share entry points did not load:\n${share}`);
   return projectRoot;
 }
 

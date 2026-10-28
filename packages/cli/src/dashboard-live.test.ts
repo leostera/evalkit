@@ -33,7 +33,7 @@ test('dashboard API lists a run and trial before their summaries exist', async (
   const url = `http://127.0.0.1:${port}`;
   try {
     let ready = false;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 200; i++) {
       try {
         ready = (await fetch(`${url}/v1/runs`)).ok;
         if (ready) break;

@@ -1,0 +1,19 @@
+{
+  "name": "@evalkit/share",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "dependencies": {
+    "hono": "^4.11.6"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}
