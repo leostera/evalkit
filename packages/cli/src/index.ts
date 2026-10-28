@@ -45,7 +45,7 @@ import {
   yellow,
 } from './terminal.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
