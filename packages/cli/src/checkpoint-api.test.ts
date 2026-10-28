@@ -28,7 +28,7 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
   `,
   );
   const cli = fileURLToPath(new URL('./index.ts', import.meta.url));
-  const child = Bun.spawn([process.execPath, cli, 'serve-dashboard'], {
+  const child = Bun.spawn([process.execPath, cli, 'dev'], {
     cwd: root,
     env: { ...process.env, PORT: String(port), EVALKIT_NO_OPEN: '1' },
     stdout: 'ignore',

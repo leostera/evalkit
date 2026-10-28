@@ -5,9 +5,9 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "plan": "evalkit run-matrix letter-case --dry-run",
-    "matrix": "evalkit run-matrix letter-case --local",
-    "dashboard": "evalkit serve-dashboard"
+    "plan": "evalkit run --matrix letter-case --dry-run",
+    "matrix": "evalkit run --matrix letter-case --local",
+    "dashboard": "evalkit dev"
   },
   "dependencies": {
     "@evalkit/cli": "workspace:*",

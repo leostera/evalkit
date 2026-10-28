@@ -3,7 +3,7 @@ title: Troubleshooting and limitations
 description: Diagnose discovery, fixture, runtime, matrix, scoring, and report problems.
 ---
 
-Start with a side-effect-free plan from your eval project directory: `bun run evalkit run-evals --dry-run` (or `run-matrix <matrix-id> --dry-run`). If a run has begun, inspect the run/trial `summary.json`, `scoring.json`, and `trajectory.jsonl` in `_evalkit-results/` before changing the eval. See [Results and reports](/docs/manual/results/).
+Start with a side-effect-free plan from your eval project directory: `bun run evalkit run --dry-run` (or `run --matrix <matrix-id> --dry-run`). If a run has begun, inspect the run/trial `summary.json`, `scoring.json`, and `trajectory.jsonl` in `_evalkit-results/` before changing the eval. See [Results and reports](/docs/manual/results/).
 
 ## Project loading and selection
 
@@ -25,8 +25,8 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 
 ## Dashboard and reports
 
-- **No reports or a running entry with no details:** `serve-dashboard` reads the current project's `reportDir`. A trial may still be in progress, or a process may have ended before finalizing summaries. Confirm `--config` and project root, and inspect the report tree. The dashboard lists compatible v2 and v3 manifests; it does not migrate v1 files.
-- **A dashboard matrix run asks for a single cell:** Select one eval and one value for **every** configured axis. The dashboard does not launch a whole suite with a config-backed matrix; use `run-suite` or `run-matrix` on the CLI. [Dashboard runs](/docs/manual/cli-and-matrices/#dashboard-runs-and-inspection)
+- **No reports or a running entry with no details:** `dev` reads the current project's `reportDir`. A trial may still be in progress, or a process may have ended before finalizing summaries. Confirm `--config` and project root, and inspect the report tree. The dashboard lists compatible v2 and v3 manifests; it does not migrate v1 files.
+- **A dashboard matrix run asks for a single cell:** Select one eval and one value for **every** configured axis. The dashboard does not launch a whole suite with a config-backed matrix; use `run --suite` or `run --matrix` on the CLI. [Dashboard runs](/docs/manual/cli-and-matrices/#dashboard-runs-and-inspection)
 - **No saved evaluator files under report artifacts:** Only the candidate workspace is snapshotted in reports. Evaluator inputs remain in the local sandbox when the CLI supplies a persistent workspace root; handle them as sensitive files. [Report privacy](/docs/manual/results/#privacy-and-retention)
 - **Stale site documentation routes during local website development:** After changing Starlight integrations or route configuration, restart the Astro dev server. `/docs/` is the guide; `/docs/manual/` is the manual index.
 

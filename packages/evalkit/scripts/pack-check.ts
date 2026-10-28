@@ -127,7 +127,7 @@ export default defineEval({
     projectRoot,
   );
   const output = run(
-    ['bun', 'run', 'evalkit', 'run-evals', 'hello', '--trials', '1', '--local'],
+    ['bun', 'run', 'evalkit', 'run', 'hello', '--trials', '1', '--local'],
     projectRoot,
   );
   if (!output.includes('PASS hello'))
@@ -142,6 +142,7 @@ export default defineEval({
     ),
   ) as { failed: number };
   if (summary.failed !== 0) throw new Error('The external eval failed');
+  await checkStaticDashboard(projectRoot, runs[0]!);
   return projectRoot;
 }
 
@@ -208,4 +209,25 @@ function checkGeneratedExample(root: string): void {
   const output = run(['bun', 'run', 'evals'], root);
   if ((output.match(/PASS greeting/g) ?? []).length !== 2)
     throw new Error(`Generated eval did not pass:\n${output}`);
+}
+
+/** The installed CLI must export a self-contained read-only dashboard. */
+async function checkStaticDashboard(
+  root: string,
+  runId: string,
+): Promise<void> {
+  run(['bun', 'run', 'evalkit', 'build'], root);
+  const out = join(root, '_evalkit-dashboard');
+  const html = await readFile(join(out, 'index.html'), 'utf8');
+  if (
+    !html.includes('data-evalkit-snapshot="static"') ||
+    html.includes('"/assets/')
+  )
+    throw new Error(`Static dashboard index.html was not rewritten:\n${html}`);
+  const runs = JSON.parse(
+    await readFile(join(out, 'data', 'runs.json'), 'utf8'),
+  ) as { runs: { id: string }[] };
+  if (runs.runs.map((entry) => entry.id).join() !== runId)
+    throw new Error('Static dashboard is missing the completed run');
+  await readFile(join(out, 'data', 'runs', runId, 'trials.json'), 'utf8');
 }

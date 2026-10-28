@@ -5,10 +5,10 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "pass": "evalkit run-evals write-revise --local",
-    "judge": "evalkit run-evals judged-reply --local",
-    "failfast": "evalkit run-evals failfast-file --local",
-    "dashboard": "evalkit serve-dashboard"
+    "pass": "evalkit run write-revise --local",
+    "judge": "evalkit run judged-reply --local",
+    "failfast": "evalkit run failfast-file --local",
+    "dashboard": "evalkit dev"
   },
   "dependencies": {
     "@evalkit/cli": "workspace:*",

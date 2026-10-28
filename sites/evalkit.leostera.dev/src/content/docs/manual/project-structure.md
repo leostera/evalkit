@@ -84,14 +84,14 @@ export default defineConfig({
 });
 ```
 
-| Setting                         | Effect                                                                                                                                                          |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `testDir`, `include`, `exclude` | Change the directory and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive.                        |
-| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                      |
-| `registry`                      | Supply an explicit `registerEvals(...)` registry (for example, for suites). Takes precedence over `evals` and discovery.                                        |
-| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run-evals` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/). |
-| `execution`                     | Defaults for cell concurrency (4), trial override (otherwise each eval's policy), and maximum cells (100). Values must be positive integers.                    |
-| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                      |
+| Setting                         | Effect                                                                                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testDir`, `include`, `exclude` | Change the directory and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive.                  |
+| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                |
+| `registry`                      | Supply an explicit `registerEvals(...)` registry (for example, for suites). Takes precedence over `evals` and discovery.                                  |
+| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/). |
+| `execution`                     | Defaults for cell concurrency (4), trial override (otherwise each eval's policy), and maximum cells (100). Values must be positive integers.              |
+| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                |
 
 Without a config, a default export from `src/registry.ts` is accepted as a legacy explicit registry. Once a config exists, that implicit registry is **not** loaded: set `registry` in the config to use it. `registry` > `evals` > discovery is the selection order. Prefer discovery for ordinary projects; use a registry when you need suites or explicitly registered matrices.
 
@@ -116,6 +116,6 @@ export default registerEvals([
 ]);
 ```
 
-With a config, import this registry there and set `registry: ...`. Discovered eval files do **not** implicitly form suites. `run-suite conversation-basics` selects the suite's evals; the dashboard can display them under the suite. A matrix registered explicitly in a registry does **not** register its evals for normal `run-evals`: list those evals or their suite as registrations too.
+With a config, import this registry there and set `registry: ...`. Discovered eval files do **not** implicitly form suites. `run --suite conversation-basics` selects the suite's evals; the dashboard can display them under the suite. A matrix registered explicitly in a registry does **not** register its evals for normal `run`: list those evals or their suite as registrations too.
 
-Use [`examples/starter`](https://github.com/leostera/evalkit/tree/main/examples/starter) for discovery and [`examples/configured-matrix`](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix) for a config-backed sweep. Before dispatching a new setup, check `bun run evalkit run-evals --dry-run` from its project directory.
+Use [`examples/starter`](https://github.com/leostera/evalkit/tree/main/examples/starter) for discovery and [`examples/configured-matrix`](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix) for a config-backed sweep. Before dispatching a new setup, check `bun run evalkit run --dry-run` from its project directory.

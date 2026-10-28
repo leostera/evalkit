@@ -27,7 +27,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
     [
       process.execPath,
       fileURLToPath(new URL('./index.ts', import.meta.url)),
-      'serve-dashboard',
+      'dev',
     ],
     {
       cwd: root,

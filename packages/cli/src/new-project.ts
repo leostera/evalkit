@@ -2,8 +2,13 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { starterFiles, starterReadme } from './new-project-template.js';
 
-const npmDependency = '^0.1.0';
-const ignored = ['node_modules/', '_evalkit-results/', '_evalkit-sandbox/'];
+const npmDependency = '^0.2.0';
+const ignored = [
+  'node_modules/',
+  '_evalkit-results/',
+  '_evalkit-sandbox/',
+  '_evalkit-dashboard/',
+];
 
 const readIfExists = async (path: string): Promise<string | undefined> => {
   try {
@@ -123,10 +128,11 @@ async function preparePackage(
       `Invalid package.json scripts/dependencies: ${packagePath}`,
     );
   scripts.check ??= 'tsc --noEmit';
-  scripts.evals ??= 'evalkit run-evals greeting --local';
-  scripts.matrix ??= 'evalkit run-matrix styles --local';
-  scripts['matrix:plan'] ??= 'evalkit run-matrix styles --dry-run';
-  scripts.dashboard ??= 'evalkit serve-dashboard';
+  scripts.evals ??= 'evalkit run greeting --local';
+  scripts.matrix ??= 'evalkit run --matrix styles --local';
+  scripts['matrix:plan'] ??= 'evalkit run --matrix styles --dry-run';
+  scripts.dashboard ??= 'evalkit dev';
+  scripts['dashboard:build'] ??= 'evalkit build';
   if (
     !dependencies['@leostera/evalkit'] &&
     !devDependencies['@leostera/evalkit']

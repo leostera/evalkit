@@ -21,7 +21,7 @@ test('dashboard API lists a run and trial before their summaries exist', async (
     [
       process.execPath,
       fileURLToPath(new URL('./index.ts', import.meta.url)),
-      'serve-dashboard',
+      'dev',
     ],
     {
       cwd: root,
