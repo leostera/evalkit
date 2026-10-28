@@ -72,7 +72,7 @@ export function DashboardRoutes({
         }
       />
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
-      <Route path="/agents" element={<AgentTable catalog={catalog} />} />
+      <Route path="/agents" element={<AgentRoute catalog={catalog} />} />
       <Route path="/fixtures" element={<FixtureTable catalog={catalog} />} />
       <Route
         path="/runs"
@@ -145,6 +145,15 @@ function SuiteRoute(props: {
       onOpenEval={(entry) =>
         navigate(`/evals/${encodeURIComponent(entry.path)}`)
       }
+    />
+  );
+}
+function AgentRoute({ catalog }: { catalog: CatalogEval[] }) {
+  const [search] = useSearchParams();
+  return (
+    <AgentTable
+      catalog={catalog}
+      selectedAgent={search.get('agent') ?? undefined}
     />
   );
 }

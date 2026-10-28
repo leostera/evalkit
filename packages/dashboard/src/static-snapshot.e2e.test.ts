@@ -57,16 +57,30 @@ beforeAll(async () => {
     dashboardRoot: resolve(import.meta.dir, '..', 'dist'),
     outDir,
   });
-  // No SPA fallback and no API: only files that exist are served.
+  // A typical clean-URL static host (serve, Workers assets, Pages): `/x` is
+  // served from x, x.html, or x/index.html. No SPA fallback and no API.
   server = Bun.serve({
     port: 0,
     async fetch(request) {
-      let path = decodeURIComponent(new URL(request.url).pathname);
-      if (path.endsWith('/')) path += 'index.html';
-      const file = Bun.file(join(root, 'public', path));
-      return (await file.exists())
-        ? new Response(file)
-        : new Response('not found', { status: 404 });
+      const path = join(
+        root,
+        'public',
+        decodeURIComponent(new URL(request.url).pathname),
+      );
+      for (const candidate of [
+        path,
+        `${path}.html`,
+        join(path, 'index.html'),
+      ]) {
+        const file = Bun.file(candidate);
+        if ((await file.exists()) && !candidate.endsWith('/'))
+          try {
+            return new Response(file);
+          } catch {
+            /* directory */
+          }
+      }
+      return new Response('not found', { status: 404 });
     },
   });
   browser = await puppeteer.launch({
@@ -81,7 +95,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-test('serves a read-only snapshot from a sub-path with hash routes', async () => {
+test('serves a read-only snapshot from a sub-path with clean URLs', async () => {
   const page = await browser.newPage();
   const failures: string[] = [];
   const errors: string[] = [];
@@ -91,20 +105,35 @@ test('serves a read-only snapshot from a sub-path with hash routes', async () =>
     if (response.status() >= 400 && !response.url().endsWith('/favicon.ico'))
       failures.push(response.url());
   });
-  await page.goto(`http://127.0.0.1:${server.port}/share/#/runs`);
-  await page.waitForFunction(
-    () => document.body.innerText.includes('Read-only snapshot'),
-    { timeout: 10_000 },
+  const origin = `http://127.0.0.1:${server.port}`;
+  const text = (value: string) =>
+    page.waitForFunction(
+      (expected) => document.body.innerText.includes(expected),
+      { timeout: 10_000 },
+      value,
+    );
+
+  // Suites & evals link each eval to its agent and its runs, under the mount path.
+  await page.goto(`${origin}/share/`);
+  await text('Read-only snapshot');
+  await text('Snapshot greeting');
+  const hrefs = await page.$$eval('a', (links) =>
+    links.map((link) => link.getAttribute('href') ?? ''),
   );
-  await page.waitForFunction(
-    () => document.body.innerText.includes('Snapshot greeting'),
-    { timeout: 10_000 },
-  );
-  await page.goto(`http://127.0.0.1:${server.port}/share/#/runs/${runId}`);
+  expect(hrefs).toContain('/share/agents?agent=snapshot-agent');
+  expect(hrefs.some((href) => href.startsWith('/share/runs?eval='))).toBe(true);
+
+  // Following the runs link stays on clean URLs and filters to the eval.
+  await page.click('a[href^="/share/runs?eval="]');
+  await text('1 of 1 runs');
+  expect(new URL(page.url()).pathname).toBe('/share/runs');
+
+  // A deep link loads directly (reload or shared URL) without a rewrite rule.
+  await page.goto(`${origin}/share/runs/${runId}`);
   await page.waitForFunction(() => /passed/i.test(document.body.innerText), {
     timeout: 10_000,
   });
-  expect(new URL(page.url()).pathname).toBe('/share/');
+  expect(new URL(page.url()).pathname).toBe(`/share/runs/${runId}`);
   expect(failures).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();

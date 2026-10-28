@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  BrowserRouter,
-  HashRouter,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import { DashboardRoutes } from './DashboardRoutes.js';
 import { DashboardShell } from './components/DashboardShell.js';
@@ -19,13 +14,18 @@ import type {
   SuiteSummary,
 } from './api.js';
 
-export function App({ api }: { api: DashboardApi }) {
-  // Static snapshots can be hosted under any path without SPA rewrites.
-  const Router = api.readOnly ? HashRouter : BrowserRouter;
+/** `basename` is the mount path of a static snapshot, e.g. `/share`. */
+export function App({
+  api,
+  basename,
+}: {
+  api: DashboardApi;
+  basename?: string;
+}) {
   return (
-    <Router>
+    <BrowserRouter basename={basename}>
       <Dashboard api={api} />
-    </Router>
+    </BrowserRouter>
   );
 }
 

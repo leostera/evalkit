@@ -216,7 +216,7 @@ async function checkStaticDashboard(
   root: string,
   runId: string,
 ): Promise<void> {
-  run(['bun', 'run', 'evalkit', 'build'], root);
+  run(['bun', 'run', 'evalkit', 'build', '--no-run'], root);
   const out = join(root, '_evalkit-dashboard');
   const html = await readFile(join(out, 'index.html'), 'utf8');
   if (
@@ -230,4 +230,6 @@ async function checkStaticDashboard(
   if (runs.runs.map((entry) => entry.id).join() !== runId)
     throw new Error('Static dashboard is missing the completed run');
   await readFile(join(out, 'data', 'runs', runId, 'trials.json'), 'utf8');
+  // Clean /runs/<id> URLs are served from per-route pages.
+  await readFile(join(out, 'runs', `${runId}.html`), 'utf8');
 }

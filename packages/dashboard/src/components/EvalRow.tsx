@@ -1,8 +1,9 @@
-import { Button, Table } from '@cloudflare/kumo';
-import { PlayIcon } from '@phosphor-icons/react';
+import { Button, Link, LinkButton, Table } from '@cloudflare/kumo';
+import { ListBulletsIcon, PlayIcon } from '@phosphor-icons/react';
 import type { CatalogEval, RunSummary } from '../api.js';
-import { agentName } from './agentName.js';
+import { agentKey, agentName } from './agentName.js';
 import { monoClass, tableLinkClass } from './DataTable.js';
+import { runsHref } from './run-facets.js';
 import { StatusBadge } from './StatusBadge.js';
 
 export function EvalRow({
@@ -14,6 +15,7 @@ export function EvalRow({
   runDisabled = false,
   onOpen,
   status,
+  cellParameters,
 }: {
   id: string;
   evaluation?: CatalogEval;
@@ -23,7 +25,10 @@ export function EvalRow({
   runDisabled?: boolean;
   onOpen?: () => void;
   status?: RunSummary['status'];
+  /** The matrix cell's parameters, used to filter the linked runs page. */
+  cellParameters?: Record<string, unknown>;
 }) {
+  const runsLink = runsHref(evaluation?.id ?? id, cellParameters);
   const name = evaluation?.name ?? id;
   const path = evaluation?.path ?? id;
   return (
@@ -47,7 +52,17 @@ export function EvalRow({
           {typeof value === 'string' ? value : JSON.stringify(value)}
         </Table.Cell>
       ))}
-      <Table.Cell>{agentName(evaluation)}</Table.Cell>
+      <Table.Cell>
+        {evaluation ? (
+          <Link
+            href={`/agents?agent=${encodeURIComponent(agentKey(evaluation))}`}
+          >
+            {agentName(evaluation)}
+          </Link>
+        ) : (
+          agentName(evaluation)
+        )}
+      </Table.Cell>
       <Table.Cell>
         {evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ||
           'default'}
@@ -55,25 +70,45 @@ export function EvalRow({
       <Table.Cell className="tabular-nums">
         {trials ?? evaluation?.trialCount ?? '—'}
       </Table.Cell>
-      <Table.Cell>{status ? <StatusBadge status={status} /> : '—'}</Table.Cell>
+      <Table.Cell>
+        {status ? (
+          <Link href={runsLink} title="Show these runs">
+            <StatusBadge status={status} />
+          </Link>
+        ) : (
+          '—'
+        )}
+      </Table.Cell>
       <Table.Cell className="text-right">
-        {onRun || runDisabled ? (
-          <Button
+        <div className="inline-flex items-center justify-end gap-2">
+          <LinkButton
             size="xs"
             variant="secondary"
-            icon={<PlayIcon weight="fill" />}
-            disabled={runDisabled}
-            title={
-              runDisabled ? 'Matrix configuration is still loading' : undefined
-            }
-            onClick={(event) => {
-              event.stopPropagation();
-              onRun?.();
-            }}
+            icon={<ListBulletsIcon />}
+            href={runsLink}
           >
-            Run eval
-          </Button>
-        ) : null}
+            Runs
+          </LinkButton>
+          {onRun || runDisabled ? (
+            <Button
+              size="xs"
+              variant="secondary"
+              icon={<PlayIcon weight="fill" />}
+              disabled={runDisabled}
+              title={
+                runDisabled
+                  ? 'Matrix configuration is still loading'
+                  : undefined
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                onRun?.();
+              }}
+            >
+              Run eval
+            </Button>
+          ) : null}
+        </div>
       </Table.Cell>
     </Table.Row>
   );

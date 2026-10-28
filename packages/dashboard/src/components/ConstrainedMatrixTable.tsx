@@ -117,6 +117,7 @@ export function ConstrainedMatrixTable({
                 )}
                 trials={matrix.trials}
                 status={latest(cell.key)}
+                cellParameters={cell.parameters}
                 onRun={
                   evaluation
                     ? () =>
