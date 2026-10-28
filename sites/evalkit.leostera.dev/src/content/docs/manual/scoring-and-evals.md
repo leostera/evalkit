@@ -100,7 +100,7 @@ const evaluation = defineEval({
 });
 ```
 
-The runnable [interleaved scenario project](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) contains two default-exported evals, a local AUT that emits tool events, and a report integration test. From `examples/interleaved-scenario`, run `bun run pass` for the completed revision or `bun run failfast` for an **intentional nonzero exit** when the first file check fails.
+The runnable [interleaved scenario project](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) contains two default-exported evals, a local AUT that emits tool events, and a report integration test. From `examples/interleaved-scenario`, run `bun run evalkit run write-revise` for the completed revision or `bun run evalkit run failfast-file` for an **intentional nonzero exit** when the first file check fails.
 
 For a missing file to count as a **failed assertion** rather than an execution error, catch only `ENOENT` inside the callback and return `false`; let unexpected I/O errors propagate. `expectToolCall` matches an emitted AUT `tool-call` in the current turn, by exact name and (when supplied) exact JSON arguments; it neither invokes the tool nor proves that the file was written. An adapter must emit tool events for this assertion to pass.
 

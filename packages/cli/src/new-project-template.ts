@@ -101,12 +101,11 @@ Replace these examples with your own agent, tasks, and checks.
 
 \`\`\`sh
 bun install
-bun run check        # type-check your eval, agent, scorer, and config
-bun run evals        # run the example across both styles
-bun run matrix:plan  # inspect the matrix without running it
-bun run matrix       # run the configured matrix
-bun run dashboard    # inspect local reports and launch runs
-bun run dashboard:build  # write a read-only, shareable snapshot
+bun run check                                   # type-check your eval, agent, scorer, and config
+bun run evalkit run                             # run the example across both styles
+bun run evalkit run --matrix styles --dry-run   # inspect the matrix without running it
+bun run evalkit dev                             # inspect local reports and launch runs
+bun run evalkit build                           # write a read-only, shareable snapshot
 \`\`\`
 
 EvalKit installs from npm. Reports, trial workspaces, and dashboard snapshots stay local

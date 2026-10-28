@@ -18,7 +18,7 @@ bun run pack:check
 bun run --cwd sites/evalkit.leostera.dev build
 ```
 
-These are the same gates as the `Check` GitHub Action. The dashboard routing test needs Chrome: locally install a Puppeteer-compatible Chrome or set `PUPPETEER_EXECUTABLE_PATH` to your browser. On GitHub-hosted runners, the test uses `--no-sandbox` because Chrome's sandbox is unavailable there; this does not change production browser behavior. The pack check builds and exercises the installable artifact in an isolated local project; it does **not** publish it. Website builds do **not** deploy the Worker. To try a provider-free eval, run `bun run greeting` from `examples/starter/`. Run `bun run dashboard` there in a second terminal to inspect its reports.
+These are the same gates as the `Check` GitHub Action. The dashboard routing test needs Chrome: locally install a Puppeteer-compatible Chrome or set `PUPPETEER_EXECUTABLE_PATH` to your browser. On GitHub-hosted runners, the test uses `--no-sandbox` because Chrome's sandbox is unavailable there; this does not change production browser behavior. The pack check builds and exercises the installable artifact in an isolated local project; it does **not** publish it. Website builds do **not** deploy the Worker. To try a provider-free eval, run `bun run evalkit run greeting --trials 1` from `examples/starter/`. Run `bun run evalkit dev` there in a second terminal to inspect its reports.
 
 ## Where things live
 
@@ -42,7 +42,7 @@ The examples use internal workspace packages (`@evalkit/*`). External projects i
 
 ## Working on evals and reports
 
-Run CLI commands **from the example or eval project directory**: discovery, fixture paths, `_evalkit-results/`, and `_evalkit-sandbox/` are project-relative. The starter's `bun run greeting` does not require a provider; `bun run evals` also runs Pi-backed evals and requires a configured model. The interleaved example's `bun run failfast` intentionally fails and exits nonzero.
+Run CLI commands **from the example or eval project directory**: discovery, fixture paths, `_evalkit-results/`, and `_evalkit-sandbox/` are project-relative. The starter's `greeting` eval does not require a provider; `bun run evalkit run` also runs Pi-backed evals and requires a configured model. The interleaved example's `bun run evalkit run failfast-file` intentionally fails and exits nonzero.
 
 `bun test` covers core contracts, runner reports, CLI/dashboard integration, and examples. Check the [manual](sites/evalkit.leostera.dev/src/content/docs/manual/) when changing authoring APIs or report semantics, and update its source pages along with examples. Treat reports, judge observations, and evaluator workspaces as potentially sensitive; don't commit local runs or secrets.
 

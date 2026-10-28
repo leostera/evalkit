@@ -129,11 +129,6 @@ async function preparePackage(
       `Invalid package.json scripts/dependencies: ${packagePath}`,
     );
   scripts.check ??= 'tsc --noEmit';
-  scripts.evals ??= 'evalkit run greeting --local';
-  scripts.matrix ??= 'evalkit run --matrix styles --local';
-  scripts['matrix:plan'] ??= 'evalkit run --matrix styles --dry-run';
-  scripts.dashboard ??= 'evalkit dev';
-  scripts['dashboard:build'] ??= 'evalkit build';
   if (
     !dependencies['@leostera/evalkit'] &&
     !devDependencies['@leostera/evalkit']

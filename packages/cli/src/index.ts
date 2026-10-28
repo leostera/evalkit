@@ -575,7 +575,7 @@ const newCommand = Command.make(
       try: async () => {
         const root = await newProject([directory]);
         console.log(
-          `Created EvalKit project at ${root}\nRun cd ${root} && bun install && bun run evals.`,
+          `Created EvalKit project at ${root}\nRun cd ${root} && bun install && bun run evalkit run.`,
         );
       },
       catch: (error) => error,

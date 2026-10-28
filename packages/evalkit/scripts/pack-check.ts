@@ -172,7 +172,10 @@ async function checkStandaloneScaffold(
   generated.dependencies['@leostera/evalkit'] = `file:${archive}`;
   await writeFile(join(scaffold, 'package.json'), JSON.stringify(generated));
   checkGeneratedExample(scaffold);
-  const matrixPlan = run(['bun', 'run', 'matrix:plan'], scaffold);
+  const matrixPlan = run(
+    ['bun', 'run', 'evalkit', 'run', '--matrix', 'styles', '--dry-run'],
+    scaffold,
+  );
   if (!/"cells"\s*:\s*2\b/.test(matrixPlan))
     throw new Error(
       `Expected two matrix cells in the dry-run plan:\n${matrixPlan}`,
@@ -217,7 +220,7 @@ async function checkInPlaceScaffold(archive: string): Promise<void> {
 function checkGeneratedExample(root: string): void {
   run(['bun', 'install'], root);
   run(['bun', 'run', 'check'], root);
-  const output = run(['bun', 'run', 'evals'], root);
+  const output = run(['bun', 'run', 'evalkit', 'run'], root);
   if ((output.match(/PASS greeting/g) ?? []).length !== 2)
     throw new Error(`Generated eval did not pass:\n${output}`);
 }

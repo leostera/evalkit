@@ -4,10 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "bun test",
-    "evals": "evalkit run --local",
-    "greeting": "evalkit run greeting --local --trials 1",
-    "dashboard": "evalkit dev"
+    "test": "bun test"
   },
   "dependencies": {
     "@evalkit/agents": "workspace:*",

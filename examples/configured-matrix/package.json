@@ -4,10 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "bun test",
-    "plan": "evalkit run --matrix letter-case --dry-run",
-    "matrix": "evalkit run --matrix letter-case --local",
-    "dashboard": "evalkit dev"
+    "test": "bun test"
   },
   "dependencies": {
     "@evalkit/cli": "workspace:*",

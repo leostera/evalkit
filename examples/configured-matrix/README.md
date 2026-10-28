@@ -6,9 +6,9 @@ Install workspace dependencies at the monorepo root, then:
 
 ```bash
 cd examples/configured-matrix
-bun run plan       # count the two cells without starting the agent
-bun run matrix     # run both styles and write local reports
-bun run dashboard  # inspect each cell's run and trial
+bun run evalkit run --matrix letter-case --dry-run  # count the two cells without starting the agent
+bun run evalkit run --matrix letter-case            # run both styles and write local reports
+bun run evalkit dev                                 # inspect each cell's run and trial
 ```
 
 To run just one cell:
