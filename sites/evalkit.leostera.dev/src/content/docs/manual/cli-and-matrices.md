@@ -148,7 +148,7 @@ Point the project at the server in `evalkit.config.ts`, or set `EVALKIT_SHARE_UR
 export default defineConfig({ share: { url: 'https://evals.example.com' } });
 ```
 
-- **Which runs:** runs at the current commit. Runs made with uncommitted changes are skipped unless you pass `--allow-dirty`, and they are then labelled and left out of the commit's pass rate. `--all` also uploads runs from other commits. Untracked runs (no git) and archived runs are never uploaded.
+- **Which runs:** finished runs at the current commit. Runs made with uncommitted changes are skipped unless you pass `--allow-dirty`, and they are then labelled and left out of the commit's pass rate. `--all` also uploads runs from other commits. Untracked runs (no git) and archived runs are never uploaded.
 - **What is uploaded:** the same data as `evalkit build`: run summaries, scores, checkpoints, trajectories, and candidate workspace files. Evaluator workspaces are never uploaded. `--no-workspace` leaves out candidate file contents and keeps their listing.
 - **Safe to repeat:** uploading a run again does nothing, so rerunning `share` after a failure only sends what's missing. Concurrent CI jobs for the same commit don't interfere.
 

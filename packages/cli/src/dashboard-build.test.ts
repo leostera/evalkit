@@ -1,3 +1,4 @@
+import { dashboardIndex } from '@evalkit/share';
 import { afterEach, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,11 +9,7 @@ import { defineEval, predicate, registerEvals, user } from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
 import { createStaticDashboardApi } from '../../dashboard/src/static-api.js';
 import { tidyReports } from './tidy.js';
-import {
-  buildDashboard,
-  staticIndex,
-  staticRoutes,
-} from './dashboard-build.js';
+import { buildDashboard, staticRoutes } from './dashboard-build.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -160,11 +157,15 @@ test('rebuilds its own output but refuses to replace other directories', async (
 
 test('static index adds a base, rewrites asset URLs, and rejects unexpected markup', () => {
   expect(
-    staticIndex('<html lang="en"><head><a href="/assets/x.css">', '../'),
+    dashboardIndex('<html lang="en"><head><a href="/assets/x.css">', {
+      base: '../',
+    }),
   ).toBe(
     '<html lang="en" data-evalkit-snapshot="static"><head>\n    <base href="../" /><a href="./assets/x.css">',
   );
-  expect(() => staticIndex('<html><head>')).toThrow('unexpected shape');
+  expect(() => dashboardIndex('<html><head>', { base: './' })).toThrow(
+    'unexpected shape',
+  );
 });
 
 test('static routes cover known pages and skip unsafe IDs', () => {

@@ -2,6 +2,7 @@ export {
   createShareApp,
   type DashboardAssets,
   type ShareAppOptions,
+  type ShareEvent,
 } from './app.js';
 export {
   BUNDLE_FORMAT,
@@ -17,10 +18,10 @@ export {
   ShareIndexDb,
   type CommitRow,
   type RepoRow,
-  type RunRecord,
   type ShareIndex,
   type Sql,
 } from './index-db.js';
 export { sqliteIndex } from './index-bun.js';
 export { createDirectoryShareApp, directoryAssets } from './node.js';
 export { allowedRunPath, repoKey, validRepoKey } from './paths.js';
+export { parseUpload, type SharedRun, type SharedRunStatus } from './upload.js';
