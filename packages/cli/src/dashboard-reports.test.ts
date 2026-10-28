@@ -43,6 +43,19 @@ test('an incomplete run is omitted, but a corrupt manifest or summary is reporte
   });
 });
 
+test('runs from an older report format are skipped and counted, not fatal', async () => {
+  await withReports(async (root) => {
+    const reports = createDashboardReportReader(root, registerEvals([]));
+    await mkdir(join(root, runId));
+    await writeFile(
+      join(root, runId, 'manifest.json'),
+      JSON.stringify({ schemaVersion: 1, evalId: 'old' }),
+    );
+    expect(await reports.listRuns()).toEqual([]);
+    expect(reports.legacyRunIds()).toEqual([runId]);
+  });
+});
+
 test('artifact listings share a walker; candidate reads cannot escape their root', async () => {
   await withReports(async (root) => {
     const artifacts = join(root, runId, 'trials', trialId, 'artifacts');

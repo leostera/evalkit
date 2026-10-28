@@ -9,6 +9,7 @@ import {
   type MatrixSelection,
 } from '@evalkit/core';
 import { localReportStore, runMatrix } from '@evalkit/runner';
+import { runnerLogs } from './terminal.js';
 import { loadProject } from './project.js';
 
 export function parseRunArgs(args: string[]) {
@@ -198,52 +199,55 @@ export async function runProjectCommand(
     );
   if (!values.json) console.log(`Running ${cells} cell(s) from ${plan.matrix}`);
   const summary = await Effect.runPromise(
-    runMatrix(matrix, {
-      selection,
-      concurrency:
-        parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
-      trials,
-      ...(suiteId ? { suiteId } : {}),
-      ...(values.local ? { runtime: 'local' as const } : {}),
-      report: localReportStore(
-        resolve(project.root, project.config.reportDir ?? '_evalkit-results'),
-      ),
-      workspaceRoot: resolve(
-        project.root,
-        project.config.sandboxDir ?? '_evalkit-sandbox',
-      ),
-      onResult: (cell, result) => {
-        if (values.json)
-          console.log(
-            JSON.stringify({
-              cell: {
-                key: cell.key,
-                eval: authoringId(cell.eval),
-                parameters: cell.parameters,
-              },
-              result,
-            }),
-          );
-        else {
-          const passed =
-            result.status === 'completed' &&
-            (result.aggregateScoring?.passRate === 1 || result.scoring?.passed);
-          console.log(
-            `${passed ? 'PASS' : 'FAIL'} ${cell.eval.name ?? authoringId(cell.eval)} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`,
-          );
-          for (const trial of result.trials ?? [result]) {
-            for (const checkpoint of trial.scoring?.checkpoints ?? [])
-              console.log(
-                `  step ${checkpoint.step} ${checkpoint.kind} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
-              );
-            for (const score of trial.scoring?.results ?? [])
-              console.log(
-                `  ${score.kind} ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
-              );
+    runnerLogs(
+      runMatrix(matrix, {
+        selection,
+        concurrency:
+          parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
+        trials,
+        ...(suiteId ? { suiteId } : {}),
+        ...(values.local ? { runtime: 'local' as const } : {}),
+        report: localReportStore(
+          resolve(project.root, project.config.reportDir ?? '_evalkit-results'),
+        ),
+        workspaceRoot: resolve(
+          project.root,
+          project.config.sandboxDir ?? '_evalkit-sandbox',
+        ),
+        onResult: (cell, result) => {
+          if (values.json)
+            console.log(
+              JSON.stringify({
+                cell: {
+                  key: cell.key,
+                  eval: authoringId(cell.eval),
+                  parameters: cell.parameters,
+                },
+                result,
+              }),
+            );
+          else {
+            const passed =
+              result.status === 'completed' &&
+              (result.aggregateScoring?.passRate === 1 ||
+                result.scoring?.passed);
+            console.log(
+              `${passed ? 'PASS' : 'FAIL'} ${cell.eval.name ?? authoringId(cell.eval)} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`,
+            );
+            for (const trial of result.trials ?? [result]) {
+              for (const checkpoint of trial.scoring?.checkpoints ?? [])
+                console.log(
+                  `  step ${checkpoint.step} ${checkpoint.kind} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
+                );
+              for (const score of trial.scoring?.results ?? [])
+                console.log(
+                  `  ${score.kind} ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
+                );
+            }
           }
-        }
-      },
-    }),
+        },
+      }),
+    ),
   );
   if (summary.failed) process.exitCode = 1;
 }

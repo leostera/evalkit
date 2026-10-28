@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import type { CheckpointResult, EvalRegistry, JsonObject } from '@evalkit/core';
 import {
@@ -114,11 +114,16 @@ export function fileContentType(file: string): string {
   );
 }
 
-/** Read saved local reports. A missing summary means "running"; malformed reports are errors. */
+/**
+ * Read saved local reports. A missing summary means "running"; malformed reports are errors.
+ * Runs written by an older EvalKit (manifest `schemaVersion` < 2) are skipped and counted.
+ */
 export function createDashboardReportReader(
   root: string,
   registry: EvalRegistry,
 ) {
+  const legacyRuns = new Set<string>();
+
   async function listRuns(): Promise<LocalRun[]> {
     const entries = await ifPresent(() =>
       readdir(root, { withFileTypes: true }),
@@ -131,7 +136,26 @@ export function createDashboardReportReader(
     return runs.filter((run): run is LocalRun => run !== undefined);
   }
 
+  /** True for a run from a report format this version cannot read; never for corrupt JSON. */
+  async function isLegacyRun(id: string): Promise<boolean> {
+    const text = await ifPresent(() =>
+      readFile(resolve(root, id, 'manifest.json'), 'utf8'),
+    );
+    if (text === undefined) return false;
+    let version: unknown;
+    try {
+      version = (JSON.parse(text) as { schemaVersion?: unknown }).schemaVersion;
+    } catch {
+      return false; // Corrupt: let the strict decoder report it.
+    }
+    return typeof version === 'number' && version < 2;
+  }
+
   async function readRun(id: string): Promise<LocalRun | undefined> {
+    if (await isLegacyRun(id)) {
+      legacyRuns.add(id);
+      return undefined;
+    }
     // A newly created run directory may not have a manifest yet.
     const manifest = await ifPresent(() => readRunManifest(root, id));
     if (!manifest) return undefined;
@@ -271,6 +295,8 @@ export function createDashboardReportReader(
 
   return {
     listRuns,
+    /** Run IDs skipped by the last `listRuns()` because an older EvalKit wrote them. */
+    legacyRunIds: () => [...legacyRuns],
     listTrials,
     trialDetail,
     listArtifacts,
