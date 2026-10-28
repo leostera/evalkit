@@ -2,6 +2,17 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Added
+
+- `share.headers` in `evalkit.config.ts`: extra headers for every request to the share server, for an auth proxy such as Cloudflare Access in front of it. It can be an object or a function (sync or async), is called once per `evalkit share`, and its values are never printed.
+- `evalkit share` checks the server before uploading, in a new Server step.
+
+### Fixed
+
+- `evalkit share` no longer follows redirects or treats an HTML page as a successful upload. A redirect (for example to a login page), a 401 or 403, or a non-JSON answer stops sharing with an error naming the cause, instead of `JSON Parse error: Unrecognized token '<'` for every run.
+
 ## [0.4.0] - 2026-10-28
 
 Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenance-and-share-server.md)).

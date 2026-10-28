@@ -2,7 +2,9 @@ import { expect, test } from 'bun:test';
 import type { RunSource } from '@evalkit/core';
 import type { LocalRun } from './dashboard-reports.js';
 import {
+  checkShareServer,
   noRunsMessage,
+  resolveShareHeaders,
   selectRuns,
   shareTarget,
   uploadBundle,
@@ -98,6 +100,81 @@ test('uploads retry server errors but not rejections', async () => {
       'rejected the upload: bad bundle',
     );
     expect(calls).toBe(1);
+  } finally {
+    server.stop(true);
+  }
+});
+
+test('share.headers may be an object or a function, called once and checked', async () => {
+  expect(await resolveShareHeaders(undefined)).toEqual({});
+  expect(await resolveShareHeaders({ 'x-token': 'a' })).toEqual({
+    'x-token': 'a',
+  });
+  let calls = 0;
+  const provider = async () => {
+    calls += 1;
+    return { 'cf-access-token': 'jwt' };
+  };
+  expect(await resolveShareHeaders(provider)).toEqual({
+    'cf-access-token': 'jwt',
+  });
+  expect(calls).toBe(1);
+  await expect(
+    resolveShareHeaders(() => {
+      throw new Error('not logged in');
+    }),
+  ).rejects.toThrow('share.headers failed: not logged in');
+  await expect(
+    resolveShareHeaders(() => ({ token: 42 }) as never),
+  ).rejects.toThrow('"token" must be a non-empty string');
+});
+
+test('an auth proxy in front of the server is reported, and headers are sent', async () => {
+  const seen: (string | null)[] = [];
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const token = request.headers.get('cf-access-token');
+      seen.push(token);
+      if (!token)
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://team.cloudflareaccess.com/login' },
+        });
+      return Response.json({ repos: [] });
+    },
+  });
+  try {
+    const url = `http://localhost:${server.port}`;
+    await expect(checkShareServer(url, {})).rejects.toThrow(
+      'redirected to team.cloudflareaccess.com instead of answering. If an auth proxy is in front of the share server, set share.headers',
+    );
+    await expect(
+      uploadBundle(url, new Uint8Array([1]), { delayMs: 1 }),
+    ).rejects.toThrow('redirected to team.cloudflareaccess.com');
+    await checkShareServer(url, { 'cf-access-token': 'jwt' });
+    expect(seen).toEqual([null, null, 'jwt']);
+  } finally {
+    server.stop(true);
+  }
+});
+
+test('an HTML page answering an upload is not mistaken for success', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response('<html>login</html>', {
+        headers: { 'content-type': 'text/html' },
+      }),
+  });
+  try {
+    await expect(
+      uploadBundle(`http://localhost:${server.port}`, new Uint8Array([1]), {
+        delayMs: 1,
+      }),
+    ).rejects.toThrow(
+      'did not answer as an EvalKit share server (200, text/html)',
+    );
   } finally {
     server.stop(true);
   }

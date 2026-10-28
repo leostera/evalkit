@@ -30,7 +30,9 @@ import {
 import { tidyReports } from './tidy.js';
 import { detectSource, runCatalog, shortSource } from './source.js';
 import {
+  checkShareServer,
   noRunsMessage,
+  resolveShareHeaders,
   selectionSummary,
   selectRuns,
   shareRuns,
@@ -836,8 +838,23 @@ const shareCommand = Command.make(
         );
         if (!selection.selected.length)
           throw new Error(noRunsMessage(selection, head, { all }));
+        const shareHeaders = await step(
+          'Server',
+          async () => {
+            const headers = await resolveShareHeaders(
+              project!.config.share?.headers,
+            );
+            await checkShareServer(serverUrl, headers);
+            return headers;
+          },
+          (headers) => {
+            const names = Object.keys(headers);
+            return `${new URL(serverUrl).host}${names.length ? dim(` with ${names.join(', ')}`) : ''}`;
+          },
+        );
         const result = await shareRuns({
           serverUrl,
+          headers: shareHeaders,
           reportRoot,
           registry,
           runs: selection.selected,

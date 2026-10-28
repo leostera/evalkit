@@ -1,5 +1,10 @@
 import { authorId, type ResourceUri } from './identity.js';
-export { defineConfig, type EvalkitConfig } from './config.js';
+export {
+  defineConfig,
+  type EvalkitConfig,
+  type ShareConfig,
+  type ShareHeaders,
+} from './config.js';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue =

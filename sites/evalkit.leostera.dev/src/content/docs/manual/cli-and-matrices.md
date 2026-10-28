@@ -154,6 +154,24 @@ export default defineConfig({ share: { url: 'https://evals.example.com' } });
 
 On the server, `/<repo>` opens the latest commit, `/<repo>/-/<branch>` opens the latest commit on that branch, and a version picker in the header switches between commits. An eval project inside a larger repository gets its own address, `/<repo>/~<path>`.
 
+### Behind an auth proxy
+
+If something sits in front of the share server, such as Cloudflare Access, give `evalkit share` the headers it needs with `share.headers`. It can be an object or a function, sync or async. The function is called once per `evalkit share` and can run a command to fetch a token. Header values are never printed. EvalKit itself knows nothing about the proxy: if the server redirects or answers with something other than JSON, `share` stops and says so.
+
+```ts
+// evalkit.config.ts
+import { defineConfig } from '@leostera/evalkit';
+import { getCloudflareAccessTokenHeaders } from './cloudflare-access-token.js';
+
+const url = 'https://evals.example.com';
+
+export default defineConfig({
+  share: { url, headers: () => getCloudflareAccessTokenHeaders(url) },
+});
+```
+
+Here `cloudflare-access-token.js` is your own helper. For Access, it can return `CF-Access-Client-Id` and `CF-Access-Client-Secret` from a service token in CI, and otherwise `cf-access-token` from `cloudflared access token -app=<url>`. Use `node:child_process` rather than runtime-specific APIs so the config stays portable.
+
 ### Running a share server
 
 The share server is a small Worker: a JSON API plus the same dashboard. It keeps files in R2 and an index of repositories, commits and runs in a SQLite Durable Object. It has **no authentication**, so deploy it on a private network (for example, behind Cloudflare Access).

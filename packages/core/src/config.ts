@@ -14,8 +14,21 @@ export type EvalkitConfig = {
   execution?: { concurrency?: number; trials?: number; maxCells?: number };
   reportDir?: string;
   sandboxDir?: string;
+  share?: ShareConfig;
+};
+
+/** HTTP header names and values. */
+export type ShareHeaders = Record<string, string>;
+
+export type ShareConfig = {
   /** Where `evalkit share` uploads results. `EVALKIT_SHARE_URL` overrides it. */
-  share?: { url: string };
+  url: string;
+  /**
+   * Extra headers for every request to the share server, e.g. credentials for
+   * an auth proxy in front of it. A function is called once per `evalkit share`
+   * (it may run a command to fetch a token). Values are never printed.
+   */
+  headers?: ShareHeaders | (() => ShareHeaders | Promise<ShareHeaders>);
 };
 
 /** Pure, typed project configuration. Loading/discovery belongs to the CLI. */

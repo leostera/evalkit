@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { EvalRegistry, RunSource } from '@evalkit/core';
+import type {
+  EvalRegistry,
+  RunSource,
+  ShareConfig,
+  ShareHeaders,
+} from '@evalkit/core';
 import { encodeBundle, repoKey, type BundleFile } from '@evalkit/share';
 import { snapshotRun, type BuildStep } from './dashboard-build.js';
 import {
@@ -135,22 +140,65 @@ export async function runBundle(options: {
 
 export type UploadResult = { status: 'created' | 'exists'; url: string };
 
-/** The server refused the bundle (4xx): retrying the same bundle cannot help. */
+/** The server refused this bundle (4xx): retrying it cannot help. */
 class UploadRejected extends Error {}
+
+/**
+ * The URL does not answer as an EvalKit share server (a redirect, an HTML page,
+ * an auth proxy). Every upload would fail the same way, so sharing stops.
+ */
+export class ShareServerError extends Error {}
+
+/** `share.headers` from the config: called once, checked, never printed. */
+export async function resolveShareHeaders(
+  headers: ShareConfig['headers'],
+): Promise<ShareHeaders> {
+  let value: unknown;
+  try {
+    value = typeof headers === 'function' ? await headers() : (headers ?? {});
+  } catch (error) {
+    throw new Error(
+      `share.headers failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error(
+      'share.headers must be an object of header names to values',
+    );
+  const entries = Object.entries(value);
+  for (const [name, item] of entries)
+    if (typeof item !== 'string' || !item)
+      throw new Error(`share.headers "${name}" must be a non-empty string`);
+  return Object.fromEntries(entries) as ShareHeaders;
+}
+
+/** Check that the URL is an EvalKit share server and the headers get through. */
+export async function checkShareServer(
+  serverUrl: string,
+  headers: ShareHeaders,
+): Promise<void> {
+  const response = await fetch(new URL('/api/v1/repos', serverUrl), {
+    headers,
+    redirect: 'manual',
+  });
+  await expectShareServer(response, serverUrl);
+  await response.body?.cancel();
+}
 
 /** POST one bundle, retrying network errors and 5xx responses. */
 export async function uploadBundle(
   serverUrl: string,
   bundle: Uint8Array,
-  options: { attempts?: number; delayMs?: number } = {},
+  options: { attempts?: number; delayMs?: number; headers?: ShareHeaders } = {},
 ): Promise<UploadResult> {
   const attempts = options.attempts ?? 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await postBundle(serverUrl, bundle);
+      return await postBundle(serverUrl, bundle, options.headers ?? {});
     } catch (error) {
-      if (error instanceof UploadRejected) throw error;
+      if (error instanceof UploadRejected || error instanceof ShareServerError)
+        throw error;
       lastError = error;
     }
     if (attempt < attempts)
@@ -164,12 +212,15 @@ export async function uploadBundle(
 async function postBundle(
   serverUrl: string,
   bundle: Uint8Array,
+  headers: ShareHeaders,
 ): Promise<UploadResult> {
   const response = await fetch(new URL('/api/v1/uploads', serverUrl), {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
+    headers: { ...headers, 'content-type': 'application/octet-stream' },
     body: bundle as BodyInit,
+    redirect: 'manual',
   });
+  await expectShareServer(response, serverUrl);
   if (response.ok) return parseUploadResult(await response.json());
   const reason = await response.text();
   if (response.status < 500)
@@ -184,9 +235,33 @@ function parseUploadResult(value: unknown): UploadResult {
     typeof result.url === 'string'
   )
     return { status: result.status, url: result.url };
-  throw new UploadRejected(
+  throw new ShareServerError(
     `Unexpected share server response: ${JSON.stringify(value)}`,
   );
+}
+
+/** Redirects and non-JSON answers come from something in front of the server. */
+async function expectShareServer(
+  response: Response,
+  serverUrl: string,
+): Promise<void> {
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location');
+    const target = location ? new URL(location, serverUrl).host : 'elsewhere';
+    throw new ShareServerError(
+      `${new URL(serverUrl).host} redirected to ${target} instead of answering. ` +
+        'If an auth proxy is in front of the share server, set share.headers in evalkit.config.ts.',
+    );
+  }
+  const type = response.headers.get('content-type') ?? '';
+  const denied = response.status === 401 || response.status === 403;
+  // 5xx answers (often HTML from a proxy) are retried by the caller.
+  if (denied || (response.ok && !type.includes('json')))
+    throw new ShareServerError(
+      `${new URL(serverUrl).host} did not answer as an EvalKit share server ` +
+        `(${response.status}${type ? `, ${type.split(';')[0]}` : ''}). ` +
+        (denied ? 'Check share.headers.' : 'Check share.url.'),
+    );
 }
 
 export type ShareResult = {
@@ -198,6 +273,7 @@ export type ShareResult = {
 
 export async function shareRuns(options: {
   serverUrl: string;
+  headers: ShareHeaders;
   reportRoot: string;
   registry: EvalRegistry;
   runs: readonly LocalRun[];
@@ -229,10 +305,13 @@ export async function shareRuns(options: {
             run,
             workspaceFiles: options.workspaceFiles,
           });
-          const uploaded = await uploadBundle(options.serverUrl, bundle);
+          const uploaded = await uploadBundle(options.serverUrl, bundle, {
+            headers: options.headers,
+          });
           result.bytes += bundle.byteLength;
           result[uploaded.status] += 1;
         } catch (error) {
+          if (error instanceof ShareServerError) throw error;
           result.failed.push({
             runId: run.id,
             error: error instanceof Error ? error.message : String(error),
