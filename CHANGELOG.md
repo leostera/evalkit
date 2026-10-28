@@ -2,7 +2,7 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-28
 
 ### Added
 
@@ -85,7 +85,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.4.0]: https://github.com/leostera/evalkit/compare/5e67e72...main
+[0.5.0]: https://github.com/leostera/evalkit/compare/0dd8717...main
+[0.4.0]: https://github.com/leostera/evalkit/compare/5e67e72...0dd8717
 [0.3.0]: https://github.com/leostera/evalkit/compare/38c34be...5e67e72
 [0.2.0]: https://github.com/leostera/evalkit/compare/3f8855a...38c34be
 [0.1.0]: https://github.com/leostera/evalkit/compare/12d5a1e...3f8855a
