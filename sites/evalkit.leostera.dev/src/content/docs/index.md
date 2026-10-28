@@ -14,10 +14,10 @@ bunx @leostera/evalkit new ./evals
 cd evals
 bun install
 bun run check
-bun run evals
+bun run evalkit run
 ```
 
-`bun run evals` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run matrix:plan`. To browse results, start `bun run dashboard` in another terminal; `bun run dashboard:build` writes a read-only snapshot you can host and share. Reports are saved under `_evalkit-results/` in the project you just created.
+`bun run evalkit run` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run evalkit run --matrix styles --dry-run`. To browse results, start `bun run evalkit dev`; `bun run evalkit build` writes a read-only snapshot you can host and share. Reports are saved under `_evalkit-results/` in the project you just created.
 
 The scaffold includes `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Run commands **from the eval project directory** so discovery, fixtures, and reports resolve there. See [CLI and matrices](/docs/manual/cli-and-matrices/) for selection and safety limits.
 
@@ -180,8 +180,8 @@ Learn more: [Project structure and discovery](/docs/manual/project-structure/).
 A matrix lazily expands evals × parameter axes into independent cells. The generated agent reads `context.parameters.style`; `--select` narrows the `style` axis, and `--dry-run` shows the count before starting anything. Plans above `execution.maxCells` require `--all`.
 
 ```sh
-bun run matrix:plan
-bun run matrix
+bun run evalkit run --matrix styles --dry-run
+bun run evalkit run --matrix styles
 bun run evalkit run --matrix styles --eval greeting --select style=shout
 ```
 

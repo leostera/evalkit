@@ -4,11 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "bun test",
-    "pass": "evalkit run write-revise --local",
-    "judge": "evalkit run judged-reply --local",
-    "failfast": "evalkit run failfast-file --local",
-    "dashboard": "evalkit dev"
+    "test": "bun test"
   },
   "dependencies": {
     "@evalkit/cli": "workspace:*",

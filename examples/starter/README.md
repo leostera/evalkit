@@ -6,11 +6,11 @@ From this repository, install workspace dependencies at the root and then:
 
 ```bash
 cd examples/starter
-bun run greeting    # run only the self-contained eval (no Pi or provider needed)
-bun run dashboard   # inspect its trials in the local dashboard
+bun run evalkit run greeting --trials 1  # only the self-contained eval (no Pi or provider needed)
+bun run evalkit dev                      # inspect its trials in the local dashboard
 ```
 
-`bun run evals` runs **all** discovered evals, including the Pi-backed examples. Those require a working `pi` command and configured model access and may incur costs. To run just one directly, use `bun run evalkit run greeting --trials 1`; inspect the selection with `--dry-run` first.
+`bun run evalkit run` runs **all** discovered evals, including the Pi-backed examples. Those require a working `pi` command and configured model access and may incur costs. Inspect any selection with `--dry-run` first.
 
 The greeting eval composes a project-owned Agent Under Test (AUT), the candidate-visible `directory('fixtures/starter')`, and a reusable predicate scorer. Fixture source paths resolve from this project directory. Runs write `_evalkit-results/` and isolated trial workspaces under `_evalkit-sandbox/`; both are ignored by Git. Local evaluator workspaces can contain sensitive data, so review reports and sandboxes before sharing.
 

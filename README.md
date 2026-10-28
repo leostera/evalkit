@@ -17,12 +17,12 @@ Create a standalone, provider-free eval project from the npm package. No model c
 bunx @leostera/evalkit new ./evals
 cd evals
 bun install
-bun run check        # type-check the project
-bun run evals         # both configured styles
-bun run matrix:plan  # inspect the matrix without executing it
-bun run dashboard     # in a second terminal
-bun run dashboard:build  # optional read-only snapshot to share
-bun run evalkit share     # optional: upload this commit's results to your share server
+bun run check                                  # type-check the project
+bun run evalkit run                            # both configured styles
+bun run evalkit run --matrix styles --dry-run  # inspect the matrix without executing it
+bun run evalkit dev                            # browse results and launch runs
+bun run evalkit build                          # optional read-only snapshot to share
+bun run evalkit share                          # optional: upload this commit's results to your share server
 ```
 
 Already have a Bun project? From its root you can instead run:
@@ -32,12 +32,12 @@ bun add @leostera/evalkit
 bun run evalkit new .
 bun install          # install the generated type-checking dependencies
 bun run check
-bun run evals
+bun run evalkit run
 ```
 
 Migrating from the former `@leostera-js/evalkit` package? Replace that dependency with `@leostera/evalkit`, update imports (including `/runner`), then run `bun install`. Existing eval definitions and local reports do not need to be regenerated.
 
-The generator creates `agents/`, `fixtures/`, `evals/`, and `judges/`, plus `evalkit.config.ts` with a runnable matrix and `tsconfig.json` for type-checking. Its `greeting` eval is provider-free: the agent reads a fixture, applies `context.parameters.style`, and a predicate checks the reply. `bun run evals` exercises both matrix cells; `bun run matrix` runs the named matrix. Add another default-exported `.eval.ts` file to grow your suite—no registry required. Replace the example agent with your own adapter when ready.
+The generator creates `agents/`, `fixtures/`, `evals/`, and `judges/`, plus `evalkit.config.ts` with a runnable matrix and `tsconfig.json` for type-checking. Its `greeting` eval is provider-free: the agent reads a fixture, applies `context.parameters.style`, and a predicate checks the reply. `bun run evalkit run` exercises both matrix cells; `bun run evalkit run --matrix styles` runs the named matrix. Every command is `bun run evalkit <command>`; the scaffold adds no script aliases. Add another default-exported `.eval.ts` file to grow your suite—no registry required. Replace the example agent with your own adapter when ready.
 
 In-place setup preserves existing dependencies, scripts, README, and eval files; it refuses to overwrite any of the generated paths, including an existing config. The project installs `@leostera/evalkit` from npm. For more runnable examples, see [`examples/starter`](examples/starter/) and [`examples/interleaved-scenario`](examples/interleaved-scenario/).
 

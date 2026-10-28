@@ -29,7 +29,7 @@ bunx @leostera/evalkit new ./evals
 cd evals
 bun install
 bun run check
-bun run evals
+bun run evalkit run
 ```
 
 For an existing Bun project, use `bun add @leostera/evalkit` and then `bun run evalkit new .` from its root. Run `bun install` afterward to install the generated type-checking dependencies. This keeps existing package metadata, scripts, README, and authored evals; an existing scaffold path (including `evalkit.config.ts` or `evals/greeting.eval.ts`) causes an explicit error before any changes are made. The generated `package.json` installs `@leostera/evalkit` from npm. Import authoring helpers from `@leostera/evalkit` and runner helpers from `@leostera/evalkit/runner`, **not** the monorepo's internal `@evalkit/*` workspace names. The generated eval is provider-free; its results and trial workspaces stay local. When contributing to this repository, `examples/starter` and `examples/configured-matrix` still use internal workspace imports.

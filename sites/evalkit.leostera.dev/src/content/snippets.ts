@@ -35,5 +35,5 @@ export const setupCommands = `${scaffoldCommand}
 cd evals
 bun install
 bun run check
-bun run evals
-bun run dashboard`;
+bun run evalkit run
+bun run evalkit dev`;

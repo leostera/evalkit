@@ -38,10 +38,6 @@ test('new . initializes an existing Bun project without clobbering its dependenc
     expect(generated.scripts).toEqual({
       test: 'bun test',
       dashboard: 'echo existing',
-      evals: 'evalkit run greeting --local',
-      matrix: 'evalkit run --matrix styles --local',
-      'matrix:plan': 'evalkit run --matrix styles --dry-run',
-      'dashboard:build': 'evalkit build',
       check: 'tsc --noEmit',
     });
     expect(await readFile(join(cwd, 'README.md'), 'utf8')).toBe('Keep me!\n');
