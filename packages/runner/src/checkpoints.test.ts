@@ -214,7 +214,7 @@ const scenario = (
   });
 
 // Helper deliberately checks the JSON schema as well as the returned result.
-test('interleaves checks with sends and records turn-local evidence in v3 reports', async () => {
+test('interleaves checks with sends and records turn-local evidence in v3+ reports', async () => {
   const dir = await root();
   const aut = writerAgent();
   const result = await Effect.runPromise(
@@ -225,10 +225,10 @@ test('interleaves checks with sends and records turn-local evidence in v3 report
   expect(result.scoring?.overall).toBe(1);
   expect(aut.sends).toEqual(['first', 'revise']);
   expect(aut.closed).toBe(1);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(3);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(4);
   expect(
     (await readTrialManifest(dir, result.runId, result.trialId)).schemaVersion,
-  ).toBe(3);
+  ).toBe(4);
   const scoring = await readTrialScoring(dir, result.runId, result.trialId);
   expect(scoring.checkpoints?.map((c) => c.status)).toEqual([
     'passed',

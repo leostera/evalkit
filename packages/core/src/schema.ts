@@ -44,8 +44,25 @@ const MatrixCellSchema = Schema.Struct({
   cellKey: Schema.String,
 });
 
+export const RunSourceSchema = Schema.Struct({
+  repo: Schema.String,
+  project: Schema.String,
+  commit: Schema.String,
+  ref: Schema.optional(Schema.String),
+  committedAt: Schema.optional(Schema.String),
+  dirty: Schema.Boolean,
+  ci: Schema.optional(
+    Schema.Struct({
+      provider: Schema.String,
+      pipeline: Schema.optional(Schema.String),
+      job: Schema.optional(Schema.String),
+      url: Schema.optional(Schema.String),
+    }),
+  ),
+});
+
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3),
+  schemaVersion: Schema.Literal(2, 3, 4),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -53,10 +70,11 @@ export const RunMetadataSchema = Schema.Struct({
   matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
+  source: Schema.optional(RunSourceSchema),
 });
 
 export const TrialMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3),
+  schemaVersion: Schema.Literal(2, 3, 4),
   runUri: resourceUriSchema('run'),
   trialUri: resourceUriSchema('trial'),
   trialIndex: Schema.Number,

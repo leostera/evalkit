@@ -1,6 +1,11 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
-import type { CheckpointResult, EvalRegistry, JsonObject } from '@evalkit/core';
+import type {
+  CheckpointResult,
+  EvalRegistry,
+  JsonObject,
+  RunSource,
+} from '@evalkit/core';
 import {
   readRunManifest,
   readRunSummary,
@@ -28,6 +33,8 @@ export type LocalRun = {
   durationMs?: number;
   /** Set by `evalkit tidy` when the run's eval is no longer in the project. */
   archived?: boolean;
+  /** Repository and commit the run's eval code came from (schema version 4+). */
+  source?: RunSource;
 };
 
 /** Written into a run directory by `evalkit tidy`; deleting it restores the run. */
@@ -182,6 +189,7 @@ export function createDashboardReportReader(
     return {
       id,
       ...(archived ? { archived: true } : {}),
+      ...(manifest.source ? { source: manifest.source } : {}),
       evalId: manifest.evalId,
       ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
       ...(manifest.matrix

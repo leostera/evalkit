@@ -28,6 +28,7 @@ import {
   runProjectCommand,
 } from './run-command.js';
 import { tidyReports } from './tidy.js';
+import { detectSource, runCatalog } from './source.js';
 import { newProject } from './new-project.js';
 import {
   banner,
@@ -72,6 +73,7 @@ async function runEvals(options: {
   const registry = await loadRegistry();
   const evaluations = options.evalIds.map((id) => registry.get(id));
   if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
+  const provenance = await runProvenance(registry);
   await Effect.runPromise(
     runnerLogs(
       Effect.all(
@@ -88,6 +90,7 @@ async function runEvals(options: {
                 suiteId: options.suiteId,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
+                ...provenance,
               }),
             ),
             Effect.tap((result) =>
@@ -102,6 +105,18 @@ async function runEvals(options: {
       ),
     ),
   );
+}
+
+/** Detected per launch: `evalkit dev` keeps running while commits change. */
+async function runProvenance(registry: EvalRegistry) {
+  const source = await detectSource(projectRoot, {
+    outputDirs: [
+      reportRoot,
+      sandboxRoot,
+      resolve(projectRoot, '_evalkit-dashboard'),
+    ],
+  });
+  return { ...(source ? { source } : {}), catalog: runCatalog(registry) };
 }
 
 function registerMatrixRoutes(
@@ -192,20 +207,24 @@ function registerMatrixRoutes(
       const name = evaluation.name ?? authoringId(evaluation);
       const started = performance.now();
       runLog.started(name, (body.parameters ?? {}) as object, suiteId);
-      void Effect.runPromise(
-        runnerLogs(
-          runMatrix(dashboardMatrix, {
-            selection,
-            concurrency: 1,
-            trials,
-            ...(suiteId ? { suiteId } : {}),
-            report: localReportStore(reportRoot),
-            workspaceRoot: sandboxRoot,
-            onResult: (cell, result) =>
-              runLog.cell(cell, result, performance.now() - started),
-          }),
-        ),
-      )
+      void runProvenance(registry)
+        .then((provenance) =>
+          Effect.runPromise(
+            runnerLogs(
+              runMatrix(dashboardMatrix, {
+                selection,
+                concurrency: 1,
+                trials,
+                ...(suiteId ? { suiteId } : {}),
+                report: localReportStore(reportRoot),
+                workspaceRoot: sandboxRoot,
+                ...provenance,
+                onResult: (cell, result) =>
+                  runLog.cell(cell, result, performance.now() - started),
+              }),
+            ),
+          ),
+        )
         .catch((error) => runLog.failed(name, error))
         .finally(() => {
           matrixRunning = false;

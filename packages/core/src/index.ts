@@ -617,8 +617,33 @@ export function registerEvals<
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Where a run's eval code came from: the repository, eval project and commit.
+ * Results are tagged with it; they are never stored in the repository itself.
+ */
+export type RunSource = {
+  /** Normalized repository key, e.g. `gitlab.example.com/group/repo`. */
+  repo: string;
+  /** Eval project directory relative to the repository root; `""` at the root. */
+  project: string;
+  /** Full commit SHA. */
+  commit: string;
+  ref?: string;
+  committedAt?: string;
+  /** True when the working tree had uncommitted changes at run time. */
+  dirty: boolean;
+  ci?: { provider: string; pipeline?: string; job?: string; url?: string };
+};
+
+/** The project's evals and suites when a run started; written beside its manifest. */
+export type RunCatalog = {
+  catalog: EvalCatalogEntry[];
+  evals: EvalRegistryMetadata[];
+  suites: EvalSuiteMetadata[];
+};
+
 export type RunMetadata = {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -627,10 +652,12 @@ export type RunMetadata = {
   matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
+  /** Present from schema version 4 when the run's commit could be determined. */
+  source?: RunSource;
 };
 
 export type TrialMetadata = {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   runId: string;
   runUri: ResourceUri<'run'>;
   trialId: string;
@@ -707,7 +734,10 @@ export type RunWriter = {
 };
 
 export type ReportStore = {
-  startRun(metadata: RunMetadata): Promise<RunWriter>;
+  startRun(
+    metadata: RunMetadata,
+    context?: { catalog?: RunCatalog },
+  ): Promise<RunWriter>;
 };
 
 export type TrialResult = {

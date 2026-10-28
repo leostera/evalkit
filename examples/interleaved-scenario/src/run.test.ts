@@ -15,7 +15,7 @@ import {
 
 const projectRoot = resolve(import.meta.dir, '..');
 
-test('discovered scenarios prove interleaved success and failfast using real v3 reports', async () => {
+test('discovered scenarios prove interleaved success and failfast using real v3+ reports', async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'evalkit-interleaved-'));
   try {
     const { config, registry } = await loadProject(projectRoot);
@@ -45,7 +45,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3 
     expect(
       (await readTrialManifest(reports, passed.runId, passed.trialId))
         .schemaVersion,
-    ).toBe(3);
+    ).toBe(4);
     const passedScores = await readTrialScoring(
       reports,
       passed.runId,
