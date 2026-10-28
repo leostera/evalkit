@@ -60,6 +60,22 @@ export function runFacets(runs: readonly RunSummary[]): RunFacet[] {
   });
 }
 
+/** Link to the runs page filtered to one eval, and to one matrix cell when given. */
+export function runsHref(
+  evalId: string,
+  parameters: Record<string, unknown> = {},
+): string {
+  const search = new URLSearchParams();
+  search.append('eval', canonicalParameters(evalId));
+  for (const [key, value] of Object.entries(parameters))
+    if (value !== undefined && value !== null)
+      search.append(
+        parameterFacet(key),
+        canonicalParameters(value as JsonValue),
+      );
+  return `/runs?${search}`;
+}
+
 export function filterRunFacets(
   runs: readonly RunSummary[],
   search: URLSearchParams,

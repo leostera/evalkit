@@ -28,6 +28,7 @@ bun run evalkit run --suite conversation-basics
 | `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` for a named matrix and `--suite <id>` for a registered suite. These selectors are mutually exclusive.               |
 | `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                          |
 | `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                              |
+| `tidy`              | Mark runs of evals that are no longer in the project as archived. See [Archiving removed evals](#archiving-removed-evals).                                                                                         |
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. A zero-config discovery project has no suites and no named project matrix. See [Project structure](/docs/manual/project-structure/) for registering those.
 
@@ -117,6 +118,14 @@ To work on the dashboard UI itself, start `bun run evalkit dev` in an example pr
 
 ## Sharing a static snapshot
 
-`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, trials, scores, checkpoints, trajectories, and each trial's **candidate** artifact snapshot. It never copies `_evalkit-sandbox/` or evaluator workspaces. Runs cannot be started from a snapshot; it uses hash URLs and relative asset paths, so you can host it under any path on a static file server (`bunx serve _evalkit-dashboard`, Workers Static Assets, GitHub Pages, and so on). Opening `index.html` directly from disk does not work, because browsers block `fetch()` from `file://` pages.
+`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, trials, scores, checkpoints, trajectories, and each trial's **candidate** artifact snapshot. It never copies `_evalkit-sandbox/` or evaluator workspaces. Runs of evals archived by [`evalkit tidy`](#archiving-removed-evals) are left out. Runs cannot be started from a snapshot.
+
+Before building, `build` asks whether to run the evals first so the snapshot has fresh results. With no current results it runs them without asking. Pass `--run` to always run them first or `--no-run` to use existing results; without a terminal to answer (CI, pipes) it uses existing results. Failing evals do not stop the build; their results are included.
+
+The snapshot uses clean URLs such as `/runs/<id>`: it writes one small page per known route (`runs/<id>.html`, `trials/<id>.html`, and so on), each with a relative `<base href>`. Any static host that serves `/x` from `x.html` works under any mount path without SPA rewrite rules: `bunx serve _evalkit-dashboard`, Workers Static Assets, Cloudflare Pages, and GitHub Pages all do this. Opening `index.html` directly from disk does not work, because browsers block `fetch()` from `file://` pages.
 
 Rebuilding replaces a directory that `evalkit build` created earlier; the command refuses to overwrite any other non-empty directory. A snapshot is not filtered or redacted: user and assistant messages, tool arguments and results, scorer evidence, judge events, and candidate files are all included. Review it, or build from a report directory that contains only the runs you intend to publish, before sharing it.
+
+## Archiving removed evals
+
+`bun run evalkit tidy` compares saved runs with the evals the project defines today (standalone, in suites, or only in matrices). Runs of evals that no longer exist are marked **archived** by writing `archived.json` into the run directory; nothing is deleted. Archived runs are hidden in `evalkit dev` (turn on **Show archived** in the runs filters) and left out of `evalkit build`. Running `tidy` again after an eval returns restores its runs; delete `archived.json` to restore a single run by hand.

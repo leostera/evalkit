@@ -1,12 +1,21 @@
 import { Table } from '@cloudflare/kumo';
 import type { CatalogEval } from '../api.js';
-import { agentName } from './agentName.js';
+import { agentKey, agentName } from './agentName.js';
 import { monoClass } from './DataTable.js';
 
-export function AgentRow({ entries }: { entries: CatalogEval[] }) {
+export function AgentRow({
+  entries,
+  selected = false,
+}: {
+  entries: CatalogEval[];
+  selected?: boolean;
+}) {
   const first = entries[0]!;
   return (
-    <Table.Row>
+    <Table.Row
+      variant={selected ? 'selected' : 'default'}
+      data-agent={agentKey(first)}
+    >
       <Table.Cell className={monoClass}>{first.agent.id ?? '—'}</Table.Cell>
       <Table.Cell className="font-medium">{agentName(first)}</Table.Cell>
       <Table.Cell>{first.agent.kind}</Table.Cell>

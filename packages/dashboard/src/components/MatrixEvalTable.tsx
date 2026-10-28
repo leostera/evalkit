@@ -213,6 +213,7 @@ function CartesianMatrixEvalTable({
                   parameters={row.values}
                   trials={matrix?.trials}
                   status={statusFor(row)}
+                  cellParameters={row.parameters}
                   onRun={
                     evaluation && matrix !== undefined
                       ? () =>

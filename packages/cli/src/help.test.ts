@@ -15,6 +15,7 @@ test('help for every CLI command works without a config, project discovery, or s
       ['run', '-h'],
       ['dev', '--help'],
       ['build', '--help'],
+      ['tidy', '--help'],
     ]) {
       const child = Bun.spawn(['bun', cli, ...args], {
         cwd,

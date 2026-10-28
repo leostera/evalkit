@@ -22,11 +22,18 @@ import {
 } from './dashboard-reports.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
-import { normalizeRunOptions, runProjectCommand } from './run-command.js';
+import {
+  normalizeRunOptions,
+  parseRunArgs,
+  runProjectCommand,
+} from './run-command.js';
+import { tidyReports } from './tidy.js';
 import { newProject } from './new-project.js';
 import {
   banner,
   bold,
+  canPrompt,
+  confirm,
   bytes,
   cyan,
   dim,
@@ -558,18 +565,21 @@ const devCommand = Command.make('dev', { config }, ({ config }) =>
 );
 const buildCommand = Command.make(
   'build',
-  { config, out: Options.text('out').pipe(Options.optional) },
-  ({ config, out }) =>
+  {
+    config,
+    out: Options.text('out').pipe(Options.optional),
+    run: Options.boolean('run'),
+    noRun: Options.boolean('no-run'),
+  },
+  ({ config, out, run, noRun }) =>
     Effect.tryPromise({
       try: async () => {
+        if (run && noRun) throw new Error('Choose either --run or --no-run');
         const started = performance.now();
+        const configPath = Option.getOrUndefined(config);
         banner('build', VERSION);
-        await step(
-          'Eval project',
-          () => useProject(Option.getOrUndefined(config)),
-          () =>
-            `${plural(project!.registry.evals.length, 'eval')} loaded${relative(process.cwd(), projectRoot) ? ` from ${relative(process.cwd(), projectRoot)}` : ''}`,
-        );
+        await loadProjectStep(configPath);
+        if (await shouldRunEvals({ run, noRun })) await runAllEvals(configPath);
         const result = await buildDashboard(
           {
             registry: project!.registry,
@@ -599,8 +609,120 @@ const buildCommand = Command.make(
       catch: (error) => error,
     }),
 );
+
+async function loadProjectStep(configPath: string | undefined): Promise<void> {
+  await step(
+    'Eval project',
+    () => useProject(configPath),
+    () => {
+      const where = relative(process.cwd(), projectRoot);
+      return `${plural(project!.registry.evals.length, 'eval')} loaded${where ? ` from ${where}` : ''}`;
+    },
+  );
+}
+
+/**
+ * A snapshot needs data: with no current results, run the evals. Otherwise ask,
+ * or keep the existing results when no one can answer (CI, pipes).
+ */
+async function shouldRunEvals(flags: {
+  run: boolean;
+  noRun: boolean;
+}): Promise<boolean> {
+  if (flags.run) return true;
+  if (flags.noRun) return false;
+  const runs = (
+    await createDashboardReportReader(reportRoot, project!.registry).listRuns()
+  ).filter((entry) => !entry.archived).length;
+  if (!runs) {
+    console.log(
+      `  ${cyan('◇')} No results yet, so running the evals to have data to build.`,
+    );
+    return true;
+  }
+  if (!canPrompt()) {
+    console.log(
+      `  ${dim(`Using ${plural(runs, 'existing run')}; pass --run to run the evals first.`)}`,
+    );
+    return false;
+  }
+  return confirm(
+    `Run the evals before building? ${dim(`(${plural(runs, 'existing run')})`)}`,
+  );
+}
+
+async function runAllEvals(configPath: string | undefined): Promise<void> {
+  const started = performance.now();
+  console.log(`\n  ${cyan('▶')} ${bold('Running evals')}\n`);
+  await runProjectCommand(
+    [],
+    process.cwd(),
+    parseRunArgs(configPath ? ['--config', configPath] : []),
+  );
+  const failed = process.exitCode === 1;
+  console.log(
+    `\n  ${failed ? yellow('⚠') : cyan('✓')} ${bold('Evals finished')} in ${duration(performance.now() - started)}` +
+      (failed ? dim(' (some failed; building with their results)') : '') +
+      '\n',
+  );
+}
+
+const tidyCommand = Command.make('tidy', { config }, ({ config }) =>
+  Effect.tryPromise({
+    try: async () => {
+      banner('tidy', VERSION);
+      await loadProjectStep(Option.getOrUndefined(config));
+      const result = await step(
+        'Run reports',
+        () => tidyReports({ registry: project!.registry, reportRoot }),
+        (value) =>
+          `${plural(value.current + value.archived.length + value.stillArchived, 'run')} checked`,
+      );
+      const byEval = (entries: { evalId: string }[]) =>
+        [
+          ...entries
+            .reduce(
+              (groups, entry) =>
+                groups.set(entry.evalId, (groups.get(entry.evalId) ?? 0) + 1),
+              new Map<string, number>(),
+            )
+            .entries(),
+        ]
+          .map(
+            ([id, total]) =>
+              `    ${bold(id)} ${dim(`(${plural(total, 'run')})`)}`,
+          )
+          .join('\n');
+      console.log('');
+      if (result.archived.length)
+        console.log(
+          `  ${yellow('◆')} Archived ${plural(result.archived.length, 'run')} of evals no longer in the project:\n${byEval(result.archived)}`,
+        );
+      if (result.restored.length)
+        console.log(
+          `  ${cyan('◆')} Restored ${plural(result.restored.length, 'run')} whose eval is back:\n${byEval(result.restored)}`,
+        );
+      if (!result.archived.length && !result.restored.length)
+        console.log(`  ${cyan('✓')} Nothing new to tidy.`);
+      const totalArchived = result.archived.length + result.stillArchived;
+      if (totalArchived)
+        console.log(
+          `\n  ${dim(`Archived runs (${totalArchived}) are hidden in \`evalkit dev\` (filter "Show archived")`)}\n` +
+            `  ${dim('and left out of `evalkit build`. Nothing was deleted.')}`,
+        );
+      console.log('');
+    },
+    catch: (error) => error,
+  }),
+);
 const app = Command.make('evalkit').pipe(
-  Command.withSubcommands([newCommand, runCommand, devCommand, buildCommand]),
+  Command.withSubcommands([
+    newCommand,
+    runCommand,
+    devCommand,
+    buildCommand,
+    tidyCommand,
+  ]),
 );
 const cli = Command.run(app, { name: 'EvalKit', version: VERSION });
 const argv = process.argv.slice();

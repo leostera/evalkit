@@ -6,7 +6,9 @@ import type {
   RunSummary,
   SuiteSummary,
 } from '../api.js';
+import { searchFacets } from './RunFilters.js';
 import { filterRuns, runParameterColumns, RunTable } from './RunTable.js';
+import { runFacets } from './run-facets.js';
 
 const sortLabels = (html: string) =>
   [...html.matchAll(/class="table-sort[^"]*">([^<]+)</g)].map(
@@ -149,4 +151,51 @@ test('filters runs across the complete list by names, status and parameter keys 
   ).toEqual(['run-three']);
   expect(filterRuns(runs, 'unknown', suites, catalog)).toEqual([]);
   expect(filterRuns(runs, '   ', suites, catalog)).toHaveLength(3);
+});
+
+const render = (search: URLSearchParams, list: RunSummary[] = runs) =>
+  renderToStaticMarkup(
+    <RunTable
+      api={{} as DashboardApi}
+      runs={list}
+      suites={suites}
+      catalog={catalog}
+      search={search}
+      onSearchChange={() => {}}
+      onTrial={() => {}}
+      onOpenRun={() => {}}
+    />,
+  );
+
+test('archived runs are hidden by default and shown with archived=show', () => {
+  const list = [...runs, { ...runs[0]!, id: 'run-archived', archived: true }];
+  const hidden = render(new URLSearchParams(), list);
+  expect(hidden).toContain('3 of 3 runs');
+  expect(hidden).not.toContain('run-archived');
+  expect(hidden).toContain('Show archived');
+  const shown = render(new URLSearchParams('archived=show'), list);
+  expect(shown).toContain('4 of 4 runs');
+  expect(shown).toContain('run-archived');
+  expect(shown).toContain('>archived</span>');
+});
+
+test('the filter header holds the filter search and an icon clear button', () => {
+  const html = render(new URLSearchParams('status=%22passed%22'));
+  expect(html).toContain('aria-label="Search filters"');
+  expect(html).toContain('aria-label="Clear filters"');
+  expect(html.indexOf('Search filters')).toBeLessThan(html.indexOf('Status'));
+});
+
+test('filter search narrows every facet and keeps checked choices visible', () => {
+  const facets = runFacets(runs);
+  const checked = new URLSearchParams('status=%22failed%22');
+  const narrowed = searchFacets(facets, 'sco', checked);
+  expect(narrowed.map((facet) => facet.key)).toEqual(['status', 'p.model']);
+  expect(narrowed[0]!.values.map((choice) => choice.label)).toEqual(['failed']);
+  expect(narrowed[1]!.values.map((choice) => choice.label)).toEqual(['scout']);
+  // A matching group name keeps all its choices.
+  expect(
+    searchFacets(facets, 'model', new URLSearchParams())[0]!.values.length,
+  ).toBe(3);
+  expect(searchFacets(facets, '', new URLSearchParams())).toEqual(facets);
 });

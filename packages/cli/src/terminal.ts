@@ -142,3 +142,28 @@ export function runnerLogs<A, E, R>(
     LogLevel.Warning;
   return effect.pipe(Logger.withMinimumLogLevel(level));
 }
+
+/** True when a person can answer a prompt (not CI, pipes, or redirected input). */
+export function canPrompt(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+export async function confirm(question: string): Promise<boolean> {
+  const { createInterface } = await import('node:readline/promises');
+  const prompt = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    const answer = await prompt.question(
+      `  ${cyan('?')} ${question} ${dim('(y/N)')} `,
+    );
+    return /^y(es)?$/i.test(answer.trim());
+  } catch {
+    // Ctrl+D or closed input answers "no".
+    console.log('');
+    return false;
+  } finally {
+    prompt.close();
+  }
+}

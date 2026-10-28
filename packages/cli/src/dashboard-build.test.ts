@@ -7,7 +7,12 @@ import { Effect } from 'effect';
 import { defineEval, predicate, registerEvals, user } from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
 import { createStaticDashboardApi } from '../../dashboard/src/static-api.js';
-import { buildDashboard, staticIndex } from './dashboard-build.js';
+import { tidyReports } from './tidy.js';
+import {
+  buildDashboard,
+  staticIndex,
+  staticRoutes,
+} from './dashboard-build.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -60,7 +65,7 @@ async function fixture() {
   await mkdir(join(dashboardRoot, 'assets'), { recursive: true });
   await writeFile(
     join(dashboardRoot, 'index.html'),
-    '<!doctype html>\n<html lang="en"><script src="/assets/app.js"></script></html>\n',
+    '<!doctype html>\n<html lang="en"><head><script src="/assets/app.js"></script></head></html>\n',
   );
   await writeFile(join(dashboardRoot, 'assets', 'app.js'), '/* ui */');
   return { root, reportRoot, dashboardRoot, outDir: join(root, 'share') };
@@ -92,6 +97,16 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   const [run] = await api.listRuns();
   expect(run).toMatchObject({ evalId: 'writes-file', status: 'passed' });
   const [trial] = await api.listTrials(run!.id);
+  // Clean URLs: `<mount>/runs/<id>` is served from runs/<id>.html, based one level up.
+  expect(
+    await readFile(join(paths.outDir, 'runs', `${run!.id}.html`), 'utf8'),
+  ).toContain('<base href="../" />');
+  expect(
+    await readFile(join(paths.outDir, 'trials', `${trial!.id}.html`), 'utf8'),
+  ).toContain('<base href="../" />');
+  expect(await readFile(join(paths.outDir, 'index.html'), 'utf8')).toContain(
+    '<base href="./" />',
+  );
   const events = await api.getTrialEvents(run!.id, trial!.id);
   expect(events.some((event) => event.content === 'hello snapshot')).toBe(true);
   expect(await api.listWorkspace(run!.id, trial!.id)).toContainEqual(
@@ -111,6 +126,23 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   expect(written.some((file) => file.includes('evaluator'))).toBe(false);
 });
 
+test('archived runs are left out of the snapshot', async () => {
+  const paths = await fixture();
+  await tidyReports({
+    registry: registerEvals([]),
+    reportRoot: paths.reportRoot,
+  });
+  const result = await buildDashboard({
+    registry: registerEvals([evaluation]),
+    ...paths,
+  });
+  expect(result).toMatchObject({ runs: 0, archived: 1, trials: 0 });
+  const runs = JSON.parse(
+    await readFile(join(paths.outDir, 'data', 'runs.json'), 'utf8'),
+  ) as { runs: unknown[] };
+  expect(runs.runs).toEqual([]);
+});
+
 test('rebuilds its own output but refuses to replace other directories', async () => {
   const paths = await fixture();
   const registry = registerEvals([evaluation]);
@@ -126,9 +158,32 @@ test('rebuilds its own output but refuses to replace other directories', async (
   expect(resolve(paths.outDir)).toBe(paths.outDir);
 });
 
-test('static index rewrites asset URLs and rejects unexpected markup', () => {
-  expect(staticIndex('<html lang="en"><a href="/assets/x.css">')).toBe(
-    '<html lang="en" data-evalkit-snapshot="static"><a href="./assets/x.css">',
+test('static index adds a base, rewrites asset URLs, and rejects unexpected markup', () => {
+  expect(
+    staticIndex('<html lang="en"><head><a href="/assets/x.css">', '../'),
+  ).toBe(
+    '<html lang="en" data-evalkit-snapshot="static"><head>\n    <base href="../" /><a href="./assets/x.css">',
   );
-  expect(() => staticIndex('<html>')).toThrow('unexpected shape');
+  expect(() => staticIndex('<html><head>')).toThrow('unexpected shape');
+});
+
+test('static routes cover known pages and skip unsafe IDs', () => {
+  expect(
+    staticRoutes({
+      suites: ['basics'],
+      evals: ['basics#hello', 'a/b'],
+      runs: ['r1'],
+      trials: ['t1', '..'],
+    }),
+  ).toEqual([
+    'suites',
+    'agents',
+    'fixtures',
+    'runs',
+    'suites/basics',
+    'evals/basics#hello',
+    'runs/r1',
+    'trials/t1',
+    'workspaces/t1',
+  ]);
 });

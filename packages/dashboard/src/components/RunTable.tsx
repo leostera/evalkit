@@ -99,10 +99,17 @@ export function RunTable({
   const { activeSearch, query, setQuery, setField, toggleFacet, clearFilters } =
     useRunFilters(search, onSearchChange);
   const { trials, loadTrials } = useRunTrials(api, runs, selectedRunId);
-  const facets = useMemo(() => runFacets(runs), [runs]);
-  const parameterColumns = useMemo(() => runParameterColumns(runs), [runs]);
+  // Runs of evals removed from the project (`evalkit tidy`) are hidden by default.
+  const showArchived = activeSearch.get('archived') === 'show';
+  const archivedCount = runs.filter((run) => run.archived).length;
+  const listed = useMemo(
+    () => (showArchived ? runs : runs.filter((run) => !run.archived)),
+    [runs, showArchived],
+  );
+  const facets = useMemo(() => runFacets(listed), [listed]);
+  const parameterColumns = useMemo(() => runParameterColumns(listed), [listed]);
   const filteredRuns = filterRuns(
-    filterRunFacets(runs, activeSearch),
+    filterRunFacets(listed, activeSearch),
     query,
     suites,
     catalog,
@@ -148,6 +155,7 @@ export function RunTable({
       <RunFilters
         facets={facets}
         search={activeSearch}
+        archivedCount={archivedCount}
         onToggleFacet={toggleFacet}
         onField={setField}
         onClear={clearFilters}
@@ -157,7 +165,7 @@ export function RunTable({
           label="Filter runs"
           placeholder="Eval, parameter, agent or status"
           value={query}
-          count={`${sortedRuns.length} of ${runs.length} runs`}
+          count={`${sortedRuns.length} of ${listed.length} runs`}
           onChange={setQuery}
         />
         <DataTable>
@@ -301,6 +309,14 @@ function RunRow({
       </Table.Cell>
       <Table.Cell className="font-medium">
         {evaluation?.name ?? run.evalId}
+        {run.archived ? (
+          <span
+            className="ml-2 rounded border border-kumo-line px-1 text-[11px] font-normal text-kumo-subtle"
+            title="This eval is no longer in the project (evalkit tidy)"
+          >
+            archived
+          </span>
+        ) : null}
       </Table.Cell>
       {parameterColumns.map((parameter) => (
         <Table.Cell key={parameter} className={monoClass}>

@@ -26,7 +26,12 @@ export type LocalRun = {
   requestedTrials: number;
   score?: number;
   durationMs?: number;
+  /** Set by `evalkit tidy` when the run's eval is no longer in the project. */
+  archived?: boolean;
 };
+
+/** Written into a run directory by `evalkit tidy`; deleting it restores the run. */
+export const ARCHIVE_MARKER = 'archived.json';
 
 type LocalScore = {
   name: string;
@@ -171,8 +176,12 @@ export function createDashboardReportReader(
     const scores = trials.flatMap((trial) =>
       trial?.scoring?.overall === undefined ? [] : [trial.scoring.overall],
     );
+    const archived = await ifPresent(() =>
+      stat(resolve(root, id, ARCHIVE_MARKER)),
+    );
     return {
       id,
+      ...(archived ? { archived: true } : {}),
       evalId: manifest.evalId,
       ...(manifest.suiteId ? { suiteId: manifest.suiteId } : {}),
       ...(manifest.matrix

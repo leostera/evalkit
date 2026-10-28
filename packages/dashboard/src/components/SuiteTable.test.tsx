@@ -172,3 +172,26 @@ test('suite members also display one row per configured matrix cell', () => {
 test('empty state is shown only when there are no evals and no suites', () => {
   expect(render([], [])).toContain('No evals or suites are loaded.');
 });
+
+test('each eval row links to its agent and to its runs, per matrix cell', () => {
+  const matrix = { id: 'benchmark', parameters: { model: ['glm', 'scout'] } };
+  const html = render(
+    [],
+    [{ ...standalone, agent: { ...standalone.agent, id: 'echo-worker' } }],
+    [],
+    matrix,
+  );
+  expect(html).toContain('href="/agents?agent=echo-worker"');
+  const decode = (href: string) =>
+    new URLSearchParams(href.replace('/runs?', '').replaceAll('&amp;', '&'));
+  const runLinks = [...html.matchAll(/href="(\/runs\?[^"]+)"/g)].map((match) =>
+    decode(match[1]!),
+  );
+  expect(runLinks.map((search) => search.getAll('p.model'))).toEqual([
+    ['"glm"'],
+    ['"scout"'],
+  ]);
+  expect(runLinks.every((search) => search.get('eval') === '"echo"')).toBe(
+    true,
+  );
+});

@@ -67,6 +67,8 @@ export type RunSummary = {
   requestedTrials: number;
   score?: number;
   durationMs?: number;
+  /** The eval is no longer in the project (`evalkit tidy`); hidden by default. */
+  archived?: boolean;
 };
 
 export type WorkspaceEntry = {
