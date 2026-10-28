@@ -1,16 +1,18 @@
 import { Hono, type Context } from 'hono';
-import { BundleError, decodeBundle, type BundleFile } from './bundle.js';
+import { BundleError, decodeBundle } from './bundle.js';
 import type { ShareFiles } from './files.js';
 import { dashboardIndex } from './html.js';
-import type { RunRecord, ShareIndex } from './index-db.js';
+import type { ShareIndex } from './index-db.js';
+import { isSha, isUuid, safeSegment, validRepoKey } from './paths.js';
 import {
-  allowedRunPath,
-  isSha,
-  isUuid,
-  repoKey,
-  safeSegment,
-  validRepoKey,
-} from './paths.js';
+  parseCatalog,
+  parseRun,
+  parseUpload,
+  Rejected,
+  type RunCatalog,
+  type RunUpload,
+  type SharedRun,
+} from './upload.js';
 
 /** The bundled dashboard: its index.html template and its JS/CSS files. */
 export type DashboardAssets = {
@@ -18,141 +20,155 @@ export type DashboardAssets = {
   get(path: string): Promise<Response | null>;
 };
 
+/** One structured log event. Bounded fields only; never file contents. */
+export type ShareEvent =
+  | {
+      event: 'share.upload';
+      outcome: 'created' | 'exists';
+      repo: string;
+      commit: string;
+      runId: string;
+      files: number;
+      bytes: number;
+    }
+  | { event: 'share.upload'; outcome: 'rejected'; reason: string }
+  | { event: 'share.reindex'; runs: number; indexed: number }
+  | { event: 'share.error'; method: string; path: string; error: string };
+
 export type ShareAppOptions = {
   files: ShareFiles;
   index: ShareIndex;
   assets: DashboardAssets;
   /** Uncompressed bundle limit; the compressed body must also fit a Worker request. */
   maxBundleBytes?: number;
+  /** Defaults to one JSON line per event on stdout (Workers Logs indexes these). */
+  log?: (event: ShareEvent) => void;
 };
 
-type RunSummary = {
-  id: string;
-  evalId: string;
-  suiteId?: string;
-  status: string;
-  score?: number;
-  startedAt: string;
-  source: {
-    repo: string;
-    project: string;
-    commit: string;
-    ref?: string;
-    committedAt?: string;
-    dirty: boolean;
-  };
-};
-
-type RunCatalog = { catalog: unknown[]; evals: unknown[]; suites: unknown[] };
+/** What a non-API path shows. */
+type SharePage =
+  | { kind: 'repositories' }
+  | { kind: 'missing'; repo: string; ref?: string }
+  | { kind: 'commit'; repo: string; sha: string };
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
+const NO_CACHE = { 'cache-control': 'no-cache' };
 const RUN_FILE =
   /^repos\/(.+)\/commits\/([0-9a-f]{40})\/runs\/([^/]+)\/run\.json$/;
+const EMPTY_CATALOG: RunCatalog = { catalog: [], evals: [], suites: [] };
 
-class Rejected extends Error {}
+const jsonLine = (event: ShareEvent) => console.log(JSON.stringify(event));
 
 /**
- * The share server: stores uploaded run bundles and serves them with the same
- * dashboard as `evalkit build`, one read-only snapshot per repository commit.
+ * The share server: a small JSON API plus the dashboard app. It stores
+ * uploaded run bundles and shows one read-only snapshot per repository commit.
  *
- *   POST /api/v1/uploads                 one run bundle
- *   GET  /api/v1/repos                   indexed repositories
- *   POST /api/v1/reindex                 rebuild the index from stored run.json files
- *   GET  /<repo>                         → latest commit
- *   GET  /<repo>/-/commits.json          commits, newest first
- *   GET  /<repo>/-/<ref|prefix>/…        → full SHA
- *   GET  /<repo>/-/<sha>/data/…          snapshot data
- *   GET  /<repo>/-/<sha>/…               dashboard page
+ *   POST /api/v1/uploads                         one run bundle
+ *   POST /api/v1/reindex                         rebuild the index from stored run.json files
+ *   GET  /api/v1/repos                           indexed repositories
+ *   GET  /api/v1/repos/<repo>/-/commits          commits, newest first
+ *   GET  /api/v1/repos/<repo>/-/<sha>/data/…     snapshot data
+ *   GET  /assets/*                               dashboard JS/CSS
+ *   GET  /<repo>                                 → latest commit
+ *   GET  /<repo>/-/<ref|prefix>/…                → full SHA
+ *   GET  everything else                         the dashboard app
  *
  * There is no authentication: run it on a private network.
  */
 export function createShareApp(options: ShareAppOptions) {
   const { files, index, assets } = options;
+  const log = options.log ?? jsonLine;
   const maxBundleBytes = options.maxBundleBytes ?? 256 * 1024 * 1024;
   const app = new Hono();
 
-  app.post('/api/v1/uploads', async (context) => {
-    let bundle: BundleFile[];
-    try {
-      bundle = await decodeBundle(
-        new Uint8Array(await context.req.arrayBuffer()),
-        { maxBytes: maxBundleBytes },
-      );
-      return await storeRun(context, bundle);
-    } catch (error) {
-      if (error instanceof BundleError || error instanceof Rejected)
-        return context.json({ error: error.message }, 400);
-      throw error;
-    }
+  app.onError((error, context) => {
+    log({
+      event: 'share.error',
+      method: context.req.method,
+      path: context.req.path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return context.json({ error: 'Internal error' }, 500);
   });
 
-  async function storeRun(context: Context, bundle: BundleFile[]) {
-    const paths = new Set<string>();
-    for (const file of bundle) {
-      if (!allowedRunPath(file.path))
-        throw new Rejected(`File not allowed in a run bundle: ${file.path}`);
-      if (paths.has(file.path))
-        throw new Rejected(`Duplicate file in bundle: ${file.path}`);
-      paths.add(file.path);
+  app.post('/api/v1/uploads', async (context) => {
+    let upload: RunUpload;
+    try {
+      const body = new Uint8Array(await context.req.arrayBuffer());
+      upload = parseUpload(
+        await decodeBundle(body, { maxBytes: maxBundleBytes }),
+      );
+    } catch (error) {
+      if (!(error instanceof BundleError || error instanceof Rejected))
+        throw error;
+      log({
+        event: 'share.upload',
+        outcome: 'rejected',
+        reason: error.message,
+      });
+      return context.json({ error: error.message }, 400);
     }
-    const runFile = bundle.find((file) => file.path === 'run.json');
-    if (!runFile) throw new Rejected('Bundle has no run.json');
-    const summary = parseSummary(runFile.data);
-    const key = repoKey(summary.source);
-    if (!validRepoKey(key))
-      throw new Rejected(`Invalid repository key: ${key}`);
-    const sha = summary.source.commit;
-    const url = new URL(`/${key}/-/${sha}/runs/${summary.id}`, context.req.url)
-      .href;
-    if (await index.hasRun(summary.id))
-      return context.json({ status: 'exists', url }, 200);
+    const { run } = upload;
+    const url = new URL(
+      `/${run.repoKey}/-/${run.source.commit}/runs/${run.id}`,
+      context.req.url,
+    ).href;
+    const exists = await index.hasRun(run.id);
+    if (!exists) await storeRun(upload);
+    const outcome = exists ? 'exists' : 'created';
+    log({
+      event: 'share.upload',
+      outcome,
+      repo: run.repoKey,
+      commit: run.source.commit,
+      runId: run.id,
+      files: upload.files.length,
+      bytes: upload.files.reduce((sum, file) => sum + file.data.byteLength, 0),
+    });
+    return context.json(
+      { status: outcome, url },
+      outcome === 'created' ? 201 : 200,
+    );
+  });
 
-    // Files first, index last: a run is visible only once it is indexed.
-    const commitBase = `repos/${key}/commits/${sha}`;
-    for (const file of bundle)
-      if (file.path !== 'run.json')
-        await files.put(
-          `${commitBase}/runs/${summary.id}/${file.path}`,
-          file.data,
-        );
-    const catalog = bundle.find((file) => file.path === 'catalog.json');
+  /** Files first, index last: a run becomes visible only once it is indexed. */
+  async function storeRun({
+    run,
+    runJson,
+    catalog,
+    files: runFiles,
+  }: RunUpload) {
+    const commitBase = `repos/${run.repoKey}/commits/${run.source.commit}`;
+    const runBase = `${commitBase}/runs/${run.id}`;
+    for (const file of runFiles)
+      await files.put(`${runBase}/${file.path}`, file.data);
+    // A committed run's catalog describes the commit; a dirty run's only fills a gap.
     if (
       catalog &&
-      (!summary.source.dirty ||
-        !(await files.get(`${commitBase}/catalog.json`)))
+      (!run.source.dirty || !(await files.get(`${commitBase}/catalog.json`)))
     )
-      await files.put(`${commitBase}/catalog.json`, catalog.data);
-    await files.put(`${commitBase}/runs/${summary.id}/run.json`, runFile.data);
-    await index.recordRun(runRecord(summary));
-    return context.json({ status: 'created', url }, 201);
+      await files.put(`${commitBase}/catalog.json`, catalog);
+    await files.put(`${runBase}/run.json`, runJson);
+    await index.recordRun(run);
   }
 
   app.post('/api/v1/reindex', async (context) => {
-    let total = 0;
+    let runs = 0;
     let indexed = 0;
     for await (const key of files.list('repos/')) {
-      const match = RUN_FILE.exec(key);
-      if (!match) continue;
-      total += 1;
-      const data = await readBytes(await files.get(key));
-      if (!data) continue;
-      let summary: RunSummary;
-      try {
-        summary = parseSummary(data);
-      } catch {
-        continue; // Not a shareable run.json; nothing to index.
-      }
-      if (await index.hasRun(summary.id)) continue;
-      await index.recordRun(runRecord(summary));
+      if (!RUN_FILE.test(key)) continue;
+      runs += 1;
+      const run = storedRun(await readBytes(await files.get(key)));
+      if (!run || (await index.hasRun(run.id))) continue;
+      await index.recordRun(run);
       indexed += 1;
     }
-    return context.json({ runs: total, indexed });
+    log({ event: 'share.reindex', runs, indexed });
+    return context.json({ runs, indexed });
   });
 
   app.get('/api/v1/repos', async (context) =>
-    context.json({ repos: await index.repos() }, 200, {
-      'cache-control': 'no-cache',
-    }),
+    context.json({ repos: await index.repos() }, 200, NO_CACHE),
   );
 
   // /api/v1/repos/<repo>/-/commits and /api/v1/repos/<repo>/-/<sha>/data/…
@@ -167,9 +183,7 @@ export function createShareApp(options: ShareAppOptions) {
       return context.json(
         { repo: key, commits: await index.commits(key) },
         200,
-        {
-          'cache-control': 'no-cache',
-        },
+        NO_CACHE,
       );
     if (!isSha(sha) || kind !== 'data')
       return context.json({ error: 'Not found' }, 404);
@@ -191,55 +205,54 @@ export function createShareApp(options: ShareAppOptions) {
   app.all('/api/*', (context) => context.json({ error: 'Not found' }, 404));
 
   // Every other path is the dashboard app. Short refs resolve to full SHAs
-  // here so every page URL names one immutable commit.
+  // first, so every commit page URL names one immutable commit.
   app.get('*', async (context) => {
     const url = new URL(context.req.url);
     const path = url.pathname.replace(/\/+$/, '');
     const marker = path.indexOf('/-/');
-    if (marker === -1) {
-      const key = path.slice(1);
-      const latest = validRepoKey(key) ? await index.latest(key) : undefined;
-      if (latest) return context.redirect(`/${key}/-/${latest}/`);
-      return dashboardPage(context, { base: '/', repo: key || undefined });
-    }
-    const key = path.slice(1, marker);
-    const [ref = '', ...tail] = url.pathname.slice(marker + 3).split('/');
-    const sha = validRepoKey(key)
-      ? await index.resolve(key, decodeURIComponent(ref))
+    if (marker === -1) return repositoryPage(context, path.slice(1));
+    const repo = path.slice(1, marker);
+    const [ref = '', ...rest] = url.pathname.slice(marker + 3).split('/');
+    const sha = validRepoKey(repo)
+      ? await index.resolve(repo, decodeURIComponent(ref))
       : undefined;
-    if (!sha)
-      return dashboardPage(context, { base: '/', repo: key, missing: ref });
+    if (!sha) return dashboardPage(context, { kind: 'missing', repo, ref });
     if (sha !== ref)
       return context.redirect(
-        `/${key}/-/${sha}/${tail.join('/')}${url.search}`,
+        `/${repo}/-/${sha}/${rest.join('/')}${url.search}`,
       );
-    return dashboardPage(context, {
-      base: `/${key}/-/${sha}/`,
-      repo: key,
-      sha,
-    });
+    return dashboardPage(context, { kind: 'commit', repo, sha });
   });
 
+  /** `/` lists repositories; `/<repo>` opens its latest commit. */
+  async function repositoryPage(context: Context, repo: string) {
+    if (!repo) return dashboardPage(context, { kind: 'repositories' });
+    const latest = validRepoKey(repo) ? await index.latest(repo) : undefined;
+    if (latest) return context.redirect(`/${repo}/-/${latest}/`);
+    return dashboardPage(context, { kind: 'missing', repo });
+  }
+
   /** The dashboard's index.html, told where this page's data lives. */
-  async function dashboardPage(
-    context: Context,
-    page: { base: string; repo?: string; sha?: string; missing?: string },
-  ) {
-    const api = page.repo ? `/api/v1/repos/${page.repo}/-/` : undefined;
+  async function dashboardPage(context: Context, page: SharePage) {
+    const api =
+      page.kind === 'repositories'
+        ? undefined
+        : `/api/v1/repos/${page.repo}/-/`;
     return context.html(
       dashboardIndex(await assets.index(), {
-        base: page.base,
+        base: page.kind === 'commit' ? `/${page.repo}/-/${page.sha}/` : '/',
         assets: '/assets/',
         share: {
           repos: '/api/v1/repos',
-          ...(api ? { commits: `${api}commits` } : {}),
-          ...(api && page.sha ? { data: `${api}${page.sha}/` } : {}),
-          ...(page.repo ? { repo: page.repo } : {}),
-          ...(page.missing ? { missing: page.missing } : {}),
+          ...(page.kind === 'repositories'
+            ? {}
+            : { repo: page.repo, commits: `${api}commits` }),
+          ...(page.kind === 'commit' ? { data: `${api}${page.sha}/` } : {}),
+          ...(page.kind === 'missing' && page.ref ? { missing: page.ref } : {}),
         },
       }),
-      page.sha || !page.repo ? 200 : 404,
-      { 'cache-control': 'no-cache' },
+      page.kind === 'missing' ? 404 : 200,
+      NO_CACHE,
     );
   }
 
@@ -253,16 +266,13 @@ export function createShareApp(options: ShareAppOptions) {
     const path = segments.join('/');
     const commitBase = `repos/${key}/commits/${sha}`;
     if (path === 'runs.json')
-      return context.json({ runs: await index.runs(key, sha) }, 200, {
-        'cache-control': 'no-cache', // grows as runs are uploaded
-      });
+      return context.json({ runs: await index.runs(key, sha) }, 200, NO_CACHE); // grows as runs are uploaded
     if (['catalog.json', 'evals.json', 'suites.json'].includes(path)) {
+      // Parsed at upload, so a stored catalog is always well formed.
       const data = await readBytes(
         await files.get(`${commitBase}/catalog.json`),
       );
-      const catalog: RunCatalog = data
-        ? JSON.parse(new TextDecoder().decode(data))
-        : { catalog: [], evals: [], suites: [] };
+      const catalog = data ? parseCatalog(data) : EMPTY_CATALOG;
       return context.json(
         path === 'catalog.json'
           ? { evals: catalog.catalog }
@@ -270,7 +280,7 @@ export function createShareApp(options: ShareAppOptions) {
             ? { evals: catalog.evals }
             : { suites: catalog.suites },
         200,
-        { 'cache-control': 'no-cache' },
+        NO_CACHE,
       );
     }
     const runFile = /^runs\/([^/]+)\/(trials\.json|trials\/.+)$/.exec(path);
@@ -294,52 +304,15 @@ export function createShareApp(options: ShareAppOptions) {
   return app;
 }
 
-function parseSummary(data: Uint8Array): RunSummary {
-  let value: Partial<RunSummary>;
+/** A stored run.json, or undefined if it is not a shareable run. */
+function storedRun(data: Uint8Array | null): SharedRun | undefined {
+  if (!data) return undefined;
   try {
-    value = JSON.parse(new TextDecoder().decode(data));
-  } catch {
-    throw new Rejected('run.json is not valid JSON');
+    return parseRun(data);
+  } catch (error) {
+    if (error instanceof Rejected) return undefined;
+    throw error;
   }
-  const source = value.source;
-  if (
-    typeof value.id !== 'string' ||
-    !isUuid(value.id) ||
-    typeof value.evalId !== 'string' ||
-    typeof value.status !== 'string' ||
-    typeof value.startedAt !== 'string' ||
-    !source ||
-    typeof source.repo !== 'string' ||
-    typeof source.project !== 'string' ||
-    typeof source.commit !== 'string' ||
-    !isSha(source.commit) ||
-    typeof source.dirty !== 'boolean'
-  )
-    throw new Rejected(
-      'run.json needs id, evalId, status, startedAt, and source { repo, project, commit, dirty }',
-    );
-  return value as RunSummary;
-}
-
-function runRecord(summary: RunSummary): RunRecord {
-  return {
-    repo: repoKey(summary.source),
-    repoUrl: summary.source.repo,
-    project: summary.source.project,
-    sha: summary.source.commit,
-    ...(summary.source.ref ? { ref: summary.source.ref } : {}),
-    ...(summary.source.committedAt
-      ? { committedAt: summary.source.committedAt }
-      : {}),
-    runId: summary.id,
-    evalId: summary.evalId,
-    ...(summary.suiteId ? { suiteId: summary.suiteId } : {}),
-    status: summary.status,
-    ...(typeof summary.score === 'number' ? { score: summary.score } : {}),
-    startedAt: summary.startedAt,
-    dirty: summary.source.dirty,
-    summary,
-  };
 }
 
 async function readBytes(

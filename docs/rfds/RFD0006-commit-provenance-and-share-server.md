@@ -225,7 +225,7 @@ sequenceDiagram
   CLI->>CLI: print https://…/{repo}/-/{sha}
 ```
 
-- **Validation on the server:** every bundle path must be one of the snapshot files (`run.json`, `catalog.json`, `trials.json`, `trials/<uuid>/{detail,events,artifacts,workspace}.json`, `trials/<uuid>/workspace/**`). Anything else, `..` and empty segments included, rejects the whole upload. Repository and commit come from `run.json`'s `source`, which must have a full 40-character SHA.
+- **Validation on the server:** every bundle path must be one of the snapshot files (`run.json`, `catalog.json`, `trials.json`, `trials/<uuid>/{detail,events,artifacts,workspace}.json`, `trials/<uuid>/workspace/**`). Anything else, `..` and empty segments included, rejects the whole upload. Repository and commit come from `run.json`'s `source`, which must have a full 40-character SHA. Only finished runs are accepted, because stored run files are cached as immutable.
 - **Write ordering:** files go to R2 first and the index row is written last. A run exists for readers only once it is indexed, so a crash mid-upload leaves at most unreferenced files, which a retry overwrites.
 
 ### 3. Storage: files in R2, metadata in a Durable Object

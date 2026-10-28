@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createShareApp } from './app.js';
+import { createShareApp, type ShareEvent } from './app.js';
 import { encodeBundle, type BundleFile } from './bundle.js';
 import { directoryFiles } from './fs-files.js';
 import { sqliteIndex } from './index-bun.js';
@@ -20,11 +20,21 @@ const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
 const REPO = 'gitlab.example.com/team/evals';
 
-async function server() {
+async function server(options: { failWrites?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-share-'));
   roots.push(root);
-  const files = directoryFiles(join(root, 'files'));
+  const stored = directoryFiles(join(root, 'files'));
+  const files = options.failWrites
+    ? {
+        ...stored,
+        put: async () => {
+          throw new Error('disk full');
+        },
+      }
+    : stored;
+  const events: ShareEvent[] = [];
   const app = createShareApp({
+    log: (event) => events.push(event),
     files,
     index: sqliteIndex(join(root, 'index.sqlite')),
     assets: {
@@ -35,7 +45,7 @@ async function server() {
   });
   const request = (path: string, init?: RequestInit) =>
     app.request(`http://share.test${path}`, init);
-  return { root, files, request };
+  return { root, files, request, events };
 }
 
 const json = (value: unknown) =>
@@ -49,6 +59,7 @@ function run(
     dirty?: boolean;
     committedAt?: string;
     project?: string;
+    ref?: unknown;
   } = {},
 ) {
   return {
@@ -62,7 +73,7 @@ function run(
       repo: REPO,
       project: overrides.project ?? '',
       commit: overrides.commit ?? SHA_A,
-      ref: 'main',
+      ref: 'ref' in overrides ? overrides.ref : 'main',
       committedAt: overrides.committedAt ?? '2026-10-28T09:00:00Z',
       dirty: overrides.dirty ?? false,
     },
@@ -72,18 +83,16 @@ function run(
 async function bundleFor(
   summary: ReturnType<typeof run>,
   extra: BundleFile[] = [],
+  catalog: unknown = {
+    catalog: [{ id: 'greeting' }],
+    evals: [{ id: 'greeting' }],
+    suites: [],
+  },
 ) {
   const trial = crypto.randomUUID();
   return encodeBundle([
     { path: 'run.json', data: json(summary) },
-    {
-      path: 'catalog.json',
-      data: json({
-        catalog: [{ id: 'greeting' }],
-        evals: [{ id: 'greeting' }],
-        suites: [],
-      }),
-    },
+    { path: 'catalog.json', data: json(catalog) },
     { path: 'trials.json', data: json({ trials: [{ id: trial }] }) },
     { path: `trials/${trial}/detail.json`, data: json({ ok: true }) },
     {
@@ -100,7 +109,7 @@ const upload = (
 ) => request('/api/v1/uploads', { method: 'POST', body: body as BodyInit });
 
 test('uploads are stored, indexed, idempotent, and served with the dashboard', async () => {
-  const { request } = await server();
+  const { request, events } = await server();
   const summary = run();
   const first = await upload(request, await bundleFor(summary));
   expect(first.status).toBe(201);
@@ -111,6 +120,10 @@ test('uploads are stored, indexed, idempotent, and served with the dashboard', a
   const again = await upload(request, await bundleFor(summary));
   expect(again.status).toBe(200);
   expect((await again.json()).status).toBe('exists');
+  expect(events).toMatchObject([
+    { event: 'share.upload', outcome: 'created', runId: summary.id, files: 3 },
+    { event: 'share.upload', outcome: 'exists', runId: summary.id },
+  ]);
 
   expect(await (await request('/api/v1/repos')).json()).toMatchObject({
     repos: [{ key: REPO, commits: 1 }],
@@ -227,7 +240,7 @@ test('concurrent uploads for one commit keep every run', async () => {
 });
 
 test('invalid bundles are rejected without storing anything', async () => {
-  const { request, files } = await server();
+  const { request, files, events } = await server();
   const cases: [string, Uint8Array][] = [
     ['not gzip', new TextEncoder().encode('hello')],
     [
@@ -255,6 +268,10 @@ test('invalid bundles are rejected without storing anything', async () => {
       ]),
     ],
     ['short sha', await bundleFor(run({ commit: 'abc' }))],
+    // A running run's files would be cached as immutable and never completed.
+    ['running run', await bundleFor(run({ status: 'running' }))],
+    ['non-string ref', await bundleFor(run({ ref: 42 }))],
+    ['bad catalog', await bundleFor(run(), [], { evals: 'nope' })],
   ];
   for (const [name, body] of cases) {
     const response = await upload(request, body);
@@ -263,6 +280,11 @@ test('invalid bundles are rejected without storing anything', async () => {
   const stored: string[] = [];
   for await (const key of files.list('')) stored.push(key);
   expect(stored).toEqual([]);
+  expect(
+    events.map(
+      (event) => event.event + ':' + ('outcome' in event ? event.outcome : ''),
+    ),
+  ).toEqual(cases.map(() => 'share.upload:rejected'));
 });
 
 test('reindex rebuilds the index from stored run.json files', async () => {
@@ -306,4 +328,19 @@ test('run bundle paths are limited to the snapshot format', () => {
     `trials/${trial}/evaluator/x`,
   ])
     expect([path, allowedRunPath(path)]).toEqual([path, false]);
+});
+
+test('server errors are logged once and answered without details', async () => {
+  const { request, events } = await server({ failWrites: true });
+  const response = await upload(request, await bundleFor(run()));
+  expect(response.status).toBe(500);
+  expect(await response.json()).toEqual({ error: 'Internal error' });
+  expect(events).toEqual([
+    {
+      event: 'share.error',
+      method: 'POST',
+      path: '/api/v1/uploads',
+      error: 'disk full',
+    },
+  ]);
 });

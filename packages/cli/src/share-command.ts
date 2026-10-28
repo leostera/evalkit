@@ -7,7 +7,8 @@ import {
   createDashboardReportReader,
   type LocalRun,
 } from './dashboard-reports.js';
-import { runCatalog } from './source.js';
+import { runCatalog, shortSource } from './source.js';
+import { plural } from './terminal.js';
 
 export type ShareSelection = {
   selected: (LocalRun & { source: RunSource })[];
@@ -15,11 +16,13 @@ export type ShareSelection = {
   otherCommits: number;
   dirty: number;
   archived: number;
+  /** Still running: a shared run is immutable, so it must be finished. */
+  running: number;
 };
 
 /**
- * Which local runs `evalkit share` uploads: runs with a source, at HEAD
- * (or any commit with `all`), not dirty (unless `allowDirty`), not archived.
+ * Which local runs `evalkit share` uploads: finished runs with a source, at
+ * HEAD (or any commit with `all`), not dirty (unless `allowDirty`), not archived.
  */
 export function selectRuns(
   runs: readonly LocalRun[],
@@ -32,6 +35,7 @@ export function selectRuns(
     otherCommits: 0,
     dirty: 0,
     archived: 0,
+    running: 0,
   };
   for (const run of runs) {
     const { source } = run;
@@ -43,9 +47,54 @@ export function selectRuns(
       result.otherCommits += 1;
     else if (source.dirty && !options.allowDirty) result.dirty += 1;
     else if (run.archived) result.archived += 1;
+    else if (run.status === 'running') result.running += 1;
     else result.selected.push({ ...run, source });
   }
   return result;
+}
+
+/** One line for the Runs step: what will be shared and what was skipped. */
+export function selectionSummary(
+  selection: ShareSelection,
+  options: { all?: boolean },
+): string {
+  return [
+    `${plural(selection.selected.length, 'run')} to share`,
+    selection.otherCommits && !options.all
+      ? `${selection.otherCommits} from other commits`
+      : '',
+    selection.running ? `${selection.running} still running skipped` : '',
+    selection.dirty ? `${selection.dirty} dirty skipped` : '',
+    selection.untracked ? `${selection.untracked} untracked skipped` : '',
+    selection.archived ? `${selection.archived} archived skipped` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Why nothing was selected, and what to do about it. */
+export function noRunsMessage(
+  selection: ShareSelection,
+  head: RunSource,
+  options: { all?: boolean },
+): string {
+  const at = shortSource(head);
+  if (selection.dirty)
+    return `No committed runs for ${at}: ${plural(selection.dirty, 'run')} came from uncommitted changes. Commit and rerun \`evalkit run\`, or pass --allow-dirty.`;
+  if (selection.running)
+    return `No finished runs for ${at}: ${plural(selection.running, 'run')} still running. Share again when they finish.`;
+  return `No runs for ${at}. Run \`evalkit run\` first${options.all ? '' : ', or pass --all to share runs from other commits'}.`;
+}
+
+/** Where to look after sharing: the commit, or the repository if several commits were shared. */
+export function shareTarget(
+  serverUrl: string,
+  head: RunSource,
+  runs: readonly { source: RunSource }[],
+): string {
+  const commits = new Set(runs.map((run) => run.source.commit));
+  const commit = commits.size === 1 ? `/-/${[...commits][0]}` : '';
+  return new URL(`/${repoKey(head)}${commit}`, serverUrl).href;
 }
 
 /** Build one run's upload bundle: run.json, catalog.json, and its snapshot. */
@@ -86,6 +135,9 @@ export async function runBundle(options: {
 
 export type UploadResult = { status: 'created' | 'exists'; url: string };
 
+/** The server refused the bundle (4xx): retrying the same bundle cannot help. */
+class UploadRejected extends Error {}
+
 /** POST one bundle, retrying network errors and 5xx responses. */
 export async function uploadBundle(
   serverUrl: string,
@@ -96,22 +148,9 @@ export async function uploadBundle(
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const response = await fetch(new URL('/api/v1/uploads', serverUrl), {
-        method: 'POST',
-        headers: { 'content-type': 'application/octet-stream' },
-        body: bundle as BodyInit,
-      });
-      if (response.ok) return (await response.json()) as UploadResult;
-      const reason = await response.text();
-      if (response.status < 500)
-        // The server rejected the bundle; retrying will not help.
-        throw Object.assign(
-          new Error(`Share server rejected the upload: ${reason}`),
-          { final: true },
-        );
-      lastError = new Error(`Share server error ${response.status}: ${reason}`);
+      return await postBundle(serverUrl, bundle);
     } catch (error) {
-      if ((error as { final?: boolean }).final) throw error;
+      if (error instanceof UploadRejected) throw error;
       lastError = error;
     }
     if (attempt < attempts)
@@ -120,6 +159,34 @@ export async function uploadBundle(
   throw lastError instanceof Error
     ? lastError
     : new Error(`Upload failed: ${String(lastError)}`);
+}
+
+async function postBundle(
+  serverUrl: string,
+  bundle: Uint8Array,
+): Promise<UploadResult> {
+  const response = await fetch(new URL('/api/v1/uploads', serverUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: bundle as BodyInit,
+  });
+  if (response.ok) return parseUploadResult(await response.json());
+  const reason = await response.text();
+  if (response.status < 500)
+    throw new UploadRejected(`Share server rejected the upload: ${reason}`);
+  throw new Error(`Share server error ${response.status}: ${reason}`);
+}
+
+function parseUploadResult(value: unknown): UploadResult {
+  const result = value as Partial<UploadResult> | null;
+  if (
+    (result?.status === 'created' || result?.status === 'exists') &&
+    typeof result.url === 'string'
+  )
+    return { status: result.status, url: result.url };
+  throw new UploadRejected(
+    `Unexpected share server response: ${JSON.stringify(value)}`,
+  );
 }
 
 export type ShareResult = {

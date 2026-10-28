@@ -1,3 +1,5 @@
+import type { SharedRun } from './upload.js';
+
 /**
  * The share server's metadata index: repositories, commits and runs.
  * R2 (or a directory) holds the files; this index answers "what exists" and
@@ -12,24 +14,6 @@ export type Sql = {
   transaction<T>(work: () => T): T;
 };
 export type SqlValue = string | number | null;
-
-export type RunRecord = {
-  repo: string; // repository key, including `/~project`
-  repoUrl: string; // normalized repository, without the project
-  project: string;
-  sha: string;
-  ref?: string;
-  committedAt?: string;
-  runId: string;
-  evalId: string;
-  suiteId?: string;
-  status: string;
-  score?: number;
-  startedAt: string;
-  dirty: boolean;
-  /** The dashboard RunSummary served in runs.json. */
-  summary: unknown;
-};
 
 export type RepoRow = {
   key: string;
@@ -53,7 +37,7 @@ export type CommitRow = {
 /** The operations the app needs; async so a Durable Object can sit behind it. */
 export type ShareIndex = {
   hasRun(runId: string): Promise<boolean>;
-  recordRun(record: RunRecord): Promise<void>;
+  recordRun(run: SharedRun): Promise<void>;
   repos(): Promise<RepoRow[]>;
   commits(repo: string): Promise<CommitRow[]>;
   runs(repo: string, sha: string): Promise<unknown[]>;
@@ -116,17 +100,17 @@ export class ShareIndexDb {
   }
 
   /** Idempotent: recording an indexed run again changes nothing. */
-  recordRun(record: RunRecord): void {
+  recordRun(run: SharedRun): void {
     const at = this.now().toISOString();
     this.sql.transaction(() => {
-      if (this.hasRun(record.runId)) return;
+      if (this.hasRun(run.id)) return;
       this.sql.run(
         `INSERT INTO repos (key, url, project, first_seen_at, last_upload_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT (key) DO UPDATE SET last_upload_at = excluded.last_upload_at`,
-        record.repo,
-        record.repoUrl,
-        record.project,
+        run.repoKey,
+        run.source.repo,
+        run.source.project,
         at,
         at,
       );
@@ -136,38 +120,38 @@ export class ShareIndexDb {
          ON CONFLICT (repo, sha) DO UPDATE SET
            ref = COALESCE(commits.ref, excluded.ref),
            committed_at = COALESCE(commits.committed_at, excluded.committed_at)`,
-        record.repo,
-        record.sha,
-        record.ref ?? null,
-        record.committedAt ?? null,
+        run.repoKey,
+        run.source.commit,
+        run.source.ref ?? null,
+        run.source.committedAt ?? null,
         at,
       );
       this.sql.run(
         `INSERT INTO runs (id, repo, sha, eval_id, suite_id, status, score,
                            started_at, dirty, summary_json, uploaded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        record.runId,
-        record.repo,
-        record.sha,
-        record.evalId,
-        record.suiteId ?? null,
-        record.status,
-        record.score ?? null,
-        record.startedAt,
-        record.dirty ? 1 : 0,
-        JSON.stringify(record.summary),
+        run.id,
+        run.repoKey,
+        run.source.commit,
+        run.evalId,
+        run.suiteId ?? null,
+        run.status,
+        run.score ?? null,
+        run.startedAt,
+        run.source.dirty ? 1 : 0,
+        JSON.stringify(run.summary),
         at,
       );
       // Dirty runs are shown but never count towards a commit's results.
-      if (!record.dirty)
+      if (!run.source.dirty)
         this.sql.run(
           `UPDATE commits SET runs = runs + 1,
              passed = passed + ?, failed = failed + ?
            WHERE repo = ? AND sha = ?`,
-          record.status === 'passed' ? 1 : 0,
-          record.status === 'failed' || record.status === 'errored' ? 1 : 0,
-          record.repo,
-          record.sha,
+          run.status === 'passed' ? 1 : 0,
+          run.status === 'failed' || run.status === 'errored' ? 1 : 0,
+          run.repoKey,
+          run.source.commit,
         );
     });
   }
@@ -235,7 +219,7 @@ export class ShareIndexDb {
 export function asyncIndex(db: ShareIndexDb): ShareIndex {
   return {
     hasRun: async (runId) => db.hasRun(runId),
-    recordRun: async (record) => db.recordRun(record),
+    recordRun: async (run) => db.recordRun(run),
     repos: async () => db.repos(),
     commits: async (repo) => db.commits(repo),
     runs: async (repo, sha) => db.runs(repo, sha),

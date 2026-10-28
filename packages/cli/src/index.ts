@@ -29,7 +29,13 @@ import {
 } from './run-command.js';
 import { tidyReports } from './tidy.js';
 import { detectSource, runCatalog, shortSource } from './source.js';
-import { selectRuns, shareRuns } from './share-command.js';
+import {
+  noRunsMessage,
+  selectionSummary,
+  selectRuns,
+  shareRuns,
+  shareTarget,
+} from './share-command.js';
 import { createDirectoryShareApp, repoKey } from '@evalkit/share';
 import { newProject } from './new-project.js';
 import {
@@ -826,25 +832,10 @@ const shareCommand = Command.make(
               head,
               { all, allowDirty },
             ),
-          (value) =>
-            [
-              `${plural(value.selected.length, 'run')} to share`,
-              value.otherCommits && !all
-                ? `${value.otherCommits} from other commits`
-                : '',
-              value.dirty ? `${value.dirty} dirty skipped` : '',
-              value.untracked ? `${value.untracked} untracked skipped` : '',
-              value.archived ? `${value.archived} archived skipped` : '',
-            ]
-              .filter(Boolean)
-              .join(' · '),
+          (value) => selectionSummary(value, { all }),
         );
         if (!selection.selected.length)
-          throw new Error(
-            selection.dirty
-              ? `No committed runs for ${shortSource(head)}: ${plural(selection.dirty, 'run')} came from uncommitted changes. Commit and rerun \`evalkit run\`, or pass --allow-dirty.`
-              : `No runs for ${shortSource(head)}. Run \`evalkit run\` first${all ? '' : ', or pass --all to share runs from other commits'}.`,
-          );
+          throw new Error(noRunsMessage(selection, head, { all }));
         const result = await shareRuns({
           serverUrl,
           reportRoot,
@@ -857,13 +848,7 @@ const shareCommand = Command.make(
           console.log(
             `  ${yellow('✗')} ${failure.runId.slice(0, 8)} ${dim(failure.error)}`,
           );
-        const commits = new Set(
-          selection.selected.map((run) => run.source.commit),
-        );
-        const target = new URL(
-          `/${repoKey(head)}${commits.size === 1 ? `/-/${[...commits][0]}` : ''}`,
-          serverUrl,
-        ).href;
+        const target = shareTarget(serverUrl, head, selection.selected);
         console.log(
           `\n  ${bold(result.failed.length ? 'Shared with errors' : 'Shared')} in ${duration(performance.now() - started)}\n`,
         );

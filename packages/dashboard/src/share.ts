@@ -27,16 +27,28 @@ export type ShareCommit = {
   failed: number;
 };
 
+/** The page's share context, or undefined outside the share server. */
 export function readShareContext(
   element: HTMLElement = document.documentElement,
 ): ShareContext | undefined {
   const raw = element.dataset.evalkitShare;
   if (!raw) return undefined;
+  let value: Record<string, unknown>;
   try {
-    return JSON.parse(raw) as ShareContext;
+    value = JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return undefined;
   }
+  if (typeof value?.repos !== 'string') return undefined;
+  const optional = (key: 'commits' | 'data' | 'repo' | 'missing') =>
+    typeof value[key] === 'string' ? { [key]: value[key] } : {};
+  return {
+    repos: value.repos,
+    ...optional('commits'),
+    ...optional('data'),
+    ...optional('repo'),
+    ...optional('missing'),
+  };
 }
 
 /**
