@@ -2,7 +2,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { starterFiles, starterReadme } from './new-project-template.js';
 
-const npmDependency = '^0.6.0';
+const npmDependency = '^0.6.1';
 const ignored = [
   'node_modules/',
   '_evalkit-results/',
