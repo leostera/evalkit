@@ -24,6 +24,8 @@ export function runMatrix(
     'runId' | 'trialId' | 'parameters' | 'matrix'
   > & {
     selection?: MatrixSelection;
+    /** The suite each cell's run is recorded under, when `suiteId` is not given. */
+    suiteFor?: (cell: EvalMatrixCell) => string | undefined;
     onResult?: (
       cell: EvalMatrixCell,
       result: RunResult,
@@ -54,8 +56,10 @@ export function runMatrix(
               (['local', 'remote', 'sandbox'] as const).find(
                 (name) => agentRuntimes(cell.eval.agent)[name],
               );
+            const suiteId = options.suiteId ?? options.suiteFor?.(cell);
             const result = yield* runEval(cell.eval, {
               ...options,
+              ...(suiteId ? { suiteId } : {}),
               concurrency: 1,
               runtime,
               parameters: cell.parameters,

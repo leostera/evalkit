@@ -92,13 +92,13 @@ export function evaluateCheckpoint(
         ? { matchedToolCall: { eventIndex: match.eventIndex, id: match.id } }
         : {}),
     }).pipe(Effect.mapError((cause) => failure(index, step.name, cause)));
-    yield* Effect.logInfo('checkpoint completed').pipe(
+    yield* Effect.logDebug('checkpoint completed').pipe(
       Effect.annotateLogs({ status: result.status }),
     );
     return { ...result, status };
   }).pipe(
     Effect.tapError((error) =>
-      Effect.logError('checkpoint execution error').pipe(
+      Effect.logDebug('checkpoint execution error').pipe(
         Effect.annotateLogs({ errorName: error._tag }),
       ),
     ),

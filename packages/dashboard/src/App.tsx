@@ -11,6 +11,7 @@ import { VersionPicker } from './components/VersionPicker.js';
 import type { ShareContext } from './share.js';
 import type {
   CatalogEval,
+  LoadError,
   DashboardApi,
   MatrixSummary,
   RunSummary,
@@ -58,13 +59,20 @@ function Dashboard({
   const runsSignature = useRef('');
   const [selected, setSelected] = useState<SelectedTrial>();
   const [error, setError] = useState<string>();
+  const [loadErrors, setLoadErrors] = useState<LoadError[]>([]);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.listCatalog(), api.listSuites(), api.getMatrix()])
-      .then(([nextCatalog, nextSuites, nextMatrix]) => {
+    void Promise.all([
+      api.listCatalog(),
+      api.listSuites(),
+      api.getMatrix(),
+      api.listLoadErrors?.() ?? [],
+    ])
+      .then(([nextCatalog, nextSuites, nextMatrix, nextLoadErrors]) => {
         if (!active) return;
         setCatalog(nextCatalog);
+        setLoadErrors(nextLoadErrors);
         setSuites(nextSuites);
         setMatrix(nextMatrix);
       })
@@ -181,6 +189,14 @@ function Dashboard({
         </p>
       ) : null}
       {error ? <ErrorBanner message={error} /> : null}
+      {loadErrors.length ? (
+        <ErrorBanner
+          title={`${loadErrors.length === 1 ? '1 eval file' : `${loadErrors.length} eval files`} failed to load; their evals are missing below`}
+          message={loadErrors
+            .map((entry) => `${entry.file}: ${entry.error.message}`)
+            .join('\n')}
+        />
+      ) : null}
       <DashboardRoutes
         api={api}
         catalog={catalog}

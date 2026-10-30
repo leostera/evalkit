@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,7 @@ import { loadProject } from './project.js';
 import {
   normalizeRunOptions,
   parseRunArgs,
+  printLoadErrors,
   runProjectCommand,
 } from './run-command.js';
 import { tidyReports } from './tidy.js';
@@ -57,7 +59,7 @@ import {
   yellow,
 } from './terminal.js';
 
-const VERSION = '0.5.0';
+import { VERSION } from './version.js';
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
@@ -85,6 +87,13 @@ async function runEvals(options: {
   const evaluations = options.evalIds.map((id) => registry.get(id));
   if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
   const provenance = await runProvenance(registry);
+  const invocation = {
+    id: randomUUID(),
+    selection: {
+      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+      evalIds: options.evalIds,
+    },
+  };
   await Effect.runPromise(
     runnerLogs(
       Effect.all(
@@ -99,6 +108,7 @@ async function runEvals(options: {
                 report: localReportStore(reportRoot),
                 workspaceRoot: sandboxRoot,
                 suiteId: options.suiteId,
+                invocation,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
                 ...provenance,
@@ -275,7 +285,10 @@ function registerReportRoutes(
   reports: ReturnType<typeof createDashboardReportReader>,
 ): void {
   app.get('/v1/catalog', (context) =>
-    context.json({ evals: registry.catalog() }),
+    context.json({
+      evals: registry.catalog(),
+      loadErrors: project?.loadErrors ?? [],
+    }),
   );
   app.get('/v1/evals', (context) =>
     context.json({ evals: registry.metadata() }),
@@ -459,6 +472,7 @@ async function serveDashboard(): Promise<void> {
   const row = (label: string, value: string) =>
     console.log(`  ${cyan('➜')}  ${bold(label.padEnd(9))}${value}`);
   banner('dev', VERSION);
+  printLoadErrors(project?.loadErrors ?? []);
   row('Local:', cyan(url));
   row(
     'Project:',
@@ -509,6 +523,9 @@ const runOptions = {
   dryRun: Options.boolean('dry-run'),
   all: Options.boolean('all'),
   local: Options.boolean('local'),
+  junit: Options.text('junit').pipe(Options.optional),
+  verbose: Options.boolean('verbose'),
+  skipBroken: Options.boolean('skip-broken'),
 };
 type RunOptions = {
   config: Option.Option<string>;
@@ -528,6 +545,9 @@ type RunOptions = {
   dryRun: boolean;
   all: boolean;
   local: boolean;
+  junit: Option.Option<string>;
+  verbose: boolean;
+  skipBroken: boolean;
 };
 function runInput(options: RunOptions, positionals: string[]) {
   const unexpected = positionals.find((value) => value.startsWith('-'));
@@ -551,6 +571,9 @@ function runInput(options: RunOptions, positionals: string[]) {
       'dry-run': options.dryRun,
       all: options.all,
       local: options.local,
+      junit: Option.getOrUndefined(options.junit),
+      verbose: options.verbose,
+      'skip-broken': options.skipBroken,
     },
     positionals,
   );
@@ -646,9 +669,14 @@ async function loadProjectStep(configPath: string | undefined): Promise<void> {
     () => useProject(configPath),
     () => {
       const where = relative(process.cwd(), projectRoot);
-      return `${plural(project!.registry.evals.length, 'eval')} loaded${where ? ` from ${where}` : ''}`;
+      const broken = project!.loadErrors.length;
+      return `${plural(project!.registry.evals.length, 'eval')} loaded${where ? ` from ${where}` : ''}${broken ? yellow(` · ${plural(broken, 'file')} failed to load`) : ''}`;
     },
   );
+  if (project!.loadErrors.length) {
+    console.log('');
+    printLoadErrors(project!.loadErrors);
+  }
 }
 
 /**

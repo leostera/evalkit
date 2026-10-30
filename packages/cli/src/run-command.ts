@@ -1,17 +1,36 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { Effect } from 'effect';
 import {
   authoringId,
   defineEvalMatrix,
   type JsonObject,
   type JsonValue,
+  type EvalRegistry,
   type MatrixSelection,
 } from '@evalkit/core';
 import { localReportStore, runMatrix } from '@evalkit/runner';
-import { runnerLogs } from './terminal.js';
+import {
+  banner,
+  bold,
+  cyan,
+  dim,
+  interactive,
+  plural,
+  runnerLogs,
+  yellow,
+} from './terminal.js';
 import { detectSource, runCatalog, shortSource } from './source.js';
-import { loadProject } from './project.js';
+import { loadProject, type LoadError } from './project.js';
+import {
+  createRunReporter,
+  scenarioResult,
+  totalsLine,
+} from './run-reporter.js';
+import { junitReport } from './junit.js';
+import { VERSION } from './version.js';
 
 export function parseRunArgs(args: string[]) {
   const { values, positionals } = parseArgs({
@@ -36,6 +55,9 @@ export function parseRunArgs(args: string[]) {
       'dry-run': { type: 'boolean' },
       all: { type: 'boolean' },
       local: { type: 'boolean' },
+      junit: { type: 'string' },
+      verbose: { type: 'boolean' },
+      'skip-broken': { type: 'boolean' },
     },
   });
   return normalizeRunOptions(values, positionals);
@@ -61,6 +83,9 @@ export function normalizeRunOptions(
     'dry-run'?: boolean;
     all?: boolean;
     local?: boolean;
+    junit?: string;
+    verbose?: boolean;
+    'skip-broken'?: boolean;
   },
   positionals: string[],
 ) {
@@ -117,12 +142,41 @@ export function normalizeRunOptions(
   };
 }
 
+/** Load errors that affect what was asked for, so the run must not pretend it covered them. */
+function brokenSelection(
+  loadErrors: LoadError[],
+  request: { suiteId?: string; evalIds: string[]; registry: EvalRegistry },
+): LoadError[] {
+  if (!loadErrors.length) return [];
+  if (request.suiteId)
+    return loadErrors.filter((error) => error.suiteId === request.suiteId);
+  if (request.evalIds.length)
+    // An eval that is not registered may be defined by a file that failed.
+    return request.evalIds.some((id) => !request.registry.get(id))
+      ? loadErrors
+      : [];
+  return loadErrors;
+}
+
+/** Load errors are warnings; `print` is stderr when stdout must stay machine-readable. */
+export function printLoadErrors(
+  loadErrors: readonly LoadError[],
+  print: (line: string) => void = console.log,
+): void {
+  for (const { file, error } of loadErrors)
+    print(
+      `  ${yellow('✗')} ${bold(file)} failed to load:\n    ${dim(error.message)}`,
+    );
+  if (loadErrors.length) print('');
+}
+
 export async function runProjectCommand(
   args: string[],
   cwd = process.cwd(),
   parsed = parseRunArgs(args),
 ): Promise<void> {
   const { values, positionals, parameters } = parsed;
+  const started = performance.now();
   const project = await loadProject(cwd, values.config);
   // Dataset paths are relative to the config project, even when invoked elsewhere.
   process.chdir(project.root);
@@ -131,13 +185,20 @@ export async function runProjectCommand(
     values.eval?.flatMap((value) => value.split(',')) ?? [];
   let matrix;
   let suiteId: string | undefined;
+  // JSON and dry-run output stay machine-readable on stdout.
+  const quiet = Boolean(values.json || values['dry-run']);
+  if (!quiet) banner('run', VERSION);
   if (values.suite) {
     const suite = registry.suites.find((item) => item.id === values.suite);
-    if (!suite) throw new Error(`Unknown suite: ${values.suite}`);
-    suiteId = authoringId(suite);
+    const broken = project.loadErrors.filter(
+      (error) => error.suiteId === values.suite,
+    );
+    if (!suite && !broken.length)
+      throw new Error(`Unknown suite: ${values.suite}`);
+    suiteId = values.suite;
     matrix = defineEvalMatrix({
       id: 'default',
-      evals: suite.evals,
+      evals: suite?.evals ?? [],
       parameters: project.config.matrix?.parameters ?? {},
       defaults: project.config.matrix?.defaults,
       cases: project.config.matrix?.cases,
@@ -155,6 +216,23 @@ export async function runProjectCommand(
           evals: registry.evals,
           parameters: {},
         });
+  }
+  const broken = brokenSelection(project.loadErrors, {
+    ...(suiteId ? { suiteId } : {}),
+    evalIds: requestedEvals,
+    registry,
+  });
+  printLoadErrors(project.loadErrors, quiet ? console.error : console.log);
+  if (broken.length && !values['skip-broken'] && !values['dry-run'])
+    throw new Error(
+      `${plural(broken.length, 'eval file')} in this selection failed to load: ${broken.map((error) => error.file).join(', ')}. Fix ${broken.length === 1 ? 'it' : 'them'}, or pass --skip-broken to run the rest.`,
+    );
+  const knownEvals = requestedEvals.filter((id) => registry.get(id));
+  if (values['skip-broken'] && knownEvals.length < requestedEvals.length) {
+    requestedEvals.length = 0;
+    requestedEvals.push(...knownEvals);
+    if (!requestedEvals.length)
+      throw new Error('Every selected eval is in a file that failed to load.');
   }
   const selection: MatrixSelection = {
     parameters: {},
@@ -194,7 +272,14 @@ export async function runProjectCommand(
     console.log(JSON.stringify(plan, null, 2));
     return;
   }
-  if (cells > (project.config.execution?.maxCells ?? 100) && !values.all)
+  // The cell limit guards matrix sweeps; a plain list of scenarios is never refused.
+  const sweeps =
+    Object.keys(matrix.parameters).length > 0 || Boolean(matrix.cases?.length);
+  if (
+    sweeps &&
+    cells > (project.config.execution?.maxCells ?? 100) &&
+    !values.all
+  )
     throw new Error(
       `Selected ${cells} cells. Narrow the selection, inspect --dry-run, or pass --all.`,
     );
@@ -213,60 +298,114 @@ export async function runProjectCommand(
       resolve(project.root, '_evalkit-dashboard'),
     ],
   });
-  if (!values.json)
-    console.log(
-      `Running ${cells} cell(s) from ${plan.matrix}` +
-        (source
-          ? ` at ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
-          : ' (untracked: not in a git repository)'),
-    );
-  const summary = await Effect.runPromise(
-    runnerLogs(
-      runMatrix(matrix, {
-        selection,
-        concurrency:
-          parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
-        trials,
-        ...(suiteId ? { suiteId } : {}),
-        ...(values.local ? { runtime: 'local' as const } : {}),
-        ...(source ? { source } : {}),
-        catalog: runCatalog(registry),
-        report: localReportStore(reportDir),
-        workspaceRoot: sandboxDir,
-        onResult: (cell, result) => {
-          if (values.json)
-            console.log(
-              JSON.stringify({
-                cell: {
-                  key: cell.key,
-                  eval: authoringId(cell.eval),
-                  parameters: cell.parameters,
-                },
-                result,
-              }),
-            );
-          else {
-            const passed =
-              result.status === 'completed' &&
-              (result.aggregateScoring?.passRate === 1 ||
-                result.scoring?.passed);
-            console.log(
-              `${passed ? 'PASS' : 'FAIL'} ${cell.eval.name ?? authoringId(cell.eval)} ${JSON.stringify(cell.parameters)}\n  report: ${result.reportLocation}`,
-            );
-            for (const trial of result.trials ?? [result]) {
-              for (const checkpoint of trial.scoring?.checkpoints ?? [])
-                console.log(
-                  `  step ${checkpoint.step} ${checkpoint.kind} ${checkpoint.name}: ${checkpoint.status}${checkpoint.value === undefined ? '' : ` (${checkpoint.value})`}`,
-                );
-              for (const score of trial.scoring?.results ?? [])
-                console.log(
-                  `  ${score.kind} ${score.name}: ${score.value ?? 'error'} ${score.explanation ?? ''}`,
-                );
-            }
-          }
-        },
-      }),
+  const suiteOf = new Map(
+    registry.suites.flatMap((suite) =>
+      suite.evals.map(
+        (evaluation) => [authoringId(evaluation), suite.id] as const,
+      ),
     ),
   );
-  if (summary.failed) process.exitCode = 1;
+  const suiteFor = (evalId: string) => suiteId ?? suiteOf.get(evalId);
+  if (!values.json)
+    console.log(
+      `  Running ${plural(cells, 'scenario')}${sweeps ? ` from matrix ${plan.matrix}` : ''}${suiteId ? ` from suite ${suiteId}` : ''}` +
+        (source
+          ? ` at ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
+          : ' (untracked: not in a git repository)') +
+        '\n',
+    );
+  const reporter = createRunReporter({
+    interactive: interactive && !values.json,
+    verbose: Boolean(values.verbose),
+    total: cells,
+    labelFor: (trial) => {
+      const suite = suiteFor(trial.evalId);
+      return suite ? `${suite}/${trial.evalId}` : trial.evalId;
+    },
+    write: values.json ? () => {} : undefined,
+  });
+  const controller = new AbortController();
+  const onInterrupt = () => {
+    if (controller.signal.aborted) {
+      // Second Ctrl+C: leave now; readers show the runs as interrupted.
+      process.exit(130);
+    }
+    controller.abort();
+    if (!values.json) reporter.cancelling();
+  };
+  process.on('SIGINT', onInterrupt);
+  reporter.start();
+  let summary;
+  try {
+    summary = await Effect.runPromise(
+      runnerLogs(
+        runMatrix(matrix, {
+          selection,
+          concurrency:
+            parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
+          trials,
+          ...(suiteId ? { suiteId } : {}),
+          suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
+          ...(values.local ? { runtime: 'local' as const } : {}),
+          ...(source ? { source } : {}),
+          catalog: runCatalog(registry),
+          report: localReportStore(reportDir),
+          workspaceRoot: sandboxDir,
+          signal: controller.signal,
+          invocation: {
+            id: randomUUID(),
+            selection: {
+              ...(suiteId ? { suiteId } : {}),
+              ...(requestedEvals.length ? { evalIds: requestedEvals } : {}),
+              ...(values.matrix ? { matrixId: values.matrix } : {}),
+            },
+          },
+          onEvent: (trial, event) => reporter.onEvent(trial, event),
+          onResult: (cell, result) => {
+            const scenario = scenarioResult(
+              cell,
+              result,
+              suiteFor(authoringId(cell.eval)),
+            );
+            if (values.json)
+              console.log(
+                JSON.stringify({
+                  cell: {
+                    key: cell.key,
+                    eval: authoringId(cell.eval),
+                    parameters: cell.parameters,
+                  },
+                  outcome: scenario.outcome,
+                  result,
+                }),
+              );
+            reporter.onScenario(scenario);
+          },
+        }),
+      ),
+    );
+  } finally {
+    process.off('SIGINT', onInterrupt);
+  }
+  const totals = reporter.finish(performance.now() - started);
+  if (values.junit) {
+    const file = resolve(cwd, values.junit);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, junitReport(reporter.scenarios()));
+  }
+  if (values.json) console.log(JSON.stringify({ summary: totals }));
+  else {
+    console.log(`\n${totalsLine(totals)}`);
+    if (values.junit) console.log(`  ${dim(`JUnit report: ${values.junit}`)}`);
+    console.log(
+      `  ${cyan('➜')} bun run evalkit dev        ${dim('to inspect')}`,
+    );
+    if (project.config.share)
+      console.log(
+        `  ${cyan('➜')} bun run evalkit share      ${dim('to publish')}`,
+      );
+    console.log('');
+  }
+  if (controller.signal.aborted) process.exitCode = 130;
+  else if (summary.failed || broken.length) process.exitCode = 1;
 }

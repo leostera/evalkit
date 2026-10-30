@@ -3,7 +3,7 @@ import { authoringId } from '@evalkit/core';
 import { Effect, Logger, LogLevel } from 'effect';
 
 /** Human CLI output. Colors and live progress only appear on an interactive terminal. */
-const interactive = Boolean(process.stdout.isTTY);
+export const interactive = Boolean(process.stdout.isTTY);
 const colored =
   interactive && !process.env.NO_COLOR && process.env.TERM !== 'dumb';
 

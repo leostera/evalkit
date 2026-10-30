@@ -3,6 +3,11 @@ export type EvalSummary = {
   name?: string;
   suiteId?: string;
 };
+export type LoadError = {
+  file: string;
+  suiteId?: string;
+  error: { name: string; message: string };
+};
 export type CatalogDataset = {
   id: string;
   name?: string;
@@ -141,6 +146,8 @@ export interface DashboardApi {
   /** True for a static `evalkit build` snapshot, which cannot start runs. */
   readOnly?: boolean;
   listCatalog(): Promise<CatalogEval[]>;
+  /** Eval files that failed to import in `evalkit dev`; absent elsewhere. */
+  listLoadErrors?(): Promise<LoadError[]>;
   getMatrix(): Promise<MatrixSummary | null>;
   listMatrixCells(query: MatrixCellQuery): Promise<MatrixCellPage>;
   listEvals(): Promise<EvalSummary[]>;
@@ -184,6 +191,12 @@ export function createHttpDashboardApi(options: {
   return {
     async listCatalog() {
       return (await request<{ evals: CatalogEval[] }>('/v1/catalog')).evals;
+    },
+    async listLoadErrors() {
+      return (
+        (await request<{ loadErrors?: LoadError[] }>('/v1/catalog'))
+          .loadErrors ?? []
+      );
     },
     async listMatrixCells(query) {
       const url = new URL('/v1/matrix/cells', options.baseUrl);
