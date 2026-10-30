@@ -44,6 +44,19 @@ import {
 import { createDirectoryShareApp, repoKey } from '@evalkit/share';
 import { newProject } from './new-project.js';
 import {
+  compareRuns,
+  comparisonLines,
+  comparisonMarkdown,
+  gateFailures,
+  parseFailOn,
+  type ComparedRun,
+} from './compare.js';
+import {
+  baseRunsFromDirectory,
+  baseRunsFromServer,
+  headRuns,
+} from './compare-command.js';
+import {
   banner,
   bold,
   canPrompt,
@@ -57,6 +70,8 @@ import {
   runnerLogs,
   step,
   yellow,
+  red,
+  green,
 } from './terminal.js';
 
 import { VERSION } from './version.js';
@@ -905,6 +920,153 @@ const shareCommand = Command.make(
     }),
 ).pipe(Command.withSubcommands([shareServeCommand]));
 
+const compareCommand = Command.make(
+  'compare',
+  {
+    config,
+    base: Options.text('base').pipe(Options.optional),
+    baseDir: Options.text('base-dir').pipe(Options.optional),
+    markdown: Options.text('markdown').pipe(Options.optional),
+    json: Options.boolean('json'),
+    failOn: Options.text('fail-on').pipe(Options.repeated),
+    requireBase: Options.boolean('require-base'),
+    allowDirty: Options.boolean('allow-dirty'),
+  },
+  (options) =>
+    Effect.tryPromise({
+      try: () =>
+        compareCommandAction({
+          config: Option.getOrUndefined(options.config),
+          base: Option.getOrUndefined(options.base),
+          baseDir: Option.getOrUndefined(options.baseDir),
+          markdown: Option.getOrUndefined(options.markdown),
+          json: options.json,
+          failOn: options.failOn,
+          requireBase: options.requireBase,
+          allowDirty: options.allowDirty,
+        }),
+      catch: (error) => error,
+    }),
+);
+
+async function compareCommandAction(options: {
+  config?: string;
+  base?: string;
+  baseDir?: string;
+  markdown?: string;
+  json: boolean;
+  failOn: string[];
+  requireBase: boolean;
+  allowDirty: boolean;
+}): Promise<void> {
+  if (Boolean(options.base) === Boolean(options.baseDir))
+    throw new Error('Give exactly one of --base <ref> or --base-dir <dir>');
+  const conditions = parseFailOn(options.failOn);
+  const say = options.json ? () => {} : (line = '') => console.log(line);
+  if (!options.json) banner('compare', VERSION);
+  await useProject(options.config);
+  const registry = project!.registry;
+  const head = await detectSource(projectRoot, {
+    outputDirs: [
+      reportRoot,
+      sandboxRoot,
+      resolve(projectRoot, '_evalkit-dashboard'),
+    ],
+  });
+  if (!head)
+    throw new Error(
+      'evalkit compare needs to know the commit: run it inside a git repository or set EVALKIT_SOURCE_REPO and EVALKIT_SOURCE_COMMIT.',
+    );
+  const headSide = headRuns(
+    await createDashboardReportReader(reportRoot, registry).listRuns(),
+    head,
+    { allowDirty: options.allowDirty },
+  );
+  let base: { label: string; runs: ComparedRun[] } | undefined;
+  if (options.baseDir) {
+    const runs = await baseRunsFromDirectory(
+      resolve(process.cwd(), options.baseDir),
+      registry,
+    );
+    base = runs.length ? { label: options.baseDir, runs } : undefined;
+  } else {
+    const serverUrl =
+      process.env.EVALKIT_SHARE_URL ?? project!.config.share?.url;
+    if (!serverUrl)
+      throw new Error(
+        'No share server configured for --base. Set share: { url } in evalkit.config.ts or EVALKIT_SHARE_URL, or use --base-dir.',
+      );
+    const found = await baseRunsFromServer({
+      serverUrl,
+      headers: await resolveShareHeaders(project!.config.share?.headers),
+      head,
+      ref: options.base!,
+    });
+    base = found?.runs.length
+      ? {
+          label: `${found.commit.slice(0, 7)}${found.ref ? ` (${found.ref})` : ''}`,
+          runs: found.runs,
+        }
+      : undefined;
+  }
+  const headLabel = `${shortSource(head)}${head.ref ? ` (${head.ref})` : ''}`;
+  if (!base) {
+    const message = `No shared results for base ${options.base ?? options.baseDir}; nothing to compare.`;
+    if (options.json)
+      console.log(JSON.stringify({ base: null, head: headLabel, message }));
+    else say(`  ${yellow('◇')} ${message}\n`);
+    if (options.requireBase) process.exitCode = 1;
+    return;
+  }
+  if (!headSide.length)
+    throw new Error(
+      `No results at ${headLabel} to compare. Run \`evalkit run\` first${head.dirty ? ', or pass --allow-dirty' : ''}.`,
+    );
+  const comparison = compareRuns(base.runs, headSide);
+  const failures = gateFailures(comparison, conditions);
+  if (options.markdown)
+    await Bun.write(
+      resolve(process.cwd(), options.markdown),
+      comparisonMarkdown(comparison, { base: base.label, head: headLabel }),
+    );
+  if (options.json)
+    console.log(
+      JSON.stringify({
+        base: base.label,
+        head: headLabel,
+        ...comparison,
+        failures,
+      }),
+    );
+  else {
+    const lines = comparisonLines(comparison);
+    say(`  base ${bold(base.label)} → head ${bold(headLabel)}\n`);
+    const marks = {
+      regressed: red('✗'),
+      fixed: green('✓'),
+      'not-comparable': yellow('◌'),
+    };
+    for (const { change, labels } of lines.units)
+      say(
+        `  ${marks[change as keyof typeof marks]} ${`${labels.length} ${change.replace('-', ' ')}`.padEnd(18)} ${labels.join(', ')}`,
+      );
+    say(`  ${dim(lines.counts)}`);
+    const ignored = comparison.ignoredRuns.base + comparison.ignoredRuns.head;
+    if (ignored)
+      say(
+        `  ${dim(`${plural(ignored, 'older run')} of the same scenarios ignored`)}`,
+      );
+    say('');
+    for (const line of lines.suites) say(`  ${line}`);
+    if (lines.datasets) say(`  ${lines.datasets}`);
+    say('');
+    for (const failure of failures) say(`  ${red('✗')} ${failure}`);
+    if (options.markdown) say(`  ${dim(`Markdown: ${options.markdown}`)}`);
+    if (failures.length || options.markdown) say('');
+  }
+  if (failures.length) process.exitCode = 1;
+}
+
 const app = Command.make('evalkit').pipe(
   Command.withSubcommands([
     newCommand,
@@ -913,6 +1075,7 @@ const app = Command.make('evalkit').pipe(
     buildCommand,
     tidyCommand,
     shareCommand,
+    compareCommand,
   ]),
 );
 const cli = Command.run(app, { name: 'EvalKit', version: VERSION });

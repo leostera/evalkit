@@ -40,7 +40,78 @@ export type LocalRun = {
   source?: RunSource;
   /** The `evalkit run` or dashboard launch that started it (schema version 5+). */
   invocationId?: string;
+  /** Each scorer's mean over the run's trials; skipped results are left out. */
+  scorers?: RunScorer[];
+  /** Content digests of the datasets the run's trials used (schema version 5+). */
+  datasets?: RunDatasetDigests[];
 };
+
+export type RunScorer = {
+  name: string;
+  kind: 'predicate' | 'judge';
+  /** Absent when every result was skipped or errored. */
+  mean?: number;
+  /** Results with a value. */
+  count: number;
+  skipped: number;
+};
+
+export type RunDatasetDigests = { id: string; digests: string[] };
+
+function runScorers(
+  trials: readonly (
+    { scoring?: { results: readonly LocalScoreInput[] } } | undefined
+  )[],
+): RunScorer[] {
+  const byKey = new Map<string, RunScorer & { sum: number }>();
+  for (const trial of trials)
+    for (const score of trial?.scoring?.results ?? []) {
+      const kind = score.kind;
+      const key = `${kind}\0${score.name}`;
+      const entry = byKey.get(key) ?? {
+        name: score.name,
+        kind,
+        count: 0,
+        skipped: 0,
+        sum: 0,
+      };
+      if (score.skipped) entry.skipped += 1;
+      else if (score.value !== undefined) {
+        entry.count += 1;
+        entry.sum += score.value;
+      }
+      byKey.set(key, entry);
+    }
+  return [...byKey.values()].map(({ sum, ...scorer }) => ({
+    ...scorer,
+    ...(scorer.count ? { mean: sum / scorer.count } : {}),
+  }));
+}
+
+type LocalScoreInput = {
+  name: string;
+  kind: 'predicate' | 'judge';
+  value?: number;
+  skipped?: true;
+};
+
+function runDatasets(
+  manifests: readonly (
+    { datasets?: readonly { id: string; digest: string }[] } | undefined
+  )[],
+): RunDatasetDigests[] {
+  const byId = new Map<string, Set<string>>();
+  for (const manifest of manifests)
+    for (const dataset of manifest?.datasets ?? []) {
+      const digests = byId.get(dataset.id) ?? new Set<string>();
+      digests.add(dataset.digest);
+      byId.set(dataset.id, digests);
+    }
+  return [...byId].map(([id, digests]) => ({
+    id,
+    digests: [...digests].sort(),
+  }));
+}
 
 /** Written into a run directory by `evalkit tidy`; deleting it restores the run. */
 export const ARCHIVE_MARKER = 'archived.json';
@@ -187,9 +258,16 @@ export function createDashboardReportReader(
         ifPresent(() => readTrialSummary(root, id, trialId)),
       ),
     );
+    const trialManifests = await Promise.all(
+      (trialIds ?? []).map((trialId) =>
+        ifPresent(() => readTrialManifest(root, id, trialId)),
+      ),
+    );
     const scores = trials.flatMap((trial) =>
       trial?.scoring?.overall === undefined ? [] : [trial.scoring.overall],
     );
+    const scorers = runScorers(trials);
+    const datasets = runDatasets(trialManifests);
     const archived = await ifPresent(() =>
       stat(resolve(root, id, ARCHIVE_MARKER)),
     );
@@ -237,6 +315,8 @@ export function createDashboardReportReader(
               scores.reduce((sum, score) => sum + score, 0) / scores.length,
           }
         : {}),
+      ...(scorers.length ? { scorers } : {}),
+      ...(datasets.length ? { datasets } : {}),
     };
   }
 

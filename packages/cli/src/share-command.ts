@@ -246,7 +246,7 @@ function parseUploadResult(value: unknown): UploadResult {
 }
 
 /** Redirects and non-JSON answers come from something in front of the server. */
-async function expectShareServer(
+export async function expectShareServer(
   response: Response,
   serverUrl: string,
 ): Promise<void> {
