@@ -2,6 +2,59 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [0.6.0] - 2026-10-30
+
+Scenarios, datasets and CI reporting ([RFD0007](docs/rfds/RFD0007-scenarios-datasets-and-ci-reporting.md)). This release has breaking changes; see [Migrating from 0.5](#migrating-from-05) below.
+
+### Added
+
+- **Datasets.** `defineDataset({ ... })` declares named data that scenarios use: files placed in each trial's workspace, a value for the agent (`context.data[id]`) and scorers (`data[id]`), or both. Static datasets give `files` (a directory or a map of paths), `value` or `valueFile` (`.json`, or `.jsonl` as an array). Computed datasets give `onLoad`, called once per process and cached, and optionally `onRun` to derive each trial's copy. `visibility: 'evaluator'` keeps a dataset from the agent. Each trial records a digest of every dataset it used.
+- **Directory suites.** Each directory directly below `scenarios/` is a suite, with no registry. `discovery.suites: false` turns this off.
+- **Simpler agents.** `send()` may return the turn's result (a reply string, or `{ reply, toolCalls, usage }`) instead of emitting events. Lifecycle events are optional, `close()` is optional, `runtimes` defaults to in-process, and `identity.name` defaults to `identity.id`.
+- **Scoring helpers.** The scoring context has `output` (the final assistant message) and `data`. `predicate(name, run, { passAt })` passes numeric scores at a threshold. A scorer may return `skip(reason)`: it is recorded, neither passes nor fails, and is left out of averages.
+- **Plain values at the boundary.** Event content, turn results, metadata, evidence and dataset values accept ordinary objects and are converted to JSON once, with errors naming the bad field (`data.accounts[3].created: bigint is not JSON`). `toJson` is exported.
+- **Isolated loading.** An eval file that throws when imported becomes a load error for that file only. `run` fails when it selects a broken file unless `--skip-broken`; `--dry-run`, `build`, `dev`, `tidy` and `share` warn and continue, and the dashboard shows the error.
+- **CI output.** `evalkit run` shows live progress, quieter result lines and one final summary. `--junit <file>` writes a JUnit report with one test case per scenario and matrix cell. Ctrl+C cancels cleanly: trials stop, runs are saved as `cancelled`, and a second Ctrl+C exits at once.
+- **`evalkit compare`** compares a commit's results with a base (`--base <ref>` from the share server, or `--base-dir <dir>`): regressed, fixed, new, removed and unchanged scenarios, score changes per suite, and changed datasets. `--markdown <file>` writes a merge request comment, `--json` prints JSON, `--fail-on regression` or `--fail-on score-drop=0.05` gates CI, and `--require-base` fails without a base.
+- **Dashboard.**
+  - Two groups. **Evals** has a colour-coded Scoreboard (latest result, score, last ten runs and pass rate per scenario and matrix cell), and Runs, Trials and Workspaces, which share one set of filters kept in the URL. **Library** has Agents, Judges, Scenarios and Datasets, each with a page showing how it is defined, the file and line it is defined at, and which scenarios use it.
+  - The header shows the repository and commit being viewed.
+  - Run, trial and workspace pages have stable URLs and breadcrumbs; trials show the trajectory first.
+  - A file explorer browses trial workspaces and static dataset files.
+  - Runs show their commit and a **dirty** label; cancelled runs have their own status.
+  - Wide matrices stay readable: only parameters that differ get columns, and long filters have a search.
+- **Node.** The CLI runs on Node 22.18 or later as well as Bun. The bin prefers Bun when it is installed; `EVALKIT_RUNTIME` picks one.
+- The published type declarations are readable per entry point, and the EvalKit skills ship in the package under `dist/skills`.
+
+### Changed
+
+- **Breaking:** scenarios live in `scenarios/` instead of `evals/`, and `evalkit new` scaffolds `scenarios/` and `datasets/`.
+- **Breaking:** `fixtures` and its helpers (`directory`, `file`, `inlineFile`, `dynamic`) are removed; use datasets.
+- **Breaking:** report schema version 5 records datasets, the owning process and skipped scores. Readers still accept versions 2 to 4. A run left `running` by a process that is gone is shown as cancelled (interrupted). `share` never uploads cancelled runs.
+- **Breaking:** dashboard URLs changed with no redirects: `/scoreboard`, `/runs`, `/trials`, `/workspaces`, `/runs/:id/trials/:id[/workspace]` and `/library/{agents,judges,scenarios,datasets}/:id`. Old links (`/suites`, `/evals`, `/scenarios`, `/agents`, `?trial=`) land on the scoreboard.
+- `execution.maxCells` limits matrix expansion only; a plain selection of scenarios is never refused for its size.
+
+### Migrating from 0.5
+
+1. **Move `evals/` to `scenarios/`.** EvalKit stops with a hint if it finds `evals/` and no `scenarios/`. To keep the old directory, set `testDir: 'evals'` in `evalkit.config.ts`.
+2. **Suites.** If your registry only existed to group scenarios into suites, delete it and put each suite's files in a directory (`scenarios/billing/*.eval.ts` is suite `billing`). Directory names must be lowercase kebab-case. Keep an explicit registry if you need full control; it ignores directories.
+3. **Fixtures become datasets.** Move `fixtures/` to `datasets/`, define each one with `defineDataset`, and pass `datasets: [...]` instead of `fixtures: [...]`:
+
+   | 0.5                                        | 0.6                                                                           |
+   | ------------------------------------------ | ----------------------------------------------------------------------------- |
+   | `directory('fixtures/repo')`               | `defineDataset({ id: 'repo', files: 'datasets/repo' })`                       |
+   | `file(src, { dst, visibility })`           | `defineDataset({ id, visibility, files: { [dst]: { file: src } } })`          |
+   | `inlineFile('notes.md', text, visibility)` | `defineDataset({ id, visibility, files: { 'notes.md': text } })`              |
+   | `dynamic(async (context) => files)`        | `defineDataset({ id, onLoad: () => ({}), onRun: (_, trial) => ({ files }) })` |
+
+   Dataset files are placed below a directory named after the dataset (`repo/…` in the workspace). Set `mount: '.'` to place them at the workspace root as fixtures did, or update the paths your agent and scorers read.
+
+4. **Expected answers.** Data your scorers need (labels, expected values) that lived in `metadata` or module constants can move to an evaluator dataset's `value` and be read as `data[id]` on the scoring context.
+5. **Agents (optional).** Adapters can drop the `started`, `turn-started`, `turn-completed` and `completed` events and return the reply from `send()`. Existing adapters keep working.
+6. **Scorers (optional).** Replace searching the trajectory for the last assistant message with `output`, wrapping numeric scores in thresholds with `passAt`, and fake "not applicable" passes with `skip(reason)`. Drop `JSON.parse(JSON.stringify(x)) as JsonValue` casts.
+7. **CI.** Add `--junit evalkit-junit.xml` to `evalkit run` and publish it as a test report. To gate merge requests, run `evalkit compare --base main --fail-on regression`.
+8. **Bookmarks.** Update saved dashboard links to the new URLs above.
+
 ## [0.5.0] - 2026-10-28
 
 ### Added
@@ -85,7 +138,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.5.0]: https://github.com/leostera/evalkit/compare/0dd8717...main
+[0.6.0]: https://github.com/leostera/evalkit/compare/72148d4...main
+[0.5.0]: https://github.com/leostera/evalkit/compare/0dd8717...72148d4
 [0.4.0]: https://github.com/leostera/evalkit/compare/5e67e72...0dd8717
 [0.3.0]: https://github.com/leostera/evalkit/compare/38c34be...5e67e72
 [0.2.0]: https://github.com/leostera/evalkit/compare/3f8855a...38c34be

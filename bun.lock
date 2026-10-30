@@ -51,6 +51,15 @@
         "effect": "^3.19.0",
       },
     },
+    "examples/support-suite": {
+      "name": "@evalkit/example-support-suite",
+      "dependencies": {
+        "@evalkit/cli": "workspace:*",
+        "@evalkit/core": "workspace:*",
+        "@evalkit/runner": "workspace:*",
+        "effect": "^3.19.0",
+      },
+    },
     "packages/agents": {
       "name": "@evalkit/agents",
       "version": "0.0.1",
@@ -438,6 +447,8 @@
     "@evalkit/example-interleaved-scenario": ["@evalkit/example-interleaved-scenario@workspace:examples/interleaved-scenario"],
 
     "@evalkit/example-starter": ["@evalkit/example-starter@workspace:examples/starter"],
+
+    "@evalkit/example-support-suite": ["@evalkit/example-support-suite@workspace:examples/support-suite"],
 
     "@evalkit/package-build": ["@evalkit/package-build@workspace:packages/evalkit"],
 
