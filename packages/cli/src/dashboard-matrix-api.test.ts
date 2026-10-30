@@ -14,13 +14,13 @@ import { fileURLToPath } from 'node:url';
 test('dashboard rejects unselected matrix runs and persists one selected cell', async () => {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-dashboard-matrix-'));
   const port = 40000 + Math.floor(Math.random() * 20000);
-  await mkdir(join(root, 'evals'));
+  await mkdir(join(root, 'scenarios'));
   await writeFile(
     join(root, 'evalkit.config.js'),
     "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] }, exclude: [{ model: 'scout', mode: 'without-docs' }] }, execution: { trials: 3 } };\n",
   );
   await writeFile(
-    join(root, 'evals', 'echo.eval.js'),
+    join(root, 'scenarios', 'echo.eval.js'),
     "export default { id: 'echo', agent: { start: async () => ({ send: async () => {}, close: async () => {} }) }, transcript: [], scoring: [] };\n",
   );
   const child = Bun.spawn(

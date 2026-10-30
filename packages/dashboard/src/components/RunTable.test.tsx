@@ -22,7 +22,7 @@ const catalog: CatalogEval[] = [
     path: 'greeting',
     trialCount: 1,
     agent: { kind: 'in-process', name: 'Greeter', runtimes: [] },
-    fixtures: [],
+    datasets: [],
     scorers: [],
   },
 ];

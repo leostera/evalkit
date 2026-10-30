@@ -6,12 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   defineAgent,
+  defineDataset,
   defineEval,
-  directory,
-  file,
-  dynamic,
-  inlineFile,
+  expectToolCall,
   predicate,
+  skip,
   user,
   parseTrajectoryJsonl,
   RunManifestSchema,
@@ -288,24 +287,28 @@ describe('runEval', () => {
     ).rejects.toThrow('does not declare the requested sandbox runtime');
   });
 
-  test('provisions isolated candidate and evaluator fixtures', async () => {
+  test('provisions isolated candidate and evaluator datasets', async () => {
     const root = await reportDirectory();
     const source = await reportDirectory();
-    let candidateSawEvaluatorFixture = false;
+    let candidateSawEvaluatorData = false;
     let candidateRoot = '';
-    await writeFile(path.join(source, 'starter.txt'), 'candidate fixture');
+    let agentData: unknown;
+    await writeFile(path.join(source, 'starter.txt'), 'candidate dataset');
     const evaluation = defineEval({
       id: 'eval-0a',
       agent: defineAgent({
-        async start({ context, onEvent }) {
+        async start({ context }) {
+          agentData = context.data;
           return {
             async send() {
               candidateRoot = context.workspace.root;
               try {
-                await readFile(path.join(context.workspace.root, 'hidden.txt'));
-                candidateSawEvaluatorFixture = true;
+                await readFile(
+                  path.join(context.workspace.root, 'answers', 'hidden.txt'),
+                );
+                candidateSawEvaluatorData = true;
               } catch {
-                // Evaluator-only fixtures are materialized in a separate tree.
+                // Evaluator-only datasets are materialized in a separate tree.
               }
               const starter = await readFile(
                 path.join(context.workspace.root, 'project', 'starter.txt'),
@@ -315,49 +318,54 @@ describe('runEval', () => {
                 path.join(context.workspace.root, 'agent-output.txt'),
                 starter.toUpperCase(),
               );
-              await onEvent({
-                kind: 'message',
-                role: 'assistant',
-                content: 'Created output.',
-                timestamp: new Date().toISOString(),
-              });
+              return 'Created output.';
             },
-            async close() {},
           };
         },
       }),
-      fixtures: [
-        directory(source, { dst: 'project', visibility: 'candidate' }),
-        file(path.join(source, 'starter.txt'), {
-          dst: 'copied.txt',
-          visibility: 'evaluator',
+      datasets: [
+        defineDataset({
+          id: 'project',
+          files: source,
+          value: { goal: 'upper' },
         }),
-        inlineFile('hidden.txt', 'evaluator fixture', 'evaluator'),
-        dynamic(() =>
-          inlineFile('generated.txt', 'dynamic fixture', 'candidate'),
-        ),
+        defineDataset({
+          id: 'answers',
+          visibility: 'evaluator',
+          files: {
+            'hidden.txt': 'evaluator dataset',
+            'copied.txt': { file: path.join(source, 'starter.txt') },
+          },
+          value: { expected: 'CANDIDATE DATASET' },
+        }),
       ],
       transcript: [user('Create the output')],
       scoring: [
-        predicate('checks-both-workspaces', async ({ artifacts }) => {
-          const output = await readFile(
-            path.join(artifacts.candidate.root, 'agent-output.txt'),
-            'utf8',
-          );
-          const hidden = await readFile(
-            path.join(artifacts.evaluator.root, 'hidden.txt'),
-            'utf8',
-          );
-          const copied = await readFile(
-            path.join(artifacts.evaluator.root, 'copied.txt'),
-            'utf8',
-          );
-          return output === 'CANDIDATE FIXTURE' &&
-            hidden === 'evaluator fixture' &&
-            copied === 'candidate fixture'
-            ? 1
-            : 0;
-        }),
+        predicate(
+          'checks-both-workspaces',
+          async ({ artifacts, data, output }) => {
+            const written = await readFile(
+              path.join(artifacts.candidate.root, 'agent-output.txt'),
+              'utf8',
+            );
+            const hidden = await readFile(
+              path.join(artifacts.evaluator.root, 'answers', 'hidden.txt'),
+              'utf8',
+            );
+            const copied = await readFile(
+              path.join(artifacts.evaluator.root, 'answers', 'copied.txt'),
+              'utf8',
+            );
+            const expected = (data.answers as { expected: string }).expected;
+            return written === expected &&
+              hidden === 'evaluator dataset' &&
+              copied === 'candidate dataset' &&
+              output === 'Created output.' &&
+              (data.project as { goal: string }).goal === 'upper'
+              ? 1
+              : 0;
+          },
+        ),
       ],
     });
 
@@ -367,72 +375,291 @@ describe('runEval', () => {
       trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
     });
 
+    expect(result.error).toBeUndefined();
     expect(result.status).toBe('completed');
     expect(result.scoring?.passed).toBe(true);
-    expect(candidateSawEvaluatorFixture).toBe(false);
+    expect(candidateSawEvaluatorData).toBe(false);
+    expect(agentData).toEqual({ project: { goal: 'upper' } });
     await expect(access(candidateRoot)).rejects.toThrow();
 
-    const snapshotRoot = path.join(
+    const trialRoot = path.join(
       root,
       '0197f17c-4d89-7f81-9d42-6c497e6f6b34',
       'trials',
       '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
-      'artifacts',
     );
+    const manifest = Schema.decodeUnknownSync(TrialManifestSchema)(
+      JSON.parse(await readFile(path.join(trialRoot, 'manifest.json'), 'utf8')),
+    );
+    expect(manifest.schemaVersion).toBe(5);
+    expect(
+      manifest.datasets?.map(({ id, visibility }) => [id, visibility]),
+    ).toEqual([
+      ['project', 'candidate'],
+      ['answers', 'evaluator'],
+    ]);
+    expect(manifest.datasets?.[0]?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(
       await readFile(
-        path.join(snapshotRoot, 'candidate', 'agent-output.txt'),
+        path.join(trialRoot, 'artifacts', 'candidate', 'agent-output.txt'),
         'utf8',
       ),
-    ).toBe('CANDIDATE FIXTURE');
+    ).toBe('CANDIDATE DATASET');
     await expect(
-      access(path.join(snapshotRoot, 'evaluator', 'hidden.txt')),
+      access(path.join(trialRoot, 'artifacts', 'evaluator')),
     ).rejects.toThrow();
-  });
-
-  test('fails safely when fixture destinations escape the workspace', async () => {
-    const root = await reportDirectory();
-    const evaluation = defineEval({
-      id: 'eval-0b',
-      agent: testAgent('unused'),
-      fixtures: [inlineFile('../outside.txt', 'nope', 'candidate')],
-      transcript: [],
-      scoring: [],
-    });
-
-    const result = await execute(evaluation, {
-      report: localReportStore(root),
-      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b36',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b37',
-    });
-
-    expect(result.status).toBe('failed');
-    expect(result.error?.message).toContain('escapes its workspace');
-  });
-
-  test('fails safely for duplicate fixture destinations', async () => {
-    const root = await reportDirectory();
-    const evaluation = defineEval({
-      id: 'eval-0c',
-      agent: testAgent('unused'),
-      fixtures: [
-        inlineFile('same.txt', 'first', 'candidate'),
-        inlineFile('same.txt', 'second', 'candidate'),
-      ],
-      transcript: [],
-      scoring: [],
-    });
-
-    const result = await execute(evaluation, {
-      report: localReportStore(root),
-      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b38',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b39',
-    });
-
-    expect(result.status).toBe('failed');
-    expect(result.error?.message).toContain(
-      'Duplicate candidate fixture destination',
+    const trajectory = parseTrajectoryJsonl(
+      await readFile(path.join(trialRoot, 'trajectory.jsonl'), 'utf8'),
     );
+    expect(
+      trajectory.some(
+        (event) =>
+          event.source === 'aut' &&
+          event.kind === 'message' &&
+          event.content === 'Created output.',
+      ),
+    ).toBe(true);
+  });
+
+  test('loads computed datasets once and derives each trial with onRun', async () => {
+    const root = await reportDirectory();
+    let loads = 0;
+    const seen: unknown[] = [];
+    const accounts = defineDataset({
+      id: 'accounts',
+      onLoad: async () => {
+        loads++;
+        return { value: ['a', 'b', 'c'] };
+      },
+      onRun: ({ value }, trial) => ({
+        value: (value as string[])[trial.trialIndex],
+        files: { 'account.txt': `account ${trial.trialIndex}` },
+      }),
+    });
+    const evaluation = defineEval({
+      id: 'eval-computed',
+      agent: defineAgent({
+        async start({ context }) {
+          seen.push(context.data.accounts);
+          return { send: async () => 'ok' };
+        },
+      }),
+      datasets: [accounts],
+      policy: { trials: 3 },
+      transcript: [user('hi')],
+      scoring: [],
+    });
+    const options = { report: localReportStore(root), concurrency: 1 };
+    await execute(evaluation, options);
+    await execute(evaluation, options);
+    expect(loads).toBe(1);
+    expect(seen).toEqual(['a', 'b', 'c', 'a', 'b', 'c']);
+  });
+
+  test('retries a failed dataset load and fails only the trial', async () => {
+    const root = await reportDirectory();
+    let attempts = 0;
+    const flaky = defineDataset({
+      id: 'flaky',
+      onLoad: () => {
+        attempts++;
+        if (attempts === 1) throw new Error('service unavailable');
+        return { value: 1 };
+      },
+    });
+    const evaluation = defineEval({
+      id: 'eval-flaky',
+      agent: testAgent('ok'),
+      datasets: [flaky],
+      transcript: [user('hi')],
+      scoring: [],
+    });
+    const first = await execute(evaluation, { report: localReportStore(root) });
+    expect(first.status).toBe('failed');
+    expect(first.error?.message).toContain('service unavailable');
+    const second = await execute(evaluation, {
+      report: localReportStore(root),
+    });
+    expect(second.status).toBe('completed');
+    expect(attempts).toBe(2);
+  });
+
+  test('reads value files as JSON and JSONL relative to the root', async () => {
+    const root = await reportDirectory();
+    const project = await reportDirectory();
+    await writeFile(path.join(project, 'facts.json'), '{"answer":42}');
+    await writeFile(
+      path.join(project, 'rows.jsonl'),
+      '{"id":"a"}\n\n{"id":"b"}\n',
+    );
+    await writeFile(path.join(project, 'bad.jsonl'), '{"id":"a"}\nnope\n');
+    let data: unknown;
+    const evaluation = (
+      datasets: Parameters<typeof defineEval>[0]['datasets'],
+    ) =>
+      defineEval({
+        id: 'eval-files',
+        agent: defineAgent({
+          async start({ context }) {
+            data = context.data;
+            return { send: async () => {} };
+          },
+        }),
+        datasets,
+        transcript: [user('hi')],
+        scoring: [],
+      });
+    await execute(
+      evaluation([
+        defineDataset({ id: 'facts', valueFile: 'facts.json' }),
+        defineDataset({ id: 'rows', valueFile: 'rows.jsonl' }),
+      ]),
+      { report: localReportStore(root), root: project },
+    );
+    expect(data).toEqual({
+      facts: { answer: 42 },
+      rows: [{ id: 'a' }, { id: 'b' }],
+    });
+    const bad = await execute(
+      evaluation([defineDataset({ id: 'bad', valueFile: 'bad.jsonl' })]),
+      { report: localReportStore(root), root: project },
+    );
+    expect(bad.error?.message).toContain('bad.jsonl:2');
+  });
+
+  test('fails safely when dataset paths escape or collide', async () => {
+    const root = await reportDirectory();
+    const escaping = await execute(
+      defineEval({
+        id: 'eval-0b',
+        agent: testAgent('unused'),
+        datasets: [
+          defineDataset({ id: 'out', files: { '../../outside.txt': 'nope' } }),
+        ],
+        transcript: [],
+        scoring: [],
+      }),
+      { report: localReportStore(root) },
+    );
+    expect(escaping.status).toBe('failed');
+    expect(escaping.error?.message).toContain('escapes its workspace');
+
+    const colliding = await execute(
+      defineEval({
+        id: 'eval-0c',
+        agent: testAgent('unused'),
+        datasets: [
+          defineDataset({
+            id: 'first',
+            mount: '.',
+            files: { 'same.txt': 'a' },
+          }),
+          defineDataset({
+            id: 'second',
+            mount: '.',
+            files: { 'same.txt': 'b' },
+          }),
+        ],
+        transcript: [],
+        scoring: [],
+      }),
+      { report: localReportStore(root) },
+    );
+    expect(colliding.status).toBe('failed');
+    expect(colliding.error?.message).toContain(
+      'Dataset second would overwrite same.txt',
+    );
+  });
+
+  test('applies passAt, records skip() and leaves skips out of the average', async () => {
+    const root = await reportDirectory();
+    const result = await execute(
+      defineEval({
+        id: 'eval-scoring',
+        agent: testAgent('hello'),
+        transcript: [
+          user('hi'),
+          predicate('not here', () => skip('no tools in this turn')),
+        ],
+        scoring: [
+          predicate('half', () => 0.5, { passAt: 0.5 }),
+          predicate('n/a', () => skip('not applicable')),
+          predicate('evidence', () => ({
+            value: 1,
+            evidence: { at: new Date('2026-01-01T00:00:00.000Z') },
+          })),
+        ],
+      }),
+      { report: localReportStore(root) },
+    );
+    expect(result.scoring?.passed).toBe(true);
+    expect(result.scoring?.overall).toBe(0.75);
+    expect(result.scoring?.results[1]).toMatchObject({
+      name: 'n/a',
+      skipped: true,
+      explanation: 'not applicable',
+    });
+    expect(result.scoring?.results[1]?.value).toBeUndefined();
+    expect(result.scoring?.results[2]?.evidence).toEqual({
+      at: '2026-01-01T00:00:00.000Z',
+    });
+    expect(result.scoring?.checkpoints?.[0]?.status).toBe('skipped');
+  });
+
+  test('records returned turn results and needs no close()', async () => {
+    const root = await reportDirectory();
+    const result = await execute(
+      defineEval({
+        id: 'eval-returning',
+        agent: defineAgent({
+          async start() {
+            return {
+              async send() {
+                return {
+                  reply: 'Order 7 ships tomorrow.',
+                  toolCalls: [
+                    {
+                      name: 'lookupOrder',
+                      arguments: { id: 7 },
+                      result: { eta: 'tomorrow' },
+                    },
+                  ],
+                  usage: { totalTokens: 12 },
+                };
+              },
+            };
+          },
+        }),
+        transcript: [
+          user('Where is order 7?'),
+          expectToolCall({ name: 'lookupOrder', arguments: { id: 7 } }),
+        ],
+        scoring: [
+          predicate('mentions eta', ({ output }) =>
+            String(output).includes('tomorrow'),
+          ),
+        ],
+      }),
+      { report: localReportStore(root) },
+    );
+    expect(result.status).toBe('completed');
+    expect(result.scoring?.passed).toBe(true);
+    const trajectory = parseTrajectoryJsonl(
+      await readFile(
+        path.join(
+          result.reportLocation,
+          'trials',
+          result.trialId,
+          'trajectory.jsonl',
+        ),
+        'utf8',
+      ),
+    );
+    expect(
+      trajectory
+        .filter((event) => event.source === 'aut')
+        .map((event) => event.kind),
+    ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
   });
 
   test('persists a partial trajectory when the AUT fails', async () => {

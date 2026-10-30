@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import { agentRuntimes } from '@evalkit/core';
 import type {
   EvalMatrix,
   EvalMatrixCell,
@@ -38,7 +39,7 @@ export function runMatrix(
             const runtime =
               options.runtime ??
               (['local', 'remote', 'sandbox'] as const).find(
-                (name) => cell.eval.agent.runtimes?.[name],
+                (name) => agentRuntimes(cell.eval.agent)[name],
               );
             const result = yield* runEval(cell.eval, {
               ...options,

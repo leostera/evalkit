@@ -20,7 +20,7 @@ const standalone: CatalogEval = {
   path: 'echo',
   trialCount: 1,
   agent: { kind: 'worker', runtimes: [{ name: 'local', kind: 'bun' }] },
-  fixtures: [],
+  datasets: [],
   scorers: [],
 };
 

@@ -46,7 +46,11 @@ export function evaluateRule(
           }
         : yield* runJudgeAgent(rule, judgeAgent!, input, placement);
     const score = yield* Effect.try({
-      try: () => normalizeScore(evaluated.value),
+      try: () =>
+        normalizeScore(
+          evaluated.value,
+          rule.kind === 'predicate' ? rule.passAt : undefined,
+        ),
       catch: (cause) => failure(rule.name, cause),
     });
     const withJudge =
@@ -59,6 +63,13 @@ export function evaluateRule(
       durationMs: 0,
       ...withJudge,
     }).pipe(Effect.mapError((cause) => failure(rule.name, cause)));
+    if (validated.skipped)
+      return {
+        skipped: true as const,
+        ...(validated.explanation === undefined
+          ? {}
+          : { explanation: validated.explanation }),
+      };
     return {
       value: validated.value!,
       passed: validated.passed!,

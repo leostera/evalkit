@@ -8,6 +8,7 @@ import { Args, Command, Options } from '@effect/cli';
 import { NodeContext } from '@effect/platform-node';
 import { Hono } from 'hono';
 import {
+  agentRuntimes,
   authoringId,
   type EvalDefinition,
   type EvalRegistry,
@@ -70,7 +71,7 @@ async function loadRegistry(): Promise<EvalRegistry> {
 
 function runtimeFor(evaluation: EvalDefinition): AgentRuntimeName | undefined {
   for (const runtime of ['local', 'remote', 'sandbox'] as const) {
-    if (evaluation.agent.runtimes?.[runtime]) return runtime;
+    if (agentRuntimes(evaluation.agent)[runtime]) return runtime;
   }
   return undefined;
 }

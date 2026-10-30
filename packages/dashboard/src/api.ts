@@ -3,6 +3,13 @@ export type EvalSummary = {
   name?: string;
   suiteId?: string;
 };
+export type CatalogDataset = {
+  id: string;
+  name?: string;
+  visibility: 'candidate' | 'evaluator';
+  source: 'static' | 'computed';
+  mount: string;
+};
 export type CatalogEval = EvalSummary & {
   path: string;
   trialCount: number;
@@ -13,12 +20,8 @@ export type CatalogEval = EvalSummary & {
     version?: string;
     runtimes: Array<{ name: string; kind: string }>;
   };
-  fixtures: Array<{
-    kind: string;
-    source: string;
-    destination?: string;
-    visibility?: 'candidate' | 'evaluator';
-  }>;
+  /** Absent in catalogs recorded before datasets existed. */
+  datasets?: CatalogDataset[];
   scorers: Array<{ name: string; kind: string }>;
 };
 export type MatrixSummary = {

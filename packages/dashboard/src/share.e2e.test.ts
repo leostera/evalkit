@@ -52,7 +52,7 @@ afterAll(async () => {
 
 test('shared results are browsable by commit with a version picker', async () => {
   const project = join(root, 'project');
-  await mkdir(join(project, 'evals'), { recursive: true });
+  await mkdir(join(project, 'scenarios'), { recursive: true });
   const evalSource = (message: string) => `
     export default {
       id: 'shared-greeting',
@@ -65,7 +65,7 @@ test('shared results are browsable by commit with a version picker', async () =>
       scoring: [],
     };`;
   await writeFile(
-    join(project, 'evals', 'greeting.eval.js'),
+    join(project, 'scenarios', 'greeting.eval.js'),
     evalSource('one'),
   );
   await writeFile(
@@ -97,7 +97,7 @@ test('shared results are browsable by commit with a version picker', async () =>
   expect(output).toContain('1 new');
 
   await writeFile(
-    join(project, 'evals', 'greeting.eval.js'),
+    join(project, 'scenarios', 'greeting.eval.js'),
     evalSource('two'),
   );
   git(

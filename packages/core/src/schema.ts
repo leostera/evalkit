@@ -62,7 +62,7 @@ export const RunSourceSchema = Schema.Struct({
 });
 
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3, 4),
+  schemaVersion: Schema.Literal(2, 3, 4, 5),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -74,7 +74,7 @@ export const RunMetadataSchema = Schema.Struct({
 });
 
 export const TrialMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3, 4),
+  schemaVersion: Schema.Literal(2, 3, 4, 5),
   runUri: resourceUriSchema('run'),
   trialUri: resourceUriSchema('trial'),
   trialIndex: Schema.Number,
@@ -83,6 +83,18 @@ export const TrialMetadataSchema = Schema.Struct({
   matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
+  datasets: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          visibility: Schema.Literal('candidate', 'evaluator'),
+          source: Schema.Literal('static', 'computed'),
+          digest: Schema.String,
+        }),
+      ),
+    ),
+  ),
 });
 
 /** On-disk manifests include a lifecycle status; older finalized manifests may still say running. */
@@ -124,6 +136,7 @@ export const ScoreResultSchema = Schema.Struct({
   judge: Schema.optional(JudgeRunInfoSchema),
   durationMs: Schema.Number,
   error: Schema.optional(RecordedErrorSchema),
+  skipped: Schema.optional(Schema.Literal(true)),
 });
 export const CheckpointResultSchema = Schema.Struct({
   step: Schema.Number,
@@ -265,7 +278,7 @@ const runnerEvent = {
     source: Schema.Literal('runner'),
     kind: Schema.Literal('checkpoint-completed'),
     step: Schema.Number,
-    status: Schema.Literal('passed', 'failed'),
+    status: Schema.Literal('passed', 'failed', 'skipped'),
     timestamp: Schema.String,
   }),
   checkpointError: Schema.Struct({
@@ -285,7 +298,8 @@ const runnerEvent = {
     source: Schema.Literal('runner'),
     kind: Schema.Literal('scorer-completed'),
     scorer: Schema.String,
-    value: Schema.Number,
+    value: Schema.optional(Schema.Number),
+    skipped: Schema.optional(Schema.Literal(true)),
     timestamp: Schema.String,
   }),
   scorerFailed: Schema.Struct({

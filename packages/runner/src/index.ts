@@ -1,6 +1,6 @@
 export {
   AutExecutionError,
-  FixtureError,
+  DatasetError,
   ReportError,
   ScoringError,
   CheckpointExecutionError,
@@ -8,14 +8,19 @@ export {
 
 import { Effect, Exit, Scope } from 'effect';
 import {
+  agentRuntimes,
+  normalizeAutEvent,
   recordError,
   resourceUri,
   authoringId,
+  toJsonObject,
   type AgentRuntimeName,
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
   type AutEvent,
+  type AutEventInput,
+  type JsonValue,
   type EvalDefinition,
   type ReportStore,
   type RunnerEvent,
@@ -33,9 +38,14 @@ import {
 } from '@evalkit/core';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
+import {
+  prepareDatasets,
+  trialDatasets,
+  type PreparedDataset,
+} from './datasets.js';
 import { executeTranscript, type TranscriptProgress } from './transcript.js';
 import { evaluateFinalScorers, scoreSummary } from './final-scoring.js';
-import { AutExecutionError, FixtureError, ReportError } from './errors.js';
+import { AutExecutionError, DatasetError, ReportError } from './errors.js';
 import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
@@ -65,6 +75,10 @@ export type RunEvalOptions = {
   source?: RunSource;
   /** The project's evals and suites at run time, saved beside the manifest. */
   catalog?: RunCatalog;
+  /** Project root; dataset paths resolve against it. Default: the working directory. */
+  root?: string;
+  /** Aborting stops new trials from starting and is passed to dataset loaders. */
+  signal?: AbortSignal;
   now?: () => Date;
 };
 
@@ -126,7 +140,7 @@ function runMetadata(
   startedAt: string,
 ): RunMetadata {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
@@ -263,7 +277,7 @@ async function runTrial(
   const startedAt = now().toISOString();
   const selectedRuntime = options.runtime;
   const runtime = selectedRuntime
-    ? definition.agent.runtimes?.[selectedRuntime]
+    ? agentRuntimes(definition.agent)[selectedRuntime]
     : undefined;
   if (selectedRuntime && !runtime) {
     throw new Error(
@@ -272,18 +286,39 @@ async function runTrial(
   }
 
   const randomSeed = crypto.getRandomValues(new Uint32Array(1))[0]!;
-  const fixtureContext = {
+  const trialIndex = options.trialIndex ?? 0;
+  const signal = options.signal ?? new AbortController().signal;
+  const root = options.root ?? process.cwd();
+  const baseContext = {
     runId,
     evalId: authoringId(definition),
     trialId,
-    trialIndex: options.trialIndex ?? 0,
+    trialIndex,
     metadata: {
-      ...definition.metadata,
+      ...toJsonObject(definition.metadata ?? {}, `${definition.id}.metadata`),
       randomSeed,
     },
     ...(options.parameters ? { parameters: options.parameters } : {}),
     ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
+  // Loading may fail; the trial then fails with the error recorded in its report.
+  let datasetsError: unknown;
+  let prepared: PreparedDataset[] = [];
+  try {
+    prepared = await prepareDatasets(definition.datasets ?? [], root, {
+      evalId: baseContext.evalId,
+      runId,
+      trialId,
+      trialIndex,
+      seed: randomSeed,
+      parameters: options.parameters ?? {},
+      signal,
+    });
+  } catch (error) {
+    datasetsError = error;
+  }
+  const candidateData = datasetValues(prepared, 'candidate');
+  const scoringData = datasetValues(prepared, 'all');
   const events: TrajectoryEvent[] = [];
   const runWriter =
     options.runWriter ??
@@ -292,7 +327,7 @@ async function runTrial(
       { catalog: options.catalog },
     ));
   const trialWriter = await runWriter.startTrial({
-    schemaVersion: 4,
+    schemaVersion: 5,
     runId,
     runUri: canonicalId('run', runId),
     trialId,
@@ -303,6 +338,7 @@ async function runTrial(
     parameters: options.parameters,
     matrix: options.matrix,
     startedAt,
+    ...(prepared.length ? { datasets: trialDatasets(prepared) } : {}),
   });
 
   let writeChain = Promise.resolve();
@@ -322,7 +358,9 @@ async function runTrial(
   };
   const emitRunner = (event: RunnerEvent) =>
     append({ ...event, source: 'runner' });
-  const onAutEvent = (event: AutEvent) => append({ ...event, source: 'aut' });
+  const emitAut = (event: AutEvent) => append({ ...event, source: 'aut' });
+  const onAutEvent = (event: AutEventInput) =>
+    emitAut(normalizeAutEvent(event, now));
 
   let workspace: TrialWorkspace | undefined;
   let context: AutContext | undefined;
@@ -337,17 +375,21 @@ async function runTrial(
 
   try {
     await emitRunner({ kind: 'trial-started', timestamp: now().toISOString() });
+    if (datasetsError)
+      throw new DatasetError({
+        cause: datasetsError,
+        message:
+          datasetsError instanceof Error
+            ? datasetsError.message
+            : String(datasetsError),
+      });
     workspace = await runBoundary(
       Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>
-            createTrialWorkspace(
-              fixtureContext,
-              definition.fixtures,
-              options.workspaceRoot,
-            ),
+            createTrialWorkspace(trialId, prepared, options.workspaceRoot),
           catch: (cause) =>
-            new FixtureError({
+            new DatasetError({
               cause,
               message: cause instanceof Error ? cause.message : String(cause),
             }),
@@ -356,7 +398,7 @@ async function runTrial(
           Effect.tryPromise({
             try: () => created.cleanup(),
             catch: (cause) =>
-              new FixtureError({
+              new DatasetError({
                 cause,
                 message: cause instanceof Error ? cause.message : String(cause),
               }),
@@ -375,7 +417,8 @@ async function runTrial(
     );
     const trialWorkspace = workspace;
     const trialContext: AutContext = {
-      ...fixtureContext,
+      ...baseContext,
+      data: candidateData,
       workspace: trialWorkspace.artifacts.candidate,
       evaluatorWorkspace: trialWorkspace.artifacts.evaluator,
     };
@@ -406,13 +449,15 @@ async function runTrial(
                 now,
                 randomSeed,
                 emitRunner,
+                emitAut,
+                data: scoringData,
                 progress,
               }),
             catch: (cause) => cause,
           }),
         (opened) =>
           Effect.tryPromise({
-            try: () => opened.close(),
+            try: async () => opened.close?.(),
             catch: (cause) =>
               new AutExecutionError({
                 cause,
@@ -453,6 +498,7 @@ async function runTrial(
       reportingFailed,
       results: scoreResults,
       skippedScorers,
+      data: scoringData,
       now,
       emitRunner,
     });
@@ -531,4 +577,18 @@ async function runTrial(
     scoring,
     ...(error ? { error } : {}),
   };
+}
+
+function datasetValues(
+  prepared: readonly PreparedDataset[],
+  audience: 'candidate' | 'all',
+): { [id: string]: JsonValue } {
+  const values: { [id: string]: JsonValue } = {};
+  for (const { dataset, value } of prepared) {
+    if (value === undefined) continue;
+    if (audience === 'candidate' && dataset.visibility !== 'candidate')
+      continue;
+    values[dataset.id] = value;
+  }
+  return values;
 }

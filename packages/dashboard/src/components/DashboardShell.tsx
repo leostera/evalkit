@@ -36,10 +36,10 @@ const sections: readonly Section[] = [
   },
   { label: 'Agents', href: '/agents', icon: RobotIcon, matches: ['/agents'] },
   {
-    label: 'Fixtures',
-    href: '/fixtures',
+    label: 'Datasets',
+    href: '/datasets',
     icon: FolderOpenIcon,
-    matches: ['/fixtures'],
+    matches: ['/datasets'],
   },
   {
     label: 'Runs',

@@ -8,6 +8,8 @@ import {
   type AutAdapter,
   type ExpectToolCallStep,
   type TrajectoryEvent,
+  type JsonObject,
+  type JsonValue,
   type TurnView,
   type CheckpointResult,
 } from '@evalkit/core';
@@ -33,11 +35,13 @@ export function evaluateCheckpoint(
     artifacts: ArtifactView;
     trajectory: { events: readonly TrajectoryEvent[] };
     turn: TurnView;
+    output?: JsonValue;
+    data: JsonObject;
   },
   now: () => Date,
   judgeAgent?: AutAdapter,
 ): Effect.Effect<
-  CheckpointResult & { status: 'passed' | 'failed' },
+  CheckpointResult & { status: 'passed' | 'failed' | 'skipped' },
   CheckpointExecutionError
 > {
   const annotations = {
@@ -71,13 +75,19 @@ export function evaluateCheckpoint(
         : yield* evaluateRule(step, input, judgeAgent, 'transcript').pipe(
             Effect.mapError((cause) => failure(index, step.name, cause)),
           );
+    const status = score.skipped
+      ? ('skipped' as const)
+      : score.passed
+        ? ('passed' as const)
+        : ('failed' as const);
+    const { skipped: _, ...recorded } = score;
     const result = yield* Schema.decodeUnknown(CheckpointResultSchema)({
       step: index,
       kind: step.kind,
       name: step.name,
-      status: score.passed ? 'passed' : 'failed',
+      status,
       durationMs: now().getTime() - started.getTime(),
-      ...score,
+      ...recorded,
       ...(match
         ? { matchedToolCall: { eventIndex: match.eventIndex, id: match.id } }
         : {}),
@@ -85,10 +95,7 @@ export function evaluateCheckpoint(
     yield* Effect.logInfo('checkpoint completed').pipe(
       Effect.annotateLogs({ status: result.status }),
     );
-    return {
-      ...result,
-      status: score.passed ? ('passed' as const) : ('failed' as const),
-    };
+    return { ...result, status };
   }).pipe(
     Effect.tapError((error) =>
       Effect.logError('checkpoint execution error').pipe(

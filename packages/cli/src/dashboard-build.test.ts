@@ -179,7 +179,7 @@ test('static routes cover known pages and skip unsafe IDs', () => {
   ).toEqual([
     'suites',
     'agents',
-    'fixtures',
+    'datasets',
     'runs',
     'suites/basics',
     'evals/basics#hello',

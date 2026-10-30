@@ -4,6 +4,7 @@ import {
   type AutContext,
   type CheckpointResult,
   type EvalDefinition,
+  type JsonObject,
   type RunnerEvent,
   type ScoreResult,
   type TrajectoryEvent,
@@ -14,13 +15,16 @@ import { runBoundary } from './effect-boundary.js';
 import { ScoringError } from './errors.js';
 import { evaluateRule } from './evaluate-rule.js';
 import type { TrialWorkspace } from './workspace.js';
+import { turnOutput } from './transcript.js';
 
 export function scoreSummary(
   results: ScoreResult[],
   checkpoints: CheckpointResult[],
   skippedScorers: string[],
 ): TrialScoring {
-  const valid = results.filter((result) => result.value !== undefined);
+  const valid = results.filter(
+    (result) => result.value !== undefined && !result.skipped,
+  );
   const hasError = results.some((result) => result.error !== undefined);
   return {
     results,
@@ -35,8 +39,10 @@ export function scoreSummary(
         }),
     passed:
       !hasError &&
-      results.every((result) => result.passed === true) &&
-      checkpoints.every((result) => result.status === 'passed') &&
+      results.every((result) => result.skipped || result.passed === true) &&
+      checkpoints.every(
+        (result) => result.status === 'passed' || result.status === 'skipped',
+      ) &&
       !skippedScorers.length,
   };
 }
@@ -51,6 +57,7 @@ type FinalScoringInput = {
   reportingFailed: boolean;
   results: ScoreResult[];
   skippedScorers: string[];
+  data: JsonObject;
   now: () => Date;
   emitRunner: (event: RunnerEvent) => Promise<void>;
 };
@@ -97,6 +104,8 @@ export async function evaluateFinalScorers(
             artifacts: workspace.artifacts,
             trajectory: { events },
             ...(lastTurn ? { turn: lastTurn } : {}),
+            ...turnOutput(lastTurn),
+            data: input.data,
           },
           definition.judge,
           'scoring',
@@ -133,7 +142,9 @@ export async function evaluateFinalScorers(
     await emitRunner({
       kind: 'scorer-completed',
       scorer: scorer.name,
-      value: result.value ?? 0,
+      ...(result.skipped
+        ? { skipped: true as const }
+        : { value: result.value ?? 0 }),
       timestamp: now().toISOString(),
     });
   }

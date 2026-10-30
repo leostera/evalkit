@@ -17,7 +17,7 @@ function tokens(source: string): string[] {
 describe('homepage examples', () => {
   test('the public example matches the generated starter', () => {
     expect(tokens(heroDefinition)).toEqual(
-      tokens(starterFiles['evals/greeting.eval.ts']!),
+      tokens(starterFiles['scenarios/greeting.eval.ts']!),
     );
     expect(heroDefinition).toContain("from '@leostera/evalkit'");
     expect(heroDefinition).not.toContain('@evalkit/core');

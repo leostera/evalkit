@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url';
 test('dashboard exposes checkpoint failure and skipped steps for a launched eval', async () => {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-checkpoint-api-'));
   const port = 40000 + Math.floor(Math.random() * 20000);
-  await mkdir(join(root, 'evals'));
+  await mkdir(join(root, 'scenarios'));
   await writeFile(
-    join(root, 'evals', 'steps.eval.js'),
+    join(root, 'scenarios', 'steps.eval.js'),
     `
     export default {
       id: 'steps',

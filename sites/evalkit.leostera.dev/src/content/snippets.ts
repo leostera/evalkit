@@ -12,19 +12,15 @@ export const codeTheme = {
 };
 
 // Public-package example: kept in sync with packages/cli/src/new-project-template.ts.
-export const heroDefinition = `import { defineEval, file, user } from '@leostera/evalkit';
+export const heroDefinition = `import { defineEval, user } from '@leostera/evalkit';
 import { greetingAgent } from '../agents/greeting-agent.js';
+import { greeting } from '../datasets/greeting.dataset.js';
 import { matchesGreeting } from '../judges/matches-greeting.js';
 
 export default defineEval({
   id: 'greeting',
   agent: greetingAgent,
-  fixtures: [
-    file('fixtures/greeting.txt', {
-      dst: 'greeting.txt',
-      visibility: 'candidate',
-    }),
-  ],
+  datasets: [greeting],
   transcript: [user('Ada')],
   scoring: [matchesGreeting],
 });`;

@@ -5,7 +5,7 @@ export class AutExecutionError extends Data.TaggedError('AutExecutionError')<{
   message?: string;
 }> {}
 
-export class FixtureError extends Data.TaggedError('FixtureError')<{
+export class DatasetError extends Data.TaggedError('DatasetError')<{
   cause: unknown;
   message?: string;
 }> {}

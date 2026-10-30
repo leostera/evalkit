@@ -4,11 +4,13 @@ import {
   defineEval,
   defineEvalMatrix,
   defineSuite,
-  directory,
+  agentRuntimes,
+  defineDataset,
   registerEvals,
-  dynamic,
-  inlineFile,
   judge,
+  skip,
+  toJson,
+  turnResultEvents,
   predicate,
   user,
 } from './index';
@@ -23,51 +25,162 @@ const aut = {
 };
 
 describe('core definitions', () => {
-  test('defaults shorthand directory fixtures to their candidate basename', () => {
-    expect(directory('../shared-fixtures/starter')).toEqual({
-      kind: 'directory',
-      src: '../shared-fixtures/starter',
-      dst: 'starter',
+  test('defaults dataset visibility to candidate and mount to its ID', () => {
+    expect(
+      defineDataset({ id: 'help-center', files: 'datasets/help' }),
+    ).toEqual({
+      kind: 'dataset',
+      id: 'help-center',
       visibility: 'candidate',
+      mount: 'help-center',
+      source: { kind: 'static', files: 'datasets/help' },
     });
+    expect(
+      defineDataset({ id: 'root', mount: './', value: { a: 1 } }).mount,
+    ).toBe('.');
   });
 
-  test('scopes fixture destinations to each eval without naming fixtures', () => {
-    const first = defineEval({
+  test('rejects empty, conflicting and escaping datasets', () => {
+    expect(() => defineDataset({ id: 'empty' })).toThrow('is empty');
+    expect(() =>
+      defineDataset({ id: 'both', value: 1, valueFile: 'x.json' }),
+    ).toThrow('both value and valueFile');
+    expect(() =>
+      defineDataset({
+        id: 'mixed',
+        onLoad: () => ({}),
+        files: 'x',
+      } as never),
+    ).toThrow('is computed');
+    expect(() =>
+      defineDataset({ id: 'escape', mount: '../out', value: 1 }),
+    ).toThrow('escapes');
+    expect(() => defineDataset({ id: 'Bad Id', value: 1 })).toThrow(
+      'kebab-case',
+    );
+  });
+
+  test('lists datasets in the catalog and rejects duplicates and fixtures', () => {
+    const answers = defineDataset({
+      id: 'answers',
+      visibility: 'evaluator',
+      value: { a: 1 },
+    });
+    const accounts = defineDataset({ id: 'accounts', onLoad: () => ({}) });
+    const evaluation = defineEval({
       id: 'first',
       agent: aut,
-      fixtures: [
-        directory('fixtures/first/original', {
-          dst: 'original',
-          visibility: 'evaluator',
-        }),
-      ],
+      datasets: [answers, accounts],
       transcript: [],
       scoring: [],
     });
-    const second = defineEval({
-      id: 'second',
-      agent: aut,
-      fixtures: [
-        directory('fixtures/second/original', {
-          dst: 'original',
-          visibility: 'evaluator',
-        }),
-      ],
-      transcript: [],
-      scoring: [],
-    });
-    const catalog = registerEvals([first, second]).catalog();
-    expect(catalog.map((entry) => entry.fixtures[0]?.destination)).toEqual([
-      'original',
-      'original',
+    expect(registerEvals([evaluation]).catalog()[0]?.datasets).toEqual([
+      {
+        id: 'answers',
+        visibility: 'evaluator',
+        source: 'static',
+        mount: 'answers',
+      },
+      {
+        id: 'accounts',
+        visibility: 'candidate',
+        source: 'computed',
+        mount: 'accounts',
+      },
     ]);
-    expect(catalog[0]?.fixtures[0]).toEqual({
-      kind: 'directory',
-      source: 'fixtures/first/original',
-      destination: 'original',
-      visibility: 'evaluator',
+    expect(() =>
+      defineEval({
+        id: 'twice',
+        agent: aut,
+        datasets: [answers, answers],
+        transcript: [],
+        scoring: [],
+      }),
+    ).toThrow('more than once');
+    expect(() =>
+      defineEval({
+        id: 'raw',
+        agent: aut,
+        datasets: [{ id: 'raw' } as never],
+        transcript: [],
+        scoring: [],
+      }),
+    ).toThrow('defineDataset');
+    expect(() =>
+      defineEval({
+        id: 'old',
+        agent: aut,
+        fixtures: [],
+        transcript: [],
+        scoring: [],
+      } as never),
+    ).toThrow('replaced by datasets');
+  });
+
+  test('checks metadata is JSON when the eval is defined', () => {
+    expect(() =>
+      defineEval({
+        id: 'big',
+        agent: aut,
+        metadata: { size: 1n },
+        transcript: [],
+        scoring: [],
+      }),
+    ).toThrow('big.metadata.size: bigint is not JSON');
+  });
+
+  test('validates predicate pass thresholds and skip reasons', () => {
+    expect(predicate('p', () => 1, { passAt: 0.5 }).passAt).toBe(0.5);
+    expect(() => predicate('p', () => 1, { passAt: 2 })).toThrow('0 to 1');
+    expect(skip('not applicable')).toEqual({
+      skipped: true,
+      reason: 'not applicable',
     });
+    expect(() => skip(' ')).toThrow('reason');
+  });
+
+  test('defaults agent runtimes to local in-process', () => {
+    expect(agentRuntimes(aut)).toEqual({ local: { kind: 'in-process' } });
+    expect(
+      registerEvals([
+        defineEval({ id: 'e', agent: aut, transcript: [], scoring: [] }),
+      ]).catalog()[0]?.agent.runtimes,
+    ).toEqual([{ name: 'local', kind: 'in-process' }]);
+  });
+
+  test('converts plain values to JSON with paths in errors', () => {
+    const date = new Date('2026-01-02T03:04:05.000Z');
+    expect(
+      toJson({ when: date, gone: undefined, list: [1, undefined] }),
+    ).toEqual({ when: '2026-01-02T03:04:05.000Z', list: [1, null] });
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    expect(() => toJson(cycle, 'row')).toThrow('row.self: cycle is not JSON');
+    expect(() => toJson({ n: Number.NaN })).toThrow('value.n: NaN is not JSON');
+    expect(() => toJson({ f: () => 1 })).toThrow('function is not JSON');
+  });
+
+  test('records returned turn results as events', () => {
+    const now = () => new Date('2026-01-01T00:00:00.000Z');
+    expect(
+      turnResultEvents(
+        {
+          reply: { text: 'done' },
+          toolCalls: [{ name: 'lookup', arguments: { id: 1 }, result: 'ok' }],
+          usage: { totalTokens: 3 },
+        },
+        2,
+        now,
+      ).map((event) => event.kind),
+    ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
+    expect(turnResultEvents('hi', 1, now)).toEqual([
+      {
+        kind: 'message',
+        role: 'assistant',
+        content: 'hi',
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
   });
 
   test('preserves declarative evaluation values', () => {
@@ -75,7 +188,6 @@ describe('core definitions', () => {
       id: 'eval-03',
       agent: aut,
       judge: { ...aut },
-      fixtures: [dynamic(() => inlineFile('input.txt', 'hello', 'candidate'))],
       transcript: [
         user('hello'),
         agent({ contains: ['hello'] }),

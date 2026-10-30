@@ -3,6 +3,8 @@ import * as Schema from 'effect/Schema';
 import {
   JsonValueSchema,
   TrajectoryEventSchema,
+  normalizeAutEvent,
+  turnResultEvents,
   type AutAdapter,
   type AutContext,
   type AutEvent,
@@ -34,7 +36,8 @@ export function runJudgeAgent(
   const events: AutEvent[] = [];
   const context: AutContext = {
     ...input.context,
-    // Judge tools operate in evaluator space, not the candidate's mutable workspace.
+    // Judges see every dataset value and work in evaluator space, not the candidate's mutable workspace.
+    data: input.data,
     workspace: input.artifacts.evaluator,
     evaluatorWorkspace: input.artifacts.evaluator,
   };
@@ -59,7 +62,7 @@ export function runJudgeAgent(
             onEvent: (event) => {
               // Validate normalized judge observations before persisting them separately.
               const observed = Schema.decodeUnknownSync(TrajectoryEventSchema)({
-                ...event,
+                ...normalizeAutEvent(event, () => new Date()),
                 source: 'aut',
               });
               if (observed.source !== 'aut')
@@ -72,12 +75,16 @@ export function runJudgeAgent(
       }),
       (session) =>
         Effect.tryPromise({
-          try: () => session.send(prompt),
+          try: async () => {
+            const result = await session.send(prompt);
+            if (result !== undefined)
+              events.push(...turnResultEvents(result, 1, () => new Date()));
+          },
           catch: (cause) => failure(rule.name, cause),
         }),
       (session) =>
         Effect.tryPromise({
-          try: () => session.close(),
+          try: async () => session.close?.(),
           catch: (cause) => failure(rule.name, cause),
         }).pipe(
           Effect.catchAll((error) =>

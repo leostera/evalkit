@@ -12,9 +12,9 @@ test('dashboard API lists a run and trial before their summaries exist', async (
   const port = 40000 + Math.floor(Math.random() * 20000);
   const runDir = join(root, '_evalkit-results', runId);
   const trialDir = join(runDir, 'trials', trialId);
-  await mkdir(join(root, 'evals'), { recursive: true });
+  await mkdir(join(root, 'scenarios'), { recursive: true });
   await writeFile(
-    join(root, 'evals', 'echo.eval.js'),
+    join(root, 'scenarios', 'echo.eval.js'),
     "export default { id: 'echo', agent: { start: async () => ({ send: async () => {}, close: async () => {} }) }, transcript: [], scoring: [] };\n",
   );
   const child = Bun.spawn(

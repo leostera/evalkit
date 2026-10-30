@@ -225,10 +225,10 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
   expect(result.scoring?.overall).toBe(1);
   expect(aut.sends).toEqual(['first', 'revise']);
   expect(aut.closed).toBe(1);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(4);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(5);
   expect(
     (await readTrialManifest(dir, result.runId, result.trialId)).schemaVersion,
-  ).toBe(4);
+  ).toBe(5);
   const scoring = await readTrialScoring(dir, result.runId, result.trialId);
   expect(scoring.checkpoints?.map((c) => c.status)).toEqual([
     'passed',
@@ -336,7 +336,7 @@ test('check errors stop regardless of failfast, remain distinct from false, and 
       user('first'),
       predicate('invalid', () => ({
         value: 0.5,
-        evidence: { notJson: undefined! },
+        evidence: { notJson: 1n },
       })),
       user('second'),
     ],

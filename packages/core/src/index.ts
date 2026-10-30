@@ -1,4 +1,7 @@
 import { authorId, type ResourceUri } from './identity.js';
+import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
+import type { AutEventInput, TurnResult } from './aut-events.js';
+import { toJsonObject } from './json.js';
 export {
   defineConfig,
   type EvalkitConfig,
@@ -91,7 +94,7 @@ export type RunnerEvent =
   | {
       kind: 'checkpoint-completed';
       step: number;
-      status: 'passed' | 'failed';
+      status: 'passed' | 'failed' | 'skipped';
       timestamp: string;
     }
   | {
@@ -104,7 +107,9 @@ export type RunnerEvent =
   | {
       kind: 'scorer-completed';
       scorer: string;
-      value: number;
+      /** Absent when the scorer returned `skip()`. */
+      value?: number;
+      skipped?: true;
       timestamp: string;
     }
   | {
@@ -136,33 +141,47 @@ export type AutContext = {
   /** Run-time parameters supplied by the eval definition or CLI invocation. */
   parameters?: JsonObject;
   runtime?: AgentRuntimeName;
+  /** Values of the scenario's candidate datasets, by dataset ID. */
+  data: JsonObject;
   /** Contains only resources visible to the AUT/model. */
   workspace: CandidateWorkspace;
   /** Private evaluator capability for trusted AUT adapters; never expose this to the model. */
   evaluatorWorkspace: EvaluatorWorkspace;
 };
 
-export type FixtureContext = Omit<
-  AutContext,
-  'workspace' | 'evaluatorWorkspace'
->;
-
 export type AutAdapter<TMessage = string> = {
   readonly identity?: AutIdentity;
-  /** Available execution environments for this AUT. */
+  /** Available execution environments for this AUT. Default: `{ local: { kind: 'in-process' } }`. */
   readonly runtimes?: AgentRuntimes;
   start(options: {
     context: AutContext;
     runtime?: AgentRuntime;
-    onEvent: (event: AutEvent) => void | Promise<void>;
+    /** Optional: stream events as they happen. Returning a turn result from `send` is enough for most agents. */
+    onEvent: (event: AutEventInput) => void | Promise<void>;
   }): Promise<AutSession<TMessage>>;
 };
 
 export type AutSession<TMessage = string> = {
-  /** Resolves once the AUT has completed the turn initiated by this message. */
-  send(message: TMessage): Promise<void>;
-  close(): Promise<void>;
+  /**
+   * Resolves once the AUT has completed the turn initiated by this message.
+   * It may return the turn's reply and tool calls instead of emitting events.
+   */
+  send(message: TMessage): Promise<void | TurnResult>;
+  /** Optional; defaults to doing nothing. */
+  close?(): Promise<void>;
 };
+
+/** Used when an agent declares no runtimes. */
+export const DEFAULT_AGENT_RUNTIMES: AgentRuntimes = {
+  local: { kind: 'in-process' },
+};
+
+/** The runtimes an agent can run in, applying the default. */
+export function agentRuntimes(agent: AutAdapter<any>): AgentRuntimes {
+  return agent.runtimes && Object.keys(agent.runtimes).length
+    ? agent.runtimes
+    : DEFAULT_AGENT_RUNTIMES;
+}
 
 /**
  * Defines an Agent Under Test without coupling it to a runtime or transport.
@@ -171,83 +190,6 @@ export type AutSession<TMessage = string> = {
 export function defineAgent<const T extends AutAdapter>(agent: T): T {
   if (agent.identity) authoringId(agent.identity);
   return agent;
-}
-
-export type FixtureVisibility = 'candidate' | 'evaluator';
-
-export type DirectoryFixture = {
-  kind: 'directory';
-  src: string;
-  dst: string;
-  visibility: FixtureVisibility;
-};
-
-export type FileFixture = {
-  kind: 'file';
-  src: string;
-  dst: string;
-  visibility: FixtureVisibility;
-};
-
-export type InlineFixture = {
-  kind: 'inline';
-  file: string;
-  data: string;
-  visibility: FixtureVisibility;
-};
-
-export type DynamicFixture = {
-  kind: 'dynamic';
-  create(
-    context: FixtureContext,
-  ): Fixture | Fixture[] | Promise<Fixture | Fixture[]>;
-};
-
-export type Fixture =
-  DirectoryFixture | FileFixture | InlineFixture | DynamicFixture;
-
-function defaultFixtureDestination(src: string): string {
-  const normalized = src.replace(/\\/g, '/').replace(/\/+$/, '');
-  const destination = normalized.slice(normalized.lastIndexOf('/') + 1);
-  if (!destination || destination === '.' || destination === '..') {
-    throw new Error(`Fixture source needs a basename: ${src}`);
-  }
-  return destination;
-}
-
-/**
- * Declares a directory relative to the invoking project's working directory.
- * The short form is candidate-visible and copies beneath the source basename.
- */
-export function directory(
-  src: string,
-  options: Partial<Omit<DirectoryFixture, 'kind' | 'src'>> = {},
-): DirectoryFixture {
-  return {
-    kind: 'directory',
-    src,
-    dst: options.dst ?? defaultFixtureDestination(src),
-    visibility: options.visibility ?? 'candidate',
-  };
-}
-
-export function file(
-  src: string,
-  options: Omit<FileFixture, 'kind' | 'src'>,
-): FileFixture {
-  return { kind: 'file', src, ...options };
-}
-
-export function inlineFile(
-  file: string,
-  data: string,
-  visibility: FixtureVisibility,
-): InlineFixture {
-  return { kind: 'inline', file, data, visibility };
-}
-
-export function dynamic(create: DynamicFixture['create']): DynamicFixture {
-  return { kind: 'dynamic', create };
 }
 
 export type UserStep = {
@@ -310,16 +252,30 @@ export type JudgeRunInfo = {
   events?: JsonValue[];
 };
 
+/** A scorer's "does not apply" result; see `skip()`. */
+export type SkippedScore = { skipped: true; reason: string };
+
 export type ScoreValue =
   | number
+  | SkippedScore
   | {
       value: number;
       passed?: boolean;
       explanation?: string;
-      evidence?: JsonValue;
+      /** Any JSON-convertible value. */
+      evidence?: unknown;
       /** Judge-agent evidence, never inferred from AUT usage. */
       judge?: JudgeRunInfo;
     };
+
+/**
+ * Marks a scorer as not applicable to this trial. A skipped result neither
+ * passes nor fails the trial and is left out of score averages.
+ */
+export function skip(reason: string): SkippedScore {
+  if (!reason.trim()) throw new Error('skip() needs a reason');
+  return { skipped: true, reason };
+}
 
 export type ScoreResult = {
   name: string;
@@ -331,6 +287,8 @@ export type ScoreResult = {
   judge?: JudgeRunInfo;
   durationMs: number;
   error?: RecordedError;
+  /** The scorer returned `skip()`; `explanation` holds the reason and there is no value. */
+  skipped?: true;
 };
 
 export type ArtifactView = {
@@ -344,12 +302,18 @@ export type ScoringContext = {
   artifacts: ArtifactView;
   /** Most recent completed turn; absent if no user message has been sent. */
   turn?: TurnView;
+  /** Content of the last assistant message of `turn`. */
+  output?: JsonValue;
+  /** Values of all the scenario's datasets (candidate and evaluator), by dataset ID. */
+  data: JsonObject;
 };
 
 export type PredicateScorer = {
   kind: 'predicate';
   name: string;
   supportsPartial?: boolean;
+  /** A numeric result passes when it is at least this value. Default: only 1 passes. */
+  passAt?: number;
   run(
     context: ScoringContext,
   ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
@@ -368,8 +332,20 @@ export type ScoringRule = PredicateScorer | JudgeRule;
 export function predicate(
   name: string,
   run: PredicateScorer['run'],
-  options: Pick<PredicateScorer, 'supportsPartial'> = {},
+  options: Pick<PredicateScorer, 'supportsPartial' | 'passAt'> = {},
 ): PredicateScorer {
+  if (!name.trim()) throw new Error('Predicate name must not be empty');
+  if (
+    options.passAt !== undefined &&
+    !(
+      Number.isFinite(options.passAt) &&
+      options.passAt >= 0 &&
+      options.passAt <= 1
+    )
+  )
+    throw new Error(
+      `Predicate ${name} passAt must be a number from 0 to 1; received ${options.passAt}`,
+    );
   return { kind: 'predicate', name, run, ...options };
 }
 
@@ -396,15 +372,35 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   agent: TAgent;
   /** Separate judge agent; its model and tools are never inherited from the AUT. */
   judge?: AutAdapter;
-  fixtures?: Fixture[];
+  /** Data and files the scenario uses; each trial gets its own copy. */
+  datasets?: readonly Dataset[];
   transcript: TranscriptStep[];
   scoring: ScoringRule[];
   policy?: EvalPolicy;
-  metadata?: JsonObject;
+  /** Any JSON-convertible object; converted when the eval is defined. */
+  metadata?: Record<string, unknown>;
 };
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
   authoringId(definition);
+  if ('fixtures' in definition)
+    throw new Error(
+      `Eval ${definition.id} uses fixtures, which were replaced by datasets: [defineDataset(...)]`,
+    );
+  if (definition.metadata !== undefined)
+    toJsonObject(definition.metadata, `${definition.id}.metadata`);
+  const datasetIds = new Set<string>();
+  for (const [index, dataset] of (definition.datasets ?? []).entries()) {
+    if (!isDataset(dataset))
+      throw new Error(
+        `Eval ${definition.id} datasets[${index}] is not a dataset; create it with defineDataset(...)`,
+      );
+    if (datasetIds.has(dataset.id))
+      throw new Error(
+        `Eval ${definition.id} uses dataset ${dataset.id} more than once`,
+      );
+    datasetIds.add(dataset.id);
+  }
   let hasUser = false;
   for (const step of definition.transcript) {
     if (step.kind === 'user') hasUser = true;
@@ -485,11 +481,12 @@ export type EvalSuiteMetadata = {
   evalIds: string[];
 };
 
-export type EvalCatalogFixture = {
-  kind: Fixture['kind'];
-  source: string;
-  destination?: string;
-  visibility?: FixtureVisibility;
+export type EvalCatalogDataset = {
+  id: string;
+  name?: string;
+  visibility: DatasetVisibility;
+  source: 'static' | 'computed';
+  mount: string;
 };
 
 export type EvalCatalogEntry = {
@@ -504,7 +501,7 @@ export type EvalCatalogEntry = {
     version?: string;
     runtimes: Array<{ name: AgentRuntimeName; kind: string }>;
   };
-  fixtures: EvalCatalogFixture[];
+  datasets: EvalCatalogDataset[];
   trialCount: number;
   scorers: Array<{ name: string; kind: ScoringRule['kind'] }>;
 };
@@ -589,30 +586,20 @@ export function registerEvals<
             kind: identity?.kind ?? 'adapter',
             ...(identity?.id ? { id: identity.id } : {}),
             ...(identity?.version ? { version: identity.version } : {}),
-            runtimes: Object.entries(evaluation.agent.runtimes ?? {}).map(
+            runtimes: Object.entries(agentRuntimes(evaluation.agent)).map(
               ([name, runtime]) => ({
                 name: name as AgentRuntimeName,
                 kind: runtime.kind,
               }),
             ),
           },
-          fixtures: (evaluation.fixtures ?? []).map((fixture) =>
-            fixture.kind === 'dynamic'
-              ? { kind: 'dynamic', source: 'dynamic' }
-              : fixture.kind === 'inline'
-                ? {
-                    kind: 'inline',
-                    source: fixture.file,
-                    destination: fixture.file,
-                    visibility: fixture.visibility,
-                  }
-                : {
-                    kind: fixture.kind,
-                    source: fixture.src,
-                    destination: fixture.dst,
-                    visibility: fixture.visibility,
-                  },
-          ),
+          datasets: (evaluation.datasets ?? []).map((dataset) => ({
+            id: dataset.id,
+            ...(dataset.name ? { name: dataset.name } : {}),
+            visibility: dataset.visibility,
+            source: dataset.source.kind,
+            mount: dataset.mount,
+          })),
           trialCount: evaluation.policy?.trials ?? 1,
           scorers: evaluation.scoring.map(({ name, kind }) => ({ name, kind })),
         };
@@ -648,7 +635,7 @@ export type RunCatalog = {
 };
 
 export type RunMetadata = {
-  schemaVersion: 2 | 3 | 4;
+  schemaVersion: 2 | 3 | 4 | 5;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -662,7 +649,7 @@ export type RunMetadata = {
 };
 
 export type TrialMetadata = {
-  schemaVersion: 2 | 3 | 4;
+  schemaVersion: 2 | 3 | 4 | 5;
   runId: string;
   runUri: ResourceUri<'run'>;
   trialId: string;
@@ -673,6 +660,16 @@ export type TrialMetadata = {
   matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
+  /** From schema version 5: the datasets this trial used, with content digests. */
+  datasets?: TrialDataset[];
+};
+
+export type TrialDataset = {
+  id: string;
+  visibility: DatasetVisibility;
+  source: 'static' | 'computed';
+  /** SHA-256 of the trial's content: file paths and bytes, and the canonical value. */
+  digest: string;
 };
 
 export type CheckpointResult = {
@@ -777,6 +774,9 @@ export type RunResult = TrialResult & {
 };
 
 export * from './identity.js';
+export * from './dataset.js';
+export * from './aut-events.js';
+export * from './json.js';
 export * from './schema.js';
 export * from './trajectory.js';
 

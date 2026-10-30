@@ -124,7 +124,7 @@ export async function runProjectCommand(
 ): Promise<void> {
   const { values, positionals, parameters } = parsed;
   const project = await loadProject(cwd, values.config);
-  // Fixture src paths are relative to the config project, even when invoked elsewhere.
+  // Dataset paths are relative to the config project, even when invoked elsewhere.
   process.chdir(project.root);
   const registry = project.registry;
   const requestedEvals =

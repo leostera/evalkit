@@ -3,9 +3,13 @@ import { resolve, dirname, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   defineEvalMatrix,
+  defineSuite,
+  recordError,
   registerEvals,
   authoringId,
   type EvalDefinition,
+  type EvalRegistration,
+  type RecordedError,
   type EvalkitConfig,
   type EvalRegistry,
 } from '@evalkit/core';
@@ -35,11 +39,32 @@ function evaluation(value: unknown, source: string): EvalDefinition {
     throw new Error(`Invalid eval exported by ${source}`);
   return candidate;
 }
+/** An eval file that threw while importing; it affects only the evals it defines. */
+export type LoadError = {
+  /** Path relative to the project root. */
+  file: string;
+  /** The suite its directory names, when directory suites are on. */
+  suiteId?: string;
+  error: RecordedError;
+};
+
+type Discovered = {
+  registrations: EvalRegistration[];
+  loadErrors: LoadError[];
+};
+
+/** The suite a discovered file belongs to: the first directory below the discovery root. */
+function directorySuite(relativePath: string): string | undefined {
+  const parts = relativePath.split('/');
+  return parts.length > 1 ? parts[0] : undefined;
+}
+
 async function discover(
   root: string,
   config: EvalkitConfig,
-): Promise<EvalDefinition[]> {
-  const directory = resolve(root, config.testDir ?? 'evals');
+): Promise<Discovered> {
+  const testDir = config.testDir ?? 'scenarios';
+  const directory = resolve(root, testDir);
   const includes = (config.include ?? defaultInclude).map(
     (pattern) => new Bun.Glob(pattern),
   );
@@ -74,26 +99,66 @@ async function discover(
   try {
     await walk(directory);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      throw new Error(`Eval directory not found: ${directory}`);
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const hint =
+      config.testDir === undefined &&
+      (await isDirectory(resolve(root, 'evals')))
+        ? ` Scenarios now live in scenarios/: move evals/ there, or set testDir: 'evals' in evalkit.config.ts.`
+        : '';
+    throw new Error(`Eval directory not found: ${directory}.${hint}`);
   }
-  const evals: EvalDefinition[] = [];
+  const directorySuites = config.discovery?.suites ?? true;
+  const standalone: EvalDefinition[] = [];
+  const bySuite = new Map<string, EvalDefinition[]>();
+  const loadErrors: LoadError[] = [];
   for (const file of paths.sort()) {
-    const module = await import(pathToFileURL(file).href);
-    for (const value of Array.isArray(module.default)
-      ? module.default
-      : [module.default])
-      evals.push(evaluation(value, file));
+    const fromRoot = relative(root, file).split(sep).join('/');
+    const suiteId = directorySuites
+      ? directorySuite(relative(directory, file).split(sep).join('/'))
+      : undefined;
+    try {
+      if (suiteId !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(suiteId))
+        throw new Error(
+          `Directory ${testDir}/${suiteId} names a suite, so it must be lowercase kebab-case (or set discovery.suites: false)`,
+        );
+      const module = await import(pathToFileURL(file).href);
+      const exported = await module.default;
+      const evals = (Array.isArray(exported) ? exported : [exported]).map(
+        (value) => evaluation(value, fromRoot),
+      );
+      if (suiteId === undefined) standalone.push(...evals);
+      else bySuite.set(suiteId, [...(bySuite.get(suiteId) ?? []), ...evals]);
+    } catch (error) {
+      loadErrors.push({
+        file: fromRoot,
+        ...(suiteId === undefined ? {} : { suiteId }),
+        error: recordError(error),
+      });
+    }
   }
-  if (!evals.length) throw new Error(`No eval files found in ${directory}`);
-  return evals;
+  if (!paths.length) throw new Error(`No eval files found in ${directory}`);
+  return {
+    registrations: [
+      ...standalone,
+      ...[...bySuite].map(([id, evals]) => defineSuite({ id, evals })),
+    ],
+    loadErrors,
+  };
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  return stat(path).then(
+    (info) => info.isDirectory(),
+    () => false,
+  );
 }
 
 export type LoadedProject = {
   root: string;
   config: EvalkitConfig;
   registry: EvalRegistry;
+  /** Discovered files that failed to import; empty with an explicit registry. */
+  loadErrors: LoadError[];
 };
 export async function loadProject(
   cwd: string,
@@ -131,8 +196,13 @@ export async function loadProject(
       await import(pathToFileURL(resolve(root, 'src/registry.ts')).href)
     ).default;
   }
-  if (!registry)
-    registry = registerEvals(config.evals ?? (await discover(root, config)));
+  let loadErrors: LoadError[] = [];
+  if (!registry && config.evals) registry = registerEvals(config.evals);
+  if (!registry) {
+    const discovered = await discover(root, config);
+    loadErrors = discovered.loadErrors;
+    registry = registerEvals(discovered.registrations);
+  }
   if (!registry?.evals || !registry.get)
     throw new Error('Invalid explicit eval registry');
   const ids = new Set<string>();
@@ -151,5 +221,5 @@ export async function loadProject(
       throw new Error(`Duplicate matrix ID: ${authoringId(matrix)}`);
     registry = { ...registry, matrices: [...registry.matrices, matrix] };
   }
-  return { root, config, registry };
+  return { root, config, registry, loadErrors };
 }

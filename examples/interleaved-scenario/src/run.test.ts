@@ -45,7 +45,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     expect(
       (await readTrialManifest(reports, passed.runId, passed.trialId))
         .schemaVersion,
-    ).toBe(4);
+    ).toBe(5);
     const passedScores = await readTrialScoring(
       reports,
       passed.runId,

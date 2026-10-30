@@ -1,7 +1,10 @@
 import { Effect } from 'effect';
 import {
   recordError,
+  turnResultEvents,
   type AutContext,
+  type AutEvent,
+  type JsonObject,
   type AutSession,
   type CheckpointResult,
   type EvalDefinition,
@@ -29,6 +32,9 @@ type TranscriptExecution = {
   now: () => Date;
   randomSeed: number;
   emitRunner: (event: RunnerEvent) => Promise<void>;
+  emitAut: (event: AutEvent) => Promise<void>;
+  /** Values of every dataset, for scorers. */
+  data: JsonObject;
   progress: TranscriptProgress;
 };
 
@@ -38,6 +44,7 @@ export async function executeTranscript(
   input: TranscriptExecution,
 ): Promise<void> {
   const { now, emitRunner, progress } = input;
+  let turn = 0;
   for (const [index, step] of definition.transcript.entries()) {
     await emitRunner({
       kind: 'transcript-step-started',
@@ -46,10 +53,14 @@ export async function executeTranscript(
     });
     if (step.kind === 'user') {
       const cursor = input.events.length;
-      await sendUserTurn(
+      turn++;
+      const result = await sendUserTurn(
         session,
         step.message.replaceAll('{{randomSeed}}', String(input.randomSeed)),
       );
+      if (result !== undefined)
+        for (const event of turnResultEvents(result, turn, now))
+          await input.emitAut(event);
       progress.lastTurn = turnView(
         input.events,
         cursor,
@@ -74,7 +85,7 @@ export async function executeTranscript(
         step: index,
         timestamp: now().toISOString(),
       });
-      if (!result.passed && definition.policy?.failfast) {
+      if (result.status === 'failed' && definition.policy?.failfast) {
         progress.stoppedEarly = true;
         await skipRemainingSteps(definition, index, input);
         break;
@@ -93,11 +104,8 @@ export async function executeTranscript(
   }
 }
 
-async function sendUserTurn(
-  session: AutSession,
-  message: string,
-): Promise<void> {
-  await runBoundary(
+async function sendUserTurn(session: AutSession, message: string) {
+  return runBoundary(
     Effect.tryPromise({
       try: () => session.send(message),
       catch: (cause) =>
@@ -121,7 +129,7 @@ async function runCheckpoint(
   step: CheckpointStep,
   index: number,
   input: TranscriptExecution,
-): Promise<CheckpointResult & { status: 'passed' | 'failed' }> {
+): Promise<CheckpointResult & { status: 'passed' | 'failed' | 'skipped' }> {
   const { now, emitRunner, progress } = input;
   if (!progress.lastTurn)
     throw new Error('Checkpoint requires a preceding user step');
@@ -141,6 +149,8 @@ async function runCheckpoint(
         artifacts: input.artifacts,
         trajectory: { events: input.events },
         turn: progress.lastTurn,
+        ...turnOutput(progress.lastTurn),
+        data: input.data,
       },
       now,
       definition.judge,
@@ -193,4 +203,10 @@ async function skipRemainingSteps(
         status: 'skipped',
       });
   }
+}
+
+/** The scorer-facing `output`: the content of the turn's last assistant message. */
+export function turnOutput(turn: TurnView | undefined) {
+  const last = turn?.assistantMessages.at(-1);
+  return last === undefined ? {} : { output: last.content };
 }

@@ -39,9 +39,10 @@ export function EvalDetail({
               .join(', ') || 'none',
           ],
           [
-            'Fixtures',
-            evaluation.fixtures.map((fixture) => fixture.source).join(', ') ||
-              'none',
+            'Datasets',
+            (evaluation.datasets ?? [])
+              .map((dataset) => `${dataset.id} (${dataset.visibility})`)
+              .join(', ') || 'none',
           ],
         ]}
       />

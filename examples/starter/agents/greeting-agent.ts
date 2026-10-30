@@ -8,34 +8,11 @@ export const greetingAgent = defineAgent({
     id: 'greeting-agent',
     version: '1',
   },
-  runtimes: {
-    local: { kind: 'in-process' },
-  },
-  async start({ onEvent }) {
-    await onEvent({ kind: 'started', timestamp: new Date().toISOString() });
-    let turn = 0;
+  async start() {
     return {
+      // Returning the reply is enough: EvalKit records it as the assistant message.
       async send(message: string) {
-        turn += 1;
-        const timestamp = new Date().toISOString();
-        await onEvent({ kind: 'turn-started', turn, timestamp });
-        await onEvent({
-          kind: 'message',
-          role: 'assistant',
-          content: `Hello from EvalKit: ${message}`,
-          timestamp: new Date().toISOString(),
-        });
-        await onEvent({
-          kind: 'turn-completed',
-          turn,
-          timestamp: new Date().toISOString(),
-        });
-      },
-      async close() {
-        await onEvent({
-          kind: 'completed',
-          timestamp: new Date().toISOString(),
-        });
+        return `Hello from EvalKit: ${message}`;
       },
     };
   },

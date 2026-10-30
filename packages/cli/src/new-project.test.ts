@@ -48,7 +48,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
       '{"compilerOptions":{"strict":false}}\n',
     );
     expect(
-      await readFile(join(cwd, 'evals/greeting.eval.ts'), 'utf8'),
+      await readFile(join(cwd, 'scenarios/greeting.eval.ts'), 'utf8'),
     ).toContain('export default defineEval');
     await expect(newProject(['.'], cwd)).rejects.toThrow(
       'Scaffold file already exists',
@@ -62,7 +62,7 @@ test('new . initializes an existing Bun project without clobbering its dependenc
 test('new . adds the npm package to an existing project that has no EvalKit dependency', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'evalkit-existing-'));
   try {
-    await mkdir(join(cwd, 'evals'));
+    await mkdir(join(cwd, 'scenarios'));
     await writeFile(
       join(cwd, 'package.json'),
       JSON.stringify({ name: 'my-project', dependencies: { hono: '^4.0.0' } }),
@@ -109,11 +109,11 @@ test('new creates a self-contained, provider-free project without overwriting fi
       '.gitignore',
       'README.md',
       'agents',
+      'datasets',
       'evalkit.config.ts',
-      'evals',
-      'fixtures',
       'judges',
       'package.json',
+      'scenarios',
       'tsconfig.json',
     ]);
     const pkg = JSON.parse(
@@ -123,8 +123,8 @@ test('new creates a self-contained, provider-free project without overwriting fi
     };
     expect(pkg.dependencies['@leostera/evalkit']).toBe('^0.5.0');
     expect(
-      await readFile(join(root, 'evals/greeting.eval.ts'), 'utf8'),
-    ).toContain("import { defineEval, file, user } from '@leostera/evalkit'");
+      await readFile(join(root, 'scenarios/greeting.eval.ts'), 'utf8'),
+    ).toContain("import { defineEval, user } from '@leostera/evalkit'");
     await expect(newProject(['my-evals'], cwd)).rejects.toThrow(
       'already exists',
     );

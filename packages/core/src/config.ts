@@ -2,10 +2,14 @@ import type { EvalDefinition, EvalRegistry } from './index.js';
 import type { EvalMatrixDefinition } from './matrix.js';
 
 export type EvalkitConfig = {
-  /** Paths are relative to evalkit.config.js/ts, not the invoking shell directory. */
+  /** Where scenarios are discovered. Default `scenarios`. Paths are relative to evalkit.config.js/ts. */
   testDir?: string;
   include?: readonly string[];
   exclude?: readonly string[];
+  discovery?: {
+    /** Each directory directly below `testDir` is a suite. Default true. */
+    suites?: boolean;
+  };
   /** Explicit definitions are an alternative to discovery (e.g. hosted registries). */
   evals?: readonly EvalDefinition[];
   registry?: EvalRegistry;

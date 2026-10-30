@@ -1,101 +1,34 @@
-import { copyFile, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type {
-  ArtifactView,
-  AutContext,
-  Fixture,
-  FixtureContext,
-  FixtureVisibility,
-} from '@evalkit/core';
-
-const MAX_DYNAMIC_FIXTURE_DEPTH = 16;
+import type { ArtifactView, AutContext } from '@evalkit/core';
+import {
+  listFiles,
+  type PreparedDataset,
+  type PreparedFile,
+} from './datasets.js';
 
 export type TrialWorkspace = {
   artifacts: ArtifactView;
   cleanup(): Promise<void>;
 };
 
-function workspaceRoot(
-  visibility: FixtureVisibility,
-  artifacts: ArtifactView,
-): string {
-  return visibility === 'candidate'
-    ? artifacts.candidate.root
-    : artifacts.evaluator.root;
-}
-
-function destinationPath(root: string, destination: string): string {
-  if (!destination || path.isAbsolute(destination)) {
-    throw new Error(
-      `Fixture destination must be a non-empty relative path: ${destination}`,
-    );
-  }
-
-  const normalized = path.normalize(destination);
-  if (normalized === '..' || normalized.startsWith(`..${path.sep}`)) {
-    throw new Error(
-      `Fixture destination escapes its workspace: ${destination}`,
-    );
-  }
-
-  return path.join(root, normalized);
-}
-
-async function resolveFixtures(
-  fixtures: readonly Fixture[],
-  context: FixtureContext,
-  depth = 0,
-): Promise<Exclude<Fixture, { kind: 'dynamic' }>[]> {
-  if (depth > MAX_DYNAMIC_FIXTURE_DEPTH) {
-    throw new Error('Dynamic fixture nesting exceeds the supported depth');
-  }
-
-  const resolved: Exclude<Fixture, { kind: 'dynamic' }>[] = [];
-  for (const fixture of fixtures) {
-    if (fixture.kind !== 'dynamic') {
-      resolved.push(fixture);
-      continue;
-    }
-
-    const created = await fixture.create(context);
-    const nested = Array.isArray(created) ? created : [created];
-    resolved.push(...(await resolveFixtures(nested, context, depth + 1)));
-  }
-  return resolved;
-}
-
-function assertUniqueDestinations(
-  fixtures: readonly Exclude<Fixture, { kind: 'dynamic' }>[],
-): void {
-  const destinations = new Set<string>();
-  for (const fixture of fixtures) {
-    const destination = fixture.kind === 'inline' ? fixture.file : fixture.dst;
-    const key = `${fixture.visibility}:${destination}`;
-    if (destinations.has(key)) {
-      throw new Error(
-        `Duplicate ${fixture.visibility} fixture destination: ${destination}`,
-      );
-    }
-    destinations.add(key);
-  }
-}
-
-/** Creates isolated candidate and evaluator directories and materializes fixtures into each. */
 function trialDirectoryName(trialId: string): string {
   return trialId.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+/**
+ * Creates isolated candidate and evaluator directories and writes each
+ * dataset's files below its mount, on the side its visibility allows.
+ * Two datasets writing the same file is an error, never an overwrite.
+ */
 export async function createTrialWorkspace(
-  context: FixtureContext,
-  fixtures: readonly Fixture[] = [],
+  trialId: string,
+  datasets: readonly PreparedDataset[] = [],
   persistentRoot?: string,
 ): Promise<TrialWorkspace> {
   const root = persistentRoot
-    ? path.join(
-        path.resolve(persistentRoot),
-        trialDirectoryName(context.trialId),
-      )
+    ? path.join(path.resolve(persistentRoot), trialDirectoryName(trialId))
     : await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
   const persistent = persistentRoot !== undefined;
   const artifacts: ArtifactView = {
@@ -108,30 +41,16 @@ export async function createTrialWorkspace(
       mkdir(artifacts.candidate.root, { recursive: true }),
       mkdir(artifacts.evaluator.root, { recursive: true }),
     ]);
-
-    const resolved = await resolveFixtures(fixtures, context);
-    assertUniqueDestinations(resolved);
-
-    for (const fixture of resolved) {
-      const target = destinationPath(
-        workspaceRoot(fixture.visibility, artifacts),
-        fixture.kind === 'inline' ? fixture.file : fixture.dst,
+    for (const prepared of datasets) {
+      const side =
+        prepared.dataset.visibility === 'candidate'
+          ? artifacts.candidate.root
+          : artifacts.evaluator.root;
+      await writeDatasetFiles(
+        prepared,
+        path.join(side, prepared.dataset.mount),
       );
-      await mkdir(path.dirname(target), { recursive: true });
-
-      if (fixture.kind === 'directory') {
-        await cp(fixture.src, target, {
-          recursive: true,
-          force: false,
-          errorOnExist: true,
-        });
-      } else if (fixture.kind === 'file') {
-        await copyFile(fixture.src, target);
-      } else {
-        await writeFile(target, fixture.data);
-      }
     }
-
     return {
       artifacts,
       // Persistent local workspaces are intentionally retained for debugging.
@@ -143,6 +62,52 @@ export async function createTrialWorkspace(
     await rm(root, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function writeDatasetFiles(
+  prepared: PreparedDataset,
+  target: string,
+): Promise<void> {
+  const { files, dataset } = prepared;
+  if (files.kind === 'none') return;
+  await mkdir(target, { recursive: true });
+  // Copied file by file so a collision with another dataset is reported, never merged.
+  const entries: PreparedFile[] =
+    files.kind === 'directory'
+      ? (await listFiles(files.source)).map((file) => ({
+          path: file,
+          kind: 'file',
+          source: path.join(files.source, file),
+        }))
+      : files.entries;
+  for (const entry of entries) await writeEntry(dataset.id, target, entry);
+}
+
+async function writeEntry(
+  datasetId: string,
+  target: string,
+  entry: PreparedFile,
+): Promise<void> {
+  const destination = path.join(target, ...entry.path.split('/'));
+  await mkdir(path.dirname(destination), { recursive: true });
+  const write =
+    entry.kind === 'bytes'
+      ? writeFile(destination, entry.data, { flag: 'wx' })
+      : copyFile(entry.source, destination, 1 /* COPYFILE_EXCL */);
+  await write.catch((cause: unknown) => {
+    throw collision(datasetId, entry.path, cause);
+  });
+}
+
+function collision(datasetId: string, file: string, cause: unknown): Error {
+  const code = (cause as { code?: unknown }).code;
+  return code === 'EEXIST'
+    ? new Error(
+        `Dataset ${datasetId} would overwrite ${file}, which another dataset already wrote`,
+      )
+    : cause instanceof Error
+      ? cause
+      : new Error(String(cause));
 }
 
 /** Exposed for adapters that need the candidate workspace capability from an AUT context. */

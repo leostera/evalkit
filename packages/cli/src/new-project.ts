@@ -94,7 +94,7 @@ async function checkExistingScaffold(root: string): Promise<void> {
       throw new Error(
         `EvalKit config already exists: evalkit.config.${extension}`,
       );
-  for (const directory of ['agents', 'fixtures', 'evals', 'judges']) {
+  for (const directory of ['agents', 'datasets', 'judges', 'scenarios']) {
     const path = resolve(root, directory);
     if ((await exists(path)) && !(await stat(path)).isDirectory())
       throw new Error(`Scaffold directory is not a directory: ${path}`);
