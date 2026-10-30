@@ -1,49 +1,26 @@
 import { Breadcrumbs } from '@cloudflare/kumo';
 import { Fragment, type ReactNode } from 'react';
-import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
-import { runHref, scenarioHref, scenariosHref, trialHref } from './links.js';
+import type { RunSummary } from '../api.js';
+import { runHref, runsListHref, trialHref } from './links.js';
 
 /**
- * Where a page sits in Scenario › Run › Trial › Workspace. Every level above
- * the current one links back up.
+ * Where a result page sits: Runs › Run › Trial › Workspace. Every level above
+ * the current one links back up; the scenario is linked from the run itself.
  */
 export function HierarchyBreadcrumbs({
-  catalog,
-  suites,
-  evalId,
   run,
   trial,
   workspace = false,
 }: {
-  catalog: readonly CatalogEval[];
-  suites: readonly SuiteSummary[];
-  evalId: string;
-  run?: RunSummary;
+  run: RunSummary;
   /** `index` is unknown while the trial loads. */
   trial?: { id: string; index?: number };
   workspace?: boolean;
 }) {
-  const scenario = catalog.find((entry) => entry.id === evalId);
-  const suiteId =
-    run?.suiteId ??
-    scenario?.suiteId ??
-    suites.find((entry) => entry.evalIds.includes(evalId))?.id;
-  const suite = suites.find((entry) => entry.id === suiteId);
   const levels: Array<{ label: ReactNode; href?: string }> = [
-    { label: 'Scenarios', href: scenariosHref },
-    ...(suiteId
-      ? [
-          {
-            label: suite?.name ?? suiteId,
-            href: `${scenariosHref}?suite=${encodeURIComponent(suiteId)}`,
-          },
-        ]
-      : []),
-    { label: scenario?.name ?? evalId, href: scenarioHref(evalId) },
-    ...(run
-      ? [{ label: `Run ${run.id.slice(0, 8)}`, href: runHref(run.id) }]
-      : []),
-    ...(run && trial
+    { label: 'Runs', href: runsListHref },
+    { label: `Run ${run.id.slice(0, 8)}`, href: runHref(run.id) },
+    ...(trial
       ? [
           {
             label:

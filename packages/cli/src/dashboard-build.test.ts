@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Effect } from 'effect';
-import { defineEval, predicate, registerEvals, user } from '@evalkit/core';
+import {
+  defineDataset,
+  defineEval,
+  predicate,
+  registerEvals,
+  user,
+} from '@evalkit/core';
 import { localReportStore, runEval } from '@evalkit/runner';
 import { createStaticDashboardApi } from '../../dashboard/src/static-api.js';
 import { tidyReports } from './tidy.js';
@@ -171,23 +177,71 @@ test('static index adds a base, rewrites asset URLs, and rejects unexpected mark
   );
 });
 
-test('static routes follow scenario, run, trial and skip unsafe IDs', () => {
+test('static routes cover evals and library pages and skip unsafe IDs', () => {
   expect(
     staticRoutes({
       scenarios: ['hello', 'a/b'],
+      agents: ['greeter', 'greeter'],
+      datasets: ['starter'],
       runs: [
         { id: 'r1', trials: ['t1', '..'] },
         { id: 'r#2', trials: ['t2'] },
       ],
     }),
   ).toEqual([
-    'scenarios',
+    'scoreboard',
     'runs',
-    'agents',
-    'datasets',
-    'scenarios/hello',
+    'trials',
+    'workspaces',
+    'library/agents',
+    'library/judges',
+    'library/scenarios',
+    'library/datasets',
+    'library/scenarios/hello',
+    'library/agents/greeter',
+    'library/datasets/starter',
     'runs/r1',
     'runs/r1/trials/t1',
     'runs/r1/trials/t1/workspace',
   ]);
+});
+
+test('snapshots list every static dataset but copy only candidate ones', async () => {
+  const paths = await fixture();
+  const withDatasets = defineEval({
+    ...evaluation,
+    id: 'with-datasets',
+    datasets: [
+      defineDataset({ id: 'shown', files: { 'a.txt': 'agent can read' } }),
+      defineDataset({
+        id: 'answers',
+        visibility: 'evaluator',
+        files: { 'key.txt': 'expected answer' },
+      }),
+    ],
+  });
+  const { outDir } = paths;
+  await buildDashboard({ registry: registerEvals([withDatasets]), ...paths });
+  const api = createStaticDashboardApi({
+    baseUrl: `${pathToFileURL(outDir).href}/`,
+    fetch: async (input) => {
+      const file = new URL(String(input)).pathname;
+      try {
+        return new Response(await readFile(file));
+      } catch {
+        return new Response('missing', { status: 404 });
+      }
+    },
+  });
+  expect(await api.listDatasetFiles('answers')).toEqual({
+    kind: 'static',
+    mount: 'answers',
+    files: [{ path: 'key.txt', size: 15 }],
+  });
+  expect(await (await api.getDatasetFile('shown', 'a.txt')).text()).toBe(
+    'agent can read',
+  );
+  await expect(api.getDatasetFile('answers', 'key.txt')).rejects.toThrow(
+    'not shared',
+  );
 });

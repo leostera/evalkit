@@ -1,5 +1,5 @@
 import { Button, Table } from '@cloudflare/kumo';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
 import {
@@ -20,56 +20,15 @@ import {
 } from './run-columns.js';
 import { Empty } from './Empty.js';
 import { Pager } from './Pager.js';
-import { RunFilters } from './RunFilters.js';
-import { SearchField } from './SearchField.js';
+import { RunFilterBar, useRunSelection } from './RunFilterBar.js';
 import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
 import { StatusBadge } from './StatusBadge.js';
 import { runHref, scenarioHref } from './links.js';
 import { rowLinkProps } from './row-link.js';
-import { filterRunFacets, runFacets } from './run-facets.js';
-import { useRunFilters } from './use-run-table-state.js';
 
 const PAGE_SIZE = 50;
 /** Run, status, scenario, score, started, commit; parameters follow, so outcomes never scroll away. */
 const FIXED_RUN_COLUMNS = 6;
-
-export function filterRuns(
-  runs: readonly RunSummary[],
-  query: string,
-  suites: readonly SuiteSummary[],
-  catalog: readonly CatalogEval[],
-): RunSummary[] {
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!terms.length) return [...runs];
-  return runs.filter((run) => {
-    const evaluation = catalog.find((entry) => entry.id === run.evalId);
-    const suite = suites.find((entry) => entry.id === run.suiteId);
-    const parameters = Object.entries(run.parameters ?? {}).flatMap(
-      ([key, value]) => [key, display(value)],
-    );
-    const haystack = [
-      run.id,
-      run.evalId,
-      evaluation?.name,
-      run.suiteId,
-      suite?.name,
-      run.matrixId,
-      evaluation?.agent.name,
-      evaluation?.agent.kind,
-      run.status,
-      run.score,
-      run.startedAt,
-      run.source?.commit,
-      run.source?.ref,
-      run.source?.dirty ? 'dirty' : undefined,
-      ...parameters,
-    ]
-      .map(display)
-      .join(' ')
-      .toLowerCase();
-    return terms.every((term) => haystack.includes(term));
-  });
-}
 
 /** Every run of every scenario, filterable; each run opens its own page. */
 export function RunTable({
@@ -85,22 +44,14 @@ export function RunTable({
   search?: URLSearchParams;
   onSearchChange?(next: URLSearchParams): void;
 }) {
-  const { activeSearch, query, setQuery, setField, toggleFacet, clearFilters } =
-    useRunFilters(search, onSearchChange);
-  // Runs of evals removed from the project (`evalkit tidy`) are hidden by default.
-  const showArchived = activeSearch.get('archived') === 'show';
-  const archivedCount = runs.filter((run) => run.archived).length;
-  const listed = useMemo(
-    () => (showArchived ? runs : runs.filter((run) => !run.archived)),
-    [runs, showArchived],
-  );
-  const facets = useMemo(() => runFacets(listed), [listed]);
-  const filteredRuns = filterRuns(
-    filterRunFacets(listed, activeSearch),
-    query,
-    suites,
+  const selection = useRunSelection({
+    runs,
     catalog,
-  );
+    suites,
+    search,
+    onSearchChange,
+  });
+  const { listed, filteredRuns, clearFilters } = selection;
   // Columns follow the filtered runs: narrowing to one model drops its column.
   const layout = parameterLayout(filteredRuns);
   const [page, setPage] = useState(0);
@@ -140,20 +91,10 @@ export function RunTable({
     );
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <SearchField
+      <RunFilterBar
+        selection={selection}
         label="Filter runs"
-        placeholder="Scenario, parameter, agent or status"
-        value={query}
         count={`${sortedRuns.length} of ${listed.length} runs`}
-        onChange={setQuery}
-      />
-      <RunFilters
-        facets={facets}
-        search={activeSearch}
-        archivedCount={archivedCount}
-        onToggleFacet={toggleFacet}
-        onField={setField}
-        onClear={clearFilters}
       />
       {layout.constant.length ? (
         <p

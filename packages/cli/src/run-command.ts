@@ -347,7 +347,7 @@ export async function runProjectCommand(
           suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
           ...(values.local ? { runtime: 'local' as const } : {}),
           ...(source ? { source } : {}),
-          catalog: runCatalog(registry),
+          catalog: runCatalog(registry, project.root),
           report: localReportStore(reportDir),
           workspaceRoot: sandboxDir,
           signal: controller.signal,

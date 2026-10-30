@@ -1,5 +1,8 @@
 import { authorId } from './identity.js';
 import type { JsonObject } from './index.js';
+import { internalModule, markDefinitionSite } from './definition-site.js';
+
+internalModule(import.meta.url);
 
 /** Who can see a dataset: the agent (and scorers), or only scorers. */
 export type DatasetVisibility = 'candidate' | 'evaluator';
@@ -125,6 +128,12 @@ export function relativeDatasetPath(value: string, label: string): string {
  * process) and optionally `onRun` (per trial).
  */
 export function defineDataset<TLoaded extends DatasetContent>(
+  definition: StaticDatasetDefinition | ComputedDatasetDefinition<TLoaded>,
+): Dataset {
+  return markDefinitionSite(checkedDataset(definition));
+}
+
+function checkedDataset<TLoaded extends DatasetContent>(
   definition: StaticDatasetDefinition | ComputedDatasetDefinition<TLoaded>,
 ): Dataset {
   if ('uri' in definition || 'uuid' in definition || 'slug' in definition)

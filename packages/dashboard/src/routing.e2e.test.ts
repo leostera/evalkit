@@ -168,7 +168,7 @@ describe('dashboard URL routing', () => {
     });
 
     await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle0' });
-    await waitForPath(page, '/scenarios');
+    await waitForPath(page, '/scoreboard');
     await page.focus('button.navigation-toggle');
     await page.keyboard.press('Enter');
     await page.waitForSelector('#dashboard-navigation[data-state="collapsed"]');
@@ -185,25 +185,30 @@ describe('dashboard URL routing', () => {
     await page.keyboard.press('Enter');
     await page.waitForSelector('#dashboard-navigation[data-state="expanded"]');
 
-    // Scenarios: expand the suite and open its scenario.
+    // Library › Scenarios: expand the suite and open its scenario.
+    await page.click('nav a[href="/library/scenarios"]');
+    await waitForPath(page, '/library/scenarios');
     await page.waitForSelector('tbody tr button.table-link');
     await page.click('tbody tr button.table-link');
     await page.waitForSelector('.nested tbody tr a.table-link');
     await page.click('.nested tbody tr a.table-link');
-    await waitForPath(page, '/scenarios/greeting');
+    await waitForPath(page, '/library/scenarios/greeting');
     await page.waitForSelector('.scenario-definition');
     const crumbs = () =>
       page.$$eval('.hierarchy-breadcrumbs', (nodes) =>
         nodes.map((node) => node.textContent).join(' '),
       );
-    expect(await crumbs()).toContain('Starter');
+    expect(await crumbs()).toContain('Scenarios');
+    expect(
+      await page.$eval('.scenario-definition', (node) => node.textContent),
+    ).toContain('Starter');
 
     // Scenario: its runs; open one.
     // The whole row opens the run, not only its ID link.
     await page.click('section[aria-label="Runs"] tbody tr td:nth-child(2)');
     await waitForPath(page, '/runs/run-123');
     await page.waitForSelector('.run-overview');
-    expect(await crumbs()).toContain('Greeting');
+    expect(await crumbs()).toContain('Run run-123');
 
     // Run: its trials; open one, then reload the trial page.
     const trial = '0197f17c-4d89-7f81-9d42-6c497e6f6b22';
@@ -226,23 +231,10 @@ describe('dashboard URL routing', () => {
     await waitForPath(page, `/runs/run-123/trials/${trial}`);
     await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs/run-123"]');
     await waitForPath(page, '/runs/run-123');
-    await clickVisible(
-      page,
-      '.hierarchy-breadcrumbs a[href="/scenarios?suite=starter"]',
-    );
-    await waitForPath(page, '/scenarios');
-    await page.waitForSelector('.nested tbody tr a.table-link');
-
-    // Runs history: filters stay in the URL; a run opens its page.
-    await page.evaluate(() => {
-      const button = [...document.querySelectorAll('nav a')].find(
-        (node) => node.textContent === 'Runs',
-      );
-      if (!(button instanceof HTMLElement))
-        throw new Error('runs navigation missing');
-      button.click();
-    });
+    await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs"]');
     await waitForPath(page, '/runs');
+
+    // Runs, Trials and Workspaces share their filters, kept in the URL.
     await page.waitForSelector('.data-table > table > tbody > tr');
     await page.type('input[aria-label="Filter runs"]', 'greeting');
     await page.waitForFunction(
@@ -254,6 +246,22 @@ describe('dashboard URL routing', () => {
     await waitForPath(page, '/runs/run-123');
     await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
+    await page.click('nav a[href^="/trials"]');
+    await waitForPath(page, '/trials');
+    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
+    await page.waitForSelector('input[aria-label="Filter trials"]');
+    expect(
+      await page.$eval(
+        'input[aria-label="Filter trials"]',
+        (input) => (input as HTMLInputElement).value,
+      ),
+    ).toBe('greeting');
+    await page.click('nav a[href^="/workspaces"]');
+    await waitForPath(page, '/workspaces');
+    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
+    await page.waitForSelector(
+      `.data-table tbody tr a[href="/runs/run-123/trials/${trial}/workspace"]`,
+    );
   }, 30_000);
 
   test('shows a newly started eval without a page reload', async () => {
@@ -327,7 +335,9 @@ describe('dashboard URL routing', () => {
           void request.continue();
         }
       });
-      await page.goto(`${baseUrl}/scenarios`, { waitUntil: 'networkidle0' });
+      await page.goto(`${baseUrl}/library/scenarios`, {
+        waitUntil: 'networkidle0',
+      });
       await page.waitForSelector(
         'section[aria-label="Scenarios without a suite"] tbody tr',
       );
@@ -373,7 +383,7 @@ describe('dashboard URL routing', () => {
         ),
       ).toBe(false);
       await page.click(runButton);
-      expect(new URL(page.url()).pathname).toBe('/scenarios');
+      expect(new URL(page.url()).pathname).toBe('/library/scenarios');
       await page.click('nav a[href="/runs"]');
       await page.waitForFunction(
         () =>
@@ -382,10 +392,10 @@ describe('dashboard URL routing', () => {
             ...document.querySelectorAll('.data-table > table > tbody > tr'),
           ].some((row) => row.textContent?.includes('running')),
       );
-      await page.click('nav a[href="/scenarios"]');
+      await page.click('nav a[href="/library/scenarios"]');
       await page.waitForFunction(
         () =>
-          location.pathname === '/scenarios' &&
+          location.pathname === '/library/scenarios' &&
           document
             .querySelector(
               'section[aria-label="Scenarios without a suite"] tbody tr',
@@ -395,7 +405,7 @@ describe('dashboard URL routing', () => {
       await page.click(
         'section[aria-label="Scenarios without a suite"] tbody tr a.table-link',
       );
-      expect(new URL(page.url()).pathname).toBe('/scenarios/echo');
+      expect(new URL(page.url()).pathname).toBe('/library/scenarios/echo');
     } finally {
       await page.close();
     }
@@ -468,7 +478,9 @@ describe('dashboard URL routing', () => {
           body: JSON.stringify(response[pathname]),
         });
       });
-      await page.goto(`${baseUrl}/scenarios`, { waitUntil: 'networkidle0' });
+      await page.goto(`${baseUrl}/library/scenarios`, {
+        waitUntil: 'networkidle0',
+      });
       await page.waitForFunction(
         () =>
           document.querySelectorAll(

@@ -1,12 +1,12 @@
-import { Table } from '@cloudflare/kumo';
-import { FileIcon, FolderIcon } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
-import type { DashboardApi } from '../api.js';
-import { DataTable, monoClass, TableMessage } from './DataTable.js';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import type { DashboardApi, WorkspaceEntry } from '../api.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
+import { FileTree } from './FileTree.js';
 import type { SelectedTrial } from './types.js';
 
+/** The candidate workspace a trial left behind; the open file is `?file=`. */
 export function WorkspaceDetail({
   api,
   selected,
@@ -14,9 +14,9 @@ export function WorkspaceDetail({
   api: DashboardApi;
   selected?: SelectedTrial;
 }) {
-  const [entries, setEntries] =
-    useState<Awaited<ReturnType<DashboardApi['listWorkspace']>>>();
+  const [entries, setEntries] = useState<WorkspaceEntry[]>();
   const [error, setError] = useState<string>();
+  const [search, setSearch] = useSearchParams();
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -39,45 +39,34 @@ export function WorkspaceDetail({
       active = false;
     };
   }, [api, selected]);
+  const runId = selected?.run.id;
+  const trialId = selected?.trial.id;
+  const readFile = useCallback(
+    (path: string) => api.getWorkspaceFile(runId!, trialId!, path),
+    [api, runId, trialId],
+  );
   if (!selected)
     return <Empty message="Select a trial to inspect its workspace." />;
   return (
     <section className="workspace-inspector flex flex-col gap-2">
       {error ? <ErrorBanner message={error} /> : null}
-      <DataTable>
-        <Table.Header variant="compact">
-          <Table.Row>
-            <Table.Head>Path</Table.Head>
-            <Table.Head>Kind</Table.Head>
-            <Table.Head>Size</Table.Head>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {entries?.map((entry) => {
-            const Icon = entry.kind === 'directory' ? FolderIcon : FileIcon;
-            return (
-              <Table.Row key={entry.path}>
-                <Table.Cell className={monoClass}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Icon aria-hidden className="size-3.5 text-kumo-subtle" />
-                    {entry.path}
-                  </span>
-                </Table.Cell>
-                <Table.Cell>{entry.kind}</Table.Cell>
-                <Table.Cell className="tabular-nums">
-                  {entry.size === undefined ? '—' : `${entry.size} B`}
-                </Table.Cell>
-              </Table.Row>
-            );
-          })}
-          {!entries && !error ? (
-            <TableMessage colSpan={3}>Loading workspace…</TableMessage>
-          ) : null}
-          {entries && !entries.length ? (
-            <TableMessage colSpan={3}>The workspace is empty.</TableMessage>
-          ) : null}
-        </Table.Body>
-      </DataTable>
+      {!entries && !error ? (
+        <p className="text-[13px] text-kumo-subtle">Loading workspace…</p>
+      ) : null}
+      {entries ? (
+        <FileTree
+          entries={entries}
+          rootLabel="workspace/"
+          readFile={readFile}
+          selected={search.get('file') ?? undefined}
+          onSelect={(file) => {
+            const next = new URLSearchParams(search);
+            next.set('file', file);
+            setSearch(next, { replace: true });
+          }}
+          emptyMessage="The workspace is empty."
+        />
+      ) : null}
     </section>
   );
 }

@@ -8,7 +8,13 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
-import { authoringId, type EvalRegistry } from '@evalkit/core';
+import type { EvalRegistry, RunSource } from '@evalkit/core';
+import {
+  datasetFile,
+  datasetListing,
+  projectDatasets,
+} from './dataset-files.js';
+import { projectInfo } from './source.js';
 import { dashboardIndex } from '@evalkit/share';
 import { createDashboardReportReader } from './dashboard-reports.js';
 
@@ -44,13 +50,17 @@ const quietStep: BuildStep = (_label, work) => work(() => {});
 export async function buildDashboard(
   options: {
     registry: EvalRegistry;
+    /** Project root, so the catalog can say where things are defined. */
+    root?: string;
+    /** The commit being built, shown in the dashboard header. */
+    source?: RunSource;
     reportRoot: string;
     dashboardRoot: string;
     outDir: string;
   },
   step: BuildStep = quietStep,
 ): Promise<DashboardBuildResult> {
-  const { registry, reportRoot, dashboardRoot, outDir } = options;
+  const { registry, root, reportRoot, dashboardRoot, outDir } = options;
   const template = await readFile(resolve(dashboardRoot, 'index.html'), 'utf8');
   const data = resolve(outDir, 'data');
   const write = async (path: string, value: unknown) => {
@@ -79,13 +89,41 @@ export async function buildDashboard(
   await step(
     'Eval catalog',
     async () => {
-      await write('catalog.json', { evals: registry.catalog() });
+      await write('catalog.json', { evals: registry.catalog({ root }) });
+      await write('project.json', {
+        project: options.source ? projectInfo(options.source) : null,
+      });
       await write('evals.json', { evals: registry.metadata() });
       await write('suites.json', { suites: registry.suiteMetadata() });
       return { evals: registry.evals.length, suites: registry.suites.length };
     },
     ({ evals, suites }) =>
       `${count(evals, 'eval')} · ${count(suites, 'suite')}`,
+  );
+
+  await step(
+    'Datasets',
+    async () => {
+      let files = 0;
+      for (const [id, dataset] of projectDatasets(registry)) {
+        const listing = await datasetListing(dataset, root ?? process.cwd());
+        await write(`datasets/${id}/files.json`, listing);
+        // Evaluator datasets hold expected answers: list them, never copy them.
+        if (listing.kind !== 'static' || dataset.visibility === 'evaluator')
+          continue;
+        for (const entry of listing.files) {
+          const file = resolve(data, 'datasets', id, 'files', entry.path);
+          await mkdir(dirname(file), { recursive: true });
+          await writeFile(
+            file,
+            await datasetFile(dataset, root ?? process.cwd(), entry.path),
+          );
+          files++;
+        }
+      }
+      return files;
+    },
+    (files) => count(files, 'dataset file'),
   );
 
   const reports = createDashboardReportReader(reportRoot, registry);
@@ -126,8 +164,16 @@ export async function buildDashboard(
   await step(
     'Route pages',
     async () => {
+      const catalog = registry.catalog();
+      // Judge pages open from inside the app; their keys depend on the whole library.
       const routes = staticRoutes({
-        scenarios: registry.evals.map(authoringId),
+        scenarios: catalog.map((entry) => entry.id),
+        agents: catalog.flatMap((entry) =>
+          entry.agent.id ? [entry.agent.id] : [],
+        ),
+        datasets: catalog.flatMap((entry) =>
+          entry.datasets.map((dataset) => dataset.id),
+        ),
         runs: snapshot.runTrials,
       });
       for (const route of routes) {
@@ -159,16 +205,26 @@ export async function buildDashboard(
  */
 export function staticRoutes(ids: {
   scenarios: readonly string[];
+  agents?: readonly string[];
+  datasets?: readonly string[];
   runs: ReadonlyArray<{ id: string; trials: readonly string[] }>;
 }): string[] {
   const safe = (id: string) =>
     id.length > 0 && !/[/\\\0#?%]/.test(id) && id !== '.' && id !== '..';
+  const under = (prefix: string, values: readonly string[] = []) =>
+    [...new Set(values)].filter(safe).map((id) => `${prefix}/${id}`);
   return [
-    'scenarios',
+    'scoreboard',
     'runs',
-    'agents',
-    'datasets',
-    ...ids.scenarios.filter(safe).map((id) => `scenarios/${id}`),
+    'trials',
+    'workspaces',
+    'library/agents',
+    'library/judges',
+    'library/scenarios',
+    'library/datasets',
+    ...under('library/scenarios', ids.scenarios),
+    ...under('library/agents', ids.agents),
+    ...under('library/datasets', ids.datasets),
     ...ids.runs
       .filter((run) => safe(run.id))
       .flatMap((run) => [

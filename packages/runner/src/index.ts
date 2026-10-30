@@ -57,6 +57,11 @@ import {
 import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
+export {
+  staticDatasetFile,
+  staticDatasetFiles,
+  type DatasetFileEntry,
+} from './datasets.js';
 export * from './local-report-reader.js';
 export { runMatrix, type MatrixSummary } from './matrix.js';
 

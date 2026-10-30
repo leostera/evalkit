@@ -3,7 +3,7 @@ import { ListBulletsIcon, PlayIcon } from '@phosphor-icons/react';
 import type { CatalogEval, RunSummary } from '../api.js';
 import { agentKey, agentName } from './agentName.js';
 import { monoClass, tableLinkClass } from './DataTable.js';
-import { runHref, scenarioHref } from './links.js';
+import { agentHref, runHref, scenarioHref } from './links.js';
 import { runsHref } from './run-facets.js';
 import { StatusBadge } from './StatusBadge.js';
 
@@ -54,9 +54,7 @@ export function EvalRow({
       ))}
       <Table.Cell>
         {evaluation ? (
-          <Link
-            href={`/agents?agent=${encodeURIComponent(agentKey(evaluation))}`}
-          >
+          <Link href={agentHref(agentKey(evaluation))}>
             {agentName(evaluation)}
           </Link>
         ) : (

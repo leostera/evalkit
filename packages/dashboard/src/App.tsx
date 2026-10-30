@@ -11,6 +11,7 @@ import type {
   CatalogEval,
   LoadError,
   DashboardApi,
+  ProjectInfo,
   MatrixSummary,
   RunSummary,
   SuiteSummary,
@@ -52,6 +53,9 @@ function Dashboard({
   const runsSignature = useRef('');
   const [error, setError] = useState<string>();
   const [loadErrors, setLoadErrors] = useState<LoadError[]>([]);
+  const [project, setProject] = useState<ProjectInfo | null>(() =>
+    shareProject(share, commit),
+  );
 
   useEffect(() => {
     let active = true;
@@ -60,14 +64,24 @@ function Dashboard({
       api.listSuites(),
       api.getMatrix(),
       api.listLoadErrors?.() ?? [],
+      share ? null : (api.getProject?.().catch(() => null) ?? null),
     ])
-      .then(([nextCatalog, nextSuites, nextMatrix, nextLoadErrors]) => {
-        if (!active) return;
-        setCatalog(nextCatalog);
-        setLoadErrors(nextLoadErrors);
-        setSuites(nextSuites);
-        setMatrix(nextMatrix);
-      })
+      .then(
+        ([
+          nextCatalog,
+          nextSuites,
+          nextMatrix,
+          nextLoadErrors,
+          nextProject,
+        ]) => {
+          if (!active) return;
+          if (!share) setProject(nextProject);
+          setCatalog(nextCatalog);
+          setLoadErrors(nextLoadErrors);
+          setSuites(nextSuites);
+          setMatrix(nextMatrix);
+        },
+      )
       .catch((cause: unknown) => {
         if (active)
           setError(
@@ -77,6 +91,8 @@ function Dashboard({
     return () => {
       active = false;
     };
+    // The share context is fixed for the page's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
   // Navigation and new runs must not require a full page reload. Poll while this
@@ -115,6 +131,7 @@ function Dashboard({
 
   return (
     <DashboardShell
+      project={project}
       header={
         share?.repo && share.commits && commit ? (
           <VersionPicker
@@ -157,4 +174,15 @@ function Dashboard({
       />
     </DashboardShell>
   );
+}
+
+/** On the share server, the repository and commit come from the page itself. */
+function shareProject(
+  share: ShareContext | undefined,
+  commit: string | undefined,
+): ProjectInfo | null {
+  if (!share?.repo || !commit) return null;
+  // Share repository keys end in `/~{project}` for projects below the repo root.
+  const [repo, project] = share.repo.split('/~');
+  return { repo: repo!, ...(project ? { project } : {}), commit };
 }

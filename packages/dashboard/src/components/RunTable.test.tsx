@@ -4,7 +4,8 @@ import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
 import { FACET_PREVIEW, searchFacets, visibleChoices } from './RunFilters.js';
-import { filterRuns, RunTable } from './RunTable.js';
+import { filterRuns } from './RunFilterBar.js';
+import { RunTable } from './RunTable.js';
 import { parameterLayout, relativeTime } from './run-columns.js';
 import { runFacets } from './run-facets.js';
 
@@ -82,7 +83,7 @@ test('only differing parameters become columns, a few at most; the rest wrap in 
   expect(html).toContain('{&quot;docs&quot;:true}');
   // Each run opens its own page, and its scenario opens the scenario page.
   expect(html).toContain('href="/runs/run-one"');
-  expect(html).toContain('href="/scenarios/greeting"');
+  expect(html).toContain('href="/library/scenarios/greeting"');
   // Agent and suite are not columns; the suite sits under the scenario name.
   expect(sortLabels(html)).not.toContain('Agent');
   expect(sortLabels(html)).not.toContain('Suite');

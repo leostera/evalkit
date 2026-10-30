@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Effect } from 'effect';
 import puppeteer, { type Browser } from 'puppeteer';
-import { defineEval, predicate, registerEvals, user } from '@evalkit/core';
+import {
+  defineDataset,
+  defineEval,
+  predicate,
+  registerEvals,
+  user,
+} from '@evalkit/core';
 import { localReportStore, runEval } from '../../runner/src/index.js';
 import { buildDashboard } from '../../cli/src/dashboard-build.js';
 
@@ -14,8 +20,14 @@ let server: ReturnType<typeof Bun.serve>;
 let browser: Browser;
 let runId: string;
 
+const notes = defineDataset({
+  id: 'snapshot-notes',
+  files: { 'guide/notes.md': '# Notes for the agent' },
+});
+
 const evaluation = defineEval({
   id: 'snapshot-greeting',
+  datasets: [notes],
   name: 'Snapshot greeting',
   agent: {
     identity: { kind: 'in-process', id: 'snapshot-agent' },
@@ -113,19 +125,32 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
       value,
     );
 
-  // Scenarios link to their own page, their agent, and their runs, under the mount path.
+  // The scoreboard links each scenario and its latest run, under the mount path.
   await page.goto(`${origin}/share/`);
   await text('Read-only snapshot');
   await text('Snapshot greeting');
-  const hrefs = await page.$$eval('a', (links) =>
-    links.map((link) => link.getAttribute('href') ?? ''),
-  );
-  expect(hrefs).toContain('/share/agents?agent=snapshot-agent');
-  expect(hrefs).toContain('/share/scenarios/snapshot-greeting');
-  expect(hrefs.some((href) => href.startsWith('/share/runs?eval='))).toBe(true);
+  const hrefs = () =>
+    page.$$eval('a', (links) =>
+      links.map((link) => link.getAttribute('href') ?? ''),
+    );
+  expect(new URL(page.url()).pathname).toBe('/share/scoreboard');
+  expect(await hrefs()).toContain('/share/library/scenarios/snapshot-greeting');
+  expect(await hrefs()).toContain(`/share/runs/${runId}`);
 
-  // Following the runs link stays on clean URLs and filters to the eval.
-  await page.click('a[href^="/share/runs?eval="]');
+  // Library pages load directly and link to each other.
+  await page.goto(`${origin}/share/library/scenarios/snapshot-greeting`);
+  await text('Trials per run');
+  expect(await hrefs()).toContain('/share/library/agents/snapshot-agent');
+  expect(await hrefs()).toContain('/share/library/datasets/snapshot-notes');
+
+  // A dataset's files browse from the snapshot, contents included.
+  await page.goto(`${origin}/share/library/datasets/snapshot-notes`);
+  await page.waitForSelector('.file-explorer button[title="guide/notes.md"]');
+  await page.click('.file-explorer button[title="guide/notes.md"]');
+  await text('# Notes for the agent');
+
+  // Runs, filtered through the URL, stay on clean URLs.
+  await page.goto(`${origin}/share/runs?q=snapshot`);
   await text('1 of 1 runs');
   expect(new URL(page.url()).pathname).toBe('/share/runs');
 
@@ -143,8 +168,10 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
   expect(trialPath).toMatch(new RegExp(`^/share/runs/${runId}/trials/[^/]+$`));
   await page.goto(`${origin}${trialPath}`);
   await page.waitForSelector('.trajectory', { timeout: 10_000 });
-  await page.goto(`${origin}/share/scenarios/snapshot-greeting`);
-  await text('Trials per run');
+  await page.goto(`${origin}${trialPath}/workspace`);
+  await page.waitForSelector('.file-explorer button[title="reply.txt"]');
+  await page.click('.file-explorer button[title="reply.txt"]');
+  await text('Ada');
   expect(failures).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();

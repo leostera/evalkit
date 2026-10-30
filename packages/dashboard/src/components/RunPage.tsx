@@ -1,11 +1,8 @@
-import type {
-  CatalogEval,
-  DashboardApi,
-  RunSummary,
-  SuiteSummary,
-} from '../api.js';
+import type { CatalogEval, DashboardApi, RunSummary } from '../api.js';
 import { agentName } from './agentName.js';
-import { monoClass } from './DataTable.js';
+import { monoClass, tableLinkClass } from './DataTable.js';
+import { scenarioHref } from './links.js';
+import { Link } from 'react-router-dom';
 import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
@@ -19,13 +16,11 @@ import { useRunTrials } from './use-run-table-state.js';
 export function RunPage({
   api,
   catalog,
-  suites,
   runs,
   runId,
 }: {
   api: DashboardApi;
   catalog: CatalogEval[];
-  suites: SuiteSummary[];
   runs: RunSummary[];
   runId: string;
 }) {
@@ -41,12 +36,7 @@ export function RunPage({
   const parameters = Object.entries(run.parameters ?? {});
   return (
     <>
-      <HierarchyBreadcrumbs
-        catalog={catalog}
-        suites={suites}
-        evalId={run.evalId}
-        run={run}
-      />
+      <HierarchyBreadcrumbs run={run} />
       <PageHeading
         title={`Run ${run.id.slice(0, 8)}`}
         subtitle={run.id}
@@ -65,7 +55,16 @@ export function RunPage({
       <div className="run-overview max-w-3xl">
         <DetailList
           items={[
-            ['Scenario', scenario?.name ?? run.evalId],
+            [
+              'Scenario',
+              <Link
+                key="scenario"
+                to={scenarioHref(run.evalId)}
+                className={tableLinkClass}
+              >
+                {scenario?.name ?? run.evalId}
+              </Link>,
+            ],
             ['Agent', scenario ? agentName(scenario) : (run.agent ?? '—')],
             ['Score', run.score ?? '—'],
             ['Trials', `${run.completedTrials} of ${run.requestedTrials}`],

@@ -2,6 +2,14 @@ import { authorId, type ResourceUri } from './identity.js';
 import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
 import type { AutEventInput, TurnResult } from './aut-events.js';
 import { toJsonObject } from './json.js';
+import {
+  catalogEntry,
+  type CatalogOptions,
+  type EvalCatalogEntry,
+} from './catalog.js';
+import { internalModule, markDefinitionSite } from './definition-site.js';
+
+internalModule(import.meta.url);
 export {
   defineConfig,
   type EvalkitConfig,
@@ -189,7 +197,7 @@ export function agentRuntimes(agent: AutAdapter<any>): AgentRuntimes {
  */
 export function defineAgent<const T extends AutAdapter>(agent: T): T {
   if (agent.identity) authoringId(agent.identity);
-  return agent;
+  return markDefinitionSite(agent);
 }
 
 export type UserStep = {
@@ -346,7 +354,7 @@ export function predicate(
     throw new Error(
       `Predicate ${name} passAt must be a number from 0 to 1; received ${options.passAt}`,
     );
-  return { kind: 'predicate', name, run, ...options };
+  return markDefinitionSite({ kind: 'predicate', name, run, ...options });
 }
 
 export function judge(
@@ -355,7 +363,7 @@ export function judge(
 ): JudgeRule {
   if (!name.trim() || !options.rubric.trim())
     throw new Error('Judge name and rubric must not be empty');
-  return { kind: 'judge', name, ...options };
+  return markDefinitionSite({ kind: 'judge', name, ...options });
 }
 
 export type EvalPolicy = {
@@ -415,7 +423,7 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
     throw new Error('Judge rules require an eval judge agent');
   if (definition.judge && definition.judge === definition.agent)
     throw new Error('Judge agent must be distinct from the agent under test');
-  return definition;
+  return markDefinitionSite(definition);
 }
 
 export { defineEvalMatrix, canonicalParameters } from './matrix.js';
@@ -466,7 +474,8 @@ export type EvalRegistry = {
   getSuite(uri: string): EvalSuite | undefined;
   metadata(): EvalRegistryMetadata[];
   suiteMetadata(): EvalSuiteMetadata[];
-  catalog(): EvalCatalogEntry[];
+  /** Definition data for the dashboard; pass the project root to include where each thing is defined. */
+  catalog(options?: CatalogOptions): EvalCatalogEntry[];
 };
 
 export type EvalRegistryMetadata = {
@@ -479,31 +488,6 @@ export type EvalSuiteMetadata = {
   id: string;
   name?: string;
   evalIds: string[];
-};
-
-export type EvalCatalogDataset = {
-  id: string;
-  name?: string;
-  visibility: DatasetVisibility;
-  source: 'static' | 'computed';
-  mount: string;
-};
-
-export type EvalCatalogEntry = {
-  id: string;
-  path: string;
-  name?: string;
-  suiteId?: string;
-  agent: {
-    name?: string;
-    kind: string;
-    id?: string;
-    version?: string;
-    runtimes: Array<{ name: AgentRuntimeName; kind: string }>;
-  };
-  datasets: EvalCatalogDataset[];
-  trialCount: number;
-  scorers: Array<{ name: string; kind: ScoringRule['kind'] }>;
 };
 
 /**
@@ -572,38 +556,14 @@ export function registerEvals<
         evalIds: suite.evals.map(authoringId),
         ...(suite.name ? { name: suite.name } : {}),
       })),
-    catalog: () =>
-      evals.map((evaluation) => {
-        const suite = suiteIdByEvalId.get(authoringId(evaluation));
-        const identity = evaluation.agent.identity;
-        return {
-          id: evaluation.id,
-          path: suite ? `${suite.id}#${evaluation.id}` : evaluation.id,
-          ...(evaluation.name ? { name: evaluation.name } : {}),
-          ...(suite ? { suiteId: suite.id } : {}),
-          agent: {
-            ...(identity?.name ? { name: identity.name } : {}),
-            kind: identity?.kind ?? 'adapter',
-            ...(identity?.id ? { id: identity.id } : {}),
-            ...(identity?.version ? { version: identity.version } : {}),
-            runtimes: Object.entries(agentRuntimes(evaluation.agent)).map(
-              ([name, runtime]) => ({
-                name: name as AgentRuntimeName,
-                kind: runtime.kind,
-              }),
-            ),
-          },
-          datasets: (evaluation.datasets ?? []).map((dataset) => ({
-            id: dataset.id,
-            ...(dataset.name ? { name: dataset.name } : {}),
-            visibility: dataset.visibility,
-            source: dataset.source.kind,
-            mount: dataset.mount,
-          })),
-          trialCount: evaluation.policy?.trials ?? 1,
-          scorers: evaluation.scoring.map(({ name, kind }) => ({ name, kind })),
-        };
-      }),
+    catalog: (options) =>
+      evals.map((evaluation) =>
+        catalogEntry(
+          evaluation,
+          suiteIdByEvalId.get(authoringId(evaluation)),
+          options,
+        ),
+      ),
   };
 }
 
@@ -785,6 +745,8 @@ export * from './identity.js';
 export * from './dataset.js';
 export * from './aut-events.js';
 export * from './json.js';
+export * from './catalog.js';
+export { definitionSite, type DefinitionSite } from './definition-site.js';
 export * from './schema.js';
 export * from './trajectory.js';
 

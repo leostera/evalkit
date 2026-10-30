@@ -1,4 +1,4 @@
-import type { DashboardApi } from './api.js';
+import { encodePath, type DashboardApi } from './api.js';
 
 const READ_ONLY =
   'This is a read-only dashboard snapshot. Run evals with `evalkit run`, then rebuild it with `evalkit build`.';
@@ -17,7 +17,7 @@ export function createStaticDashboardApi(options: {
     if (!response.ok)
       // Listings are always shared; `evalkit share --no-workspace` leaves out contents.
       throw new Error(
-        path.includes('/workspace/')
+        path.includes('/workspace/') || /^datasets\/[^/]+\/files\//.test(path)
           ? 'This file is listed, but its contents were not shared.'
           : `Snapshot file is missing: data/${path}`,
       );
@@ -31,6 +31,12 @@ export function createStaticDashboardApi(options: {
     readOnly: true,
     listCatalog: async () =>
       (await json<{ evals: never[] }>('catalog.json')).evals,
+    getProject: async () =>
+      (
+        await json<{ project: null }>('project.json').catch(() => ({
+          project: null,
+        }))
+      ).project,
     getMatrix: async () => null,
     listMatrixCells: async () => {
       throw new Error(READ_ONLY);
@@ -63,6 +69,12 @@ export function createStaticDashboardApi(options: {
           .split('/')
           .map(encodeURIComponent)
           .join('/')}`,
+      ),
+    listDatasetFiles: (datasetId) =>
+      json(`datasets/${encodeURIComponent(datasetId)}/files.json`),
+    getDatasetFile: (datasetId, path) =>
+      file(
+        `datasets/${encodeURIComponent(datasetId)}/files/${encodePath(path)}`,
       ),
     runEval: async () => {
       throw new Error(READ_ONLY);

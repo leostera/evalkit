@@ -1,9 +1,11 @@
-import { Button, LayerCard, Link, Table } from '@cloudflare/kumo';
+import { Button, LayerCard, Table } from '@cloudflare/kumo';
 import { PlayIcon } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type {
   CatalogEval,
+  CatalogScorer,
+  CatalogStep,
   DashboardApi,
   MatrixSummary,
   RunSummary,
@@ -19,8 +21,10 @@ import {
 import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
-import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
-import { runHref } from './links.js';
+import { PageHeading } from './Hierarchy.js';
+import { DefinedAt, LibraryBreadcrumbs } from './Library.js';
+import { libraryJudges } from './library-entities.js';
+import { agentHref, datasetHref, judgeHref, runHref } from './links.js';
 import { rowLinkProps } from './row-link.js';
 import { MatrixEvalTable } from './MatrixEvalTable.js';
 import { Pager } from './Pager.js';
@@ -78,7 +82,10 @@ export function ScenarioPage({
   const canRun = !!scenario && !api.readOnly;
   return (
     <>
-      <HierarchyBreadcrumbs catalog={catalog} suites={suites} evalId={evalId} />
+      <LibraryBreadcrumbs
+        section="scenarios"
+        current={scenario?.name ?? evalId}
+      />
       <PageHeading
         title={scenario?.name ?? evalId}
         subtitle={scenario?.id ?? `${evalId} (no longer in the project)`}
@@ -103,7 +110,14 @@ export function ScenarioPage({
       />
       {runError ? <ErrorBanner message={runError} /> : null}
       {scenario ? (
-        <ScenarioDefinition scenario={scenario} suites={suites} />
+        <ScenarioDefinition
+          scenario={scenario}
+          suites={suites}
+          catalog={catalog}
+        />
+      ) : null}
+      {scenario?.transcript?.length ? (
+        <Transcript scenario={scenario} catalog={catalog} />
       ) : null}
       {canRun && matrix ? (
         <section aria-label="Matrix cells" className="flex flex-col gap-2">
@@ -136,14 +150,25 @@ export function ScenarioPage({
 function ScenarioDefinition({
   scenario,
   suites,
+  catalog,
 }: {
   scenario: CatalogEval;
   suites: SuiteSummary[];
+  catalog: CatalogEval[];
 }) {
   const suite = suites.find(
     (entry) =>
       entry.id === scenario.suiteId || entry.evalIds.includes(scenario.id),
   );
+  const judges = libraryJudges(catalog);
+  const judgeKey = (scorer: CatalogScorer) =>
+    judges.find(
+      (judge) =>
+        judge.scorer.name === scorer.name &&
+        judge.scorer.kind === scorer.kind &&
+        judge.scorer.definedAt === scorer.definedAt,
+    )?.key ?? scorer.name;
+  const policy = scenario.policy;
   return (
     <LayerCard className="scenario-definition max-w-3xl p-4">
       <DetailList
@@ -153,34 +178,66 @@ function ScenarioDefinition({
             'Agent',
             <Link
               key="agent"
-              href={`/agents?agent=${encodeURIComponent(agentKey(scenario))}`}
+              to={agentHref(agentKey(scenario))}
+              className={tableLinkClass}
             >
               {agentName(scenario)}
             </Link>,
           ],
+          ...(scenario.judgeAgent
+            ? ([
+                [
+                  'Judge agent',
+                  <Link
+                    key="judge-agent"
+                    to={agentHref(
+                      agentKey({ agent: scenario.judgeAgent } as CatalogEval),
+                    )}
+                    className={tableLinkClass}
+                  >
+                    {scenario.judgeAgent.name ??
+                      scenario.judgeAgent.id ??
+                      scenario.judgeAgent.kind}
+                  </Link>,
+                ],
+              ] as const)
+            : []),
           [
-            'Runtimes',
-            scenario.agent.runtimes
-              .map((runtime) => `${runtime.name} (${runtime.kind})`)
-              .join(', ') || 'default',
-          ],
-          ['Trials per run', scenario.trialCount],
-          [
-            'Scorers',
-            scenario.scorers
-              .map((scorer) => `${scorer.name} (${scorer.kind})`)
-              .join(', ') || 'none',
+            'Final scoring',
+            scenario.scorers.length ? (
+              <span key="scorers" className="flex flex-wrap gap-x-2">
+                {scenario.scorers.map((scorer) => (
+                  <Link
+                    key={`${scorer.kind}-${scorer.name}`}
+                    to={judgeHref(judgeKey(scorer))}
+                    className={tableLinkClass}
+                  >
+                    {scorer.name}
+                  </Link>
+                ))}
+              </span>
+            ) : (
+              'none'
+            ),
           ],
           [
             'Datasets',
             (scenario.datasets ?? []).length ? (
-              <span key="datasets">
-                {(scenario.datasets ?? []).map((dataset, index) => (
+              <span key="datasets" className="flex flex-wrap gap-x-2">
+                {(scenario.datasets ?? []).map((dataset) => (
                   <span key={dataset.id}>
-                    {index ? ', ' : ''}
-                    <Link href="/datasets">{dataset.id}</Link>{' '}
+                    <Link
+                      to={datasetHref(dataset.id)}
+                      className={tableLinkClass}
+                    >
+                      {dataset.id}
+                    </Link>{' '}
                     <span className="text-kumo-subtle">
-                      ({dataset.visibility})
+                      (
+                      {dataset.visibility === 'candidate'
+                        ? 'agent'
+                        : 'scorers only'}
+                      )
                     </span>
                   </span>
                 ))}
@@ -189,10 +246,122 @@ function ScenarioDefinition({
               'none'
             ),
           ],
+          ['Trials per run', policy?.trials ?? scenario.trialCount],
+          ...(policy?.timeoutMs !== undefined
+            ? ([['Timeout', `${policy.timeoutMs / 1000}s`]] as const)
+            : []),
+          ...(policy?.failfast
+            ? ([['Failfast', 'stops at the first failed checkpoint']] as const)
+            : []),
+          [
+            'Runtimes',
+            scenario.agent.runtimes
+              .map((runtime) => `${runtime.name} (${runtime.kind})`)
+              .join(', ') || 'default',
+          ],
+          ['Defined in', <DefinedAt key="at" at={scenario.definedAt} />],
         ]}
       />
     </LayerCard>
   );
+}
+
+/** The conversation as written: user turns, expectations and checkpoints. */
+function Transcript({
+  scenario,
+  catalog,
+}: {
+  scenario: CatalogEval;
+  catalog: CatalogEval[];
+}) {
+  const judges = libraryJudges(catalog);
+  return (
+    <section aria-label="Transcript" className="flex max-w-3xl flex-col gap-2">
+      <h3 className="text-sm font-semibold text-kumo-strong">Transcript</h3>
+      <ol className="flex flex-col gap-1.5">
+        {(scenario.transcript ?? []).map((step, index) => (
+          <li
+            key={index}
+            className="flex items-start gap-3 rounded-md border border-kumo-hairline bg-kumo-base px-3 py-2 text-[13px]"
+          >
+            <span className="w-5 shrink-0 text-right text-xs text-kumo-subtle tabular-nums">
+              {index + 1}
+            </span>
+            <StepBody
+              step={step}
+              judgeKey={(scorer) =>
+                judges.find(
+                  (judge) =>
+                    judge.scorer.name === scorer.name &&
+                    judge.scorer.kind === scorer.kind &&
+                    judge.scorer.definedAt === scorer.definedAt,
+                )?.key ?? scorer.name
+              }
+            />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function StepBody({
+  step,
+  judgeKey,
+}: {
+  step: CatalogStep;
+  judgeKey(scorer: CatalogScorer): string;
+}) {
+  const label = (text: string) => (
+    <span className="w-24 shrink-0 text-xs font-medium text-kumo-subtle">
+      {text}
+    </span>
+  );
+  switch (step.kind) {
+    case 'user':
+      return (
+        <>
+          {label('User says')}
+          <span className="whitespace-pre-wrap">{step.message}</span>
+        </>
+      );
+    case 'agent':
+      return (
+        <>
+          {label('Agent should')}
+          <code className={monoClass}>{JSON.stringify(step.expectation)}</code>
+        </>
+      );
+    case 'expect-tool-call':
+      return (
+        <>
+          {label('Expect tool call')}
+          <span>
+            <code className={monoClass}>{step.name}</code>
+            {step.arguments !== undefined ? (
+              <code className={`${monoClass} ml-2 text-kumo-subtle`}>
+                {JSON.stringify(step.arguments)}
+              </code>
+            ) : null}
+          </span>
+        </>
+      );
+    case 'checkpoint':
+      return (
+        <>
+          {label('Checkpoint')}
+          <Link
+            to={judgeHref(judgeKey(step.scorer))}
+            className={tableLinkClass}
+          >
+            {step.scorer.name}
+          </Link>
+          <span className="text-xs text-kumo-subtle">
+            {step.scorer.kind === 'judge' ? 'LLM judge' : 'predicate'}
+          </span>
+        </>
+      );
+  }
 }
 
 /** A scenario's runs, newest first; each opens its run page. */
@@ -233,14 +402,14 @@ export function ScenarioRuns({ runs }: { runs: readonly RunSummary[] }) {
           {visible.map((run) => (
             <Table.Row key={run.id} {...rowLinkProps}>
               <Table.Cell>
-                <RouterLink
+                <Link
                   to={runHref(run.id)}
                   data-row-link
                   className={`${tableLinkClass} ${monoClass}`}
                   title={run.id}
                 >
                   {run.id.slice(0, 8)}
-                </RouterLink>
+                </Link>
               </Table.Cell>
               <Table.Cell
                 title={

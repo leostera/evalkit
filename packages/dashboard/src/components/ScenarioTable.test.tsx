@@ -51,7 +51,7 @@ test('discovered scenarios are visible without a suite', () => {
   const html = render([], [standalone]);
   expect(html).toContain('>Scenarios<');
   expect(html).toContain('Echo Worker');
-  expect(html).toContain('href="/scenarios/echo"');
+  expect(html).toContain('href="/library/scenarios/echo"');
   expect(runButtons(html)).toBe(1);
   expect(html).not.toContain('No suites are loaded');
 });
@@ -185,7 +185,7 @@ test('each scenario row links to its agent and to its runs, per matrix cell', ()
     [],
     matrix,
   );
-  expect(html).toContain('href="/agents?agent=echo-worker"');
+  expect(html).toContain('href="/library/agents/echo-worker"');
   const decode = (href: string) =>
     new URLSearchParams(href.replace('/runs?', '').replaceAll('&amp;', '&'));
   const runLinks = [...html.matchAll(/href="(\/runs\?[^"]+)"/g)].map((match) =>

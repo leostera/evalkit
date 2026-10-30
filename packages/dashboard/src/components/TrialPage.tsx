@@ -1,12 +1,7 @@
 import { Button } from '@cloudflare/kumo';
 import { FolderOpenIcon } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
-import type {
-  CatalogEval,
-  DashboardApi,
-  RunSummary,
-  SuiteSummary,
-} from '../api.js';
+import type { DashboardApi, RunSummary } from '../api.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
@@ -22,16 +17,12 @@ import { WorkspaceDetail } from './WorkspaceDetail.js';
  */
 export function TrialPage({
   api,
-  catalog,
-  suites,
   runs,
   runId,
   trialId,
   workspace = false,
 }: {
   api: DashboardApi;
-  catalog: CatalogEval[];
-  suites: SuiteSummary[];
   runs: RunSummary[];
   runId: string;
   trialId: string;
@@ -49,9 +40,6 @@ export function TrialPage({
     );
   const breadcrumbs = (
     <HierarchyBreadcrumbs
-      catalog={catalog}
-      suites={suites}
-      evalId={run.evalId}
       run={run}
       trial={trial ?? { id: trialId }}
       workspace={workspace}

@@ -1,3 +1,10 @@
+import type {
+  EvalCatalogAgent,
+  EvalCatalogDataset,
+  EvalCatalogEntry,
+  EvalCatalogScorer,
+  EvalCatalogStep,
+} from '@evalkit/core';
 export type EvalSummary = {
   id: string;
   name?: string;
@@ -8,27 +15,39 @@ export type LoadError = {
   suiteId?: string;
   error: { name: string; message: string };
 };
-export type CatalogDataset = {
-  id: string;
-  name?: string;
-  visibility: 'candidate' | 'evaluator';
-  source: 'static' | 'computed';
-  mount: string;
+export type CatalogAgent = EvalCatalogAgent;
+export type CatalogScorer = EvalCatalogScorer;
+export type CatalogStep = EvalCatalogStep;
+export type CatalogDataset = EvalCatalogDataset;
+/**
+ * A scenario's definition data. Catalogs saved with older runs lack the newer
+ * fields (transcript, policy, where things are defined), so they are optional.
+ */
+export type CatalogEval = EvalSummary &
+  Pick<EvalCatalogEntry, 'path' | 'trialCount' | 'agent' | 'scorers'> &
+  Partial<
+    Pick<
+      EvalCatalogEntry,
+      | 'datasets'
+      | 'judgeAgent'
+      | 'policy'
+      | 'transcript'
+      | 'metadata'
+      | 'definedAt'
+    >
+  >;
+
+/** The repository and commit the dashboard shows. */
+export type ProjectInfo = {
+  /** Normalized repository key, e.g. `github.com/acme/agents`. */
+  repo: string;
+  /** The eval project's directory in the repository, when not at its root. */
+  project?: string;
+  commit: string;
+  ref?: string;
+  dirty?: boolean;
 };
-export type CatalogEval = EvalSummary & {
-  path: string;
-  trialCount: number;
-  agent: {
-    name?: string;
-    kind: string;
-    id?: string;
-    version?: string;
-    runtimes: Array<{ name: string; kind: string }>;
-  };
-  /** Absent in catalogs recorded before datasets existed. */
-  datasets?: CatalogDataset[];
-  scorers: Array<{ name: string; kind: string }>;
-};
+
 export type MatrixSummary = {
   id: string;
   parameters: Record<string, unknown[]>;
@@ -96,6 +115,15 @@ export type WorkspaceEntry = {
   size?: number;
 };
 
+/** What can be browsed of a dataset; computed datasets only have files in trial workspaces. */
+export type DatasetListing =
+  | {
+      kind: 'static';
+      mount: string;
+      files: Array<{ path: string; size: number }>;
+    }
+  | { kind: 'computed'; mount: string };
+
 export type CheckpointResult = {
   step: number;
   kind: 'predicate' | 'judge' | 'expect-tool-call';
@@ -147,6 +175,8 @@ export interface DashboardApi {
   /** True for a static `evalkit build` snapshot, which cannot start runs. */
   readOnly?: boolean;
   listCatalog(): Promise<CatalogEval[]>;
+  /** The repository and commit being shown; null when unknown. */
+  getProject?(): Promise<ProjectInfo | null>;
   /** Eval files that failed to import in `evalkit dev`; absent elsewhere. */
   listLoadErrors?(): Promise<LoadError[]>;
   getMatrix(): Promise<MatrixSummary | null>;
@@ -170,6 +200,8 @@ export interface DashboardApi {
     trialId: string,
     path: string,
   ): Promise<Response>;
+  listDatasetFiles(datasetId: string): Promise<DatasetListing>;
+  getDatasetFile(datasetId: string, path: string): Promise<Response>;
   runEval(path: string, parameters?: Record<string, unknown>): Promise<void>;
   runSuite(suiteId: string): Promise<void>;
 }
@@ -192,6 +224,10 @@ export function createHttpDashboardApi(options: {
   return {
     async listCatalog() {
       return (await request<{ evals: CatalogEval[] }>('/v1/catalog')).evals;
+    },
+    async getProject() {
+      return (await request<{ project: ProjectInfo | null }>('/v1/project'))
+        .project;
     },
     async listLoadErrors() {
       return (
@@ -250,10 +286,23 @@ export function createHttpDashboardApi(options: {
     async getWorkspaceFile(runId, trialId, filePath) {
       const response = await send(
         new URL(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace/${filePath
-            .split('/')
-            .map(encodeURIComponent)
-            .join('/')}`,
+          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace/${encodePath(filePath)}`,
+          options.baseUrl,
+        ),
+      );
+      if (!response.ok)
+        throw new Error(`Dashboard request failed: ${response.status}`);
+      return response;
+    },
+    async listDatasetFiles(datasetId) {
+      return request<DatasetListing>(
+        `/v1/datasets/${encodeURIComponent(datasetId)}/files`,
+      );
+    },
+    async getDatasetFile(datasetId, filePath) {
+      const response = await send(
+        new URL(
+          `/v1/datasets/${encodeURIComponent(datasetId)}/files/${encodePath(filePath)}`,
           options.baseUrl,
         ),
       );
@@ -281,4 +330,9 @@ export function createHttpDashboardApi(options: {
       });
     },
   };
+}
+
+/** Encodes each segment of a relative file path for a URL. */
+export function encodePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
 }

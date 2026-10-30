@@ -174,10 +174,21 @@ export async function detectSource(
   };
 }
 
-/** The project's evals and suites, saved with each run (`catalog.json`). */
-export function runCatalog(registry: EvalRegistry): RunCatalog {
+/** What the dashboard's header shows: repository, commit, branch, dirty. */
+export function projectInfo(source: RunSource) {
   return {
-    catalog: registry.catalog(),
+    repo: source.repo,
+    ...(source.project ? { project: source.project } : {}),
+    commit: source.commit,
+    ...(source.ref ? { ref: source.ref } : {}),
+    dirty: source.dirty,
+  };
+}
+
+/** The project's evals and suites, saved with each run (`catalog.json`). */
+export function runCatalog(registry: EvalRegistry, root?: string): RunCatalog {
+  return {
+    catalog: registry.catalog({ root }),
     evals: registry.metadata(),
     suites: registry.suiteMetadata(),
   };

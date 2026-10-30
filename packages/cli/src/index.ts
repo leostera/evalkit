@@ -31,7 +31,12 @@ import {
   runProjectCommand,
 } from './run-command.js';
 import { tidyReports } from './tidy.js';
-import { detectSource, runCatalog, shortSource } from './source.js';
+import {
+  detectSource,
+  projectInfo,
+  runCatalog,
+  shortSource,
+} from './source.js';
 import {
   checkShareServer,
   noRunsMessage,
@@ -43,6 +48,11 @@ import {
 } from './share-command.js';
 import { createDirectoryShareApp, repoKey } from '@evalkit/share';
 import { newProject } from './new-project.js';
+import {
+  datasetFile,
+  datasetListing,
+  projectDatasets,
+} from './dataset-files.js';
 import {
   compareRuns,
   comparisonLines,
@@ -150,7 +160,10 @@ async function runProvenance(registry: EvalRegistry) {
       resolve(projectRoot, '_evalkit-dashboard'),
     ],
   });
-  return { ...(source ? { source } : {}), catalog: runCatalog(registry) };
+  return {
+    ...(source ? { source } : {}),
+    catalog: runCatalog(registry, projectRoot),
+  };
 }
 
 function registerMatrixRoutes(
@@ -297,9 +310,47 @@ function registerReportRoutes(
   registry: EvalRegistry,
   reports: ReturnType<typeof createDashboardReportReader>,
 ): void {
+  app.get('/v1/project', async (context) => {
+    const source = await detectSource(projectRoot, {
+      outputDirs: [
+        reportRoot,
+        sandboxRoot,
+        resolve(projectRoot, '_evalkit-dashboard'),
+      ],
+    });
+    return context.json({ project: source ? projectInfo(source) : null });
+  });
+  // Datasets are browsed from their definitions; computed ones never run here.
+  app.get('/v1/datasets/:id/files', async (context) => {
+    const dataset = projectDatasets(registry).get(context.req.param('id'));
+    if (!dataset) return context.text('Unknown dataset', 404);
+    try {
+      return context.json(await datasetListing(dataset, projectRoot));
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : 'Unable to list dataset',
+        400,
+      );
+    }
+  });
+  app.get('/v1/datasets/:id/files/:path{.+}', async (context) => {
+    const dataset = projectDatasets(registry).get(context.req.param('id'));
+    if (!dataset) return context.text('Unknown dataset', 404);
+    const file = context.req.param('path');
+    try {
+      return new Response(await datasetFile(dataset, projectRoot, file), {
+        headers: { 'content-type': fileContentType(file) },
+      });
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : 'Unable to read dataset file',
+        404,
+      );
+    }
+  });
   app.get('/v1/catalog', (context) =>
     context.json({
-      evals: registry.catalog(),
+      evals: registry.catalog({ root: projectRoot }),
       loadErrors: project?.loadErrors ?? [],
     }),
   );
@@ -354,22 +405,25 @@ function registerReportRoutes(
       );
     }
   });
-  app.get('/v1/runs/:runId/trials/:trialId/workspace/*', async (context) => {
-    try {
-      return await reports.candidateFile(
-        context.req.param('runId'),
-        context.req.param('trialId'),
-        context.req.param('*') ?? '',
-      );
-    } catch (error) {
-      return context.text(
-        error instanceof Error
-          ? error.message
-          : 'Unable to read workspace file',
-        400,
-      );
-    }
-  });
+  app.get(
+    '/v1/runs/:runId/trials/:trialId/workspace/:path{.+}',
+    async (context) => {
+      try {
+        return await reports.candidateFile(
+          context.req.param('runId'),
+          context.req.param('trialId'),
+          context.req.param('path'),
+        );
+      } catch (error) {
+        return context.text(
+          error instanceof Error
+            ? error.message
+            : 'Unable to read workspace file',
+          400,
+        );
+      }
+    },
+  );
   app.get('/v1/runs/:runId/trials/:trialId/artifacts', async (context) => {
     try {
       return context.json({
@@ -637,6 +691,14 @@ const buildCommand = Command.make(
         const result = await buildDashboard(
           {
             registry: project!.registry,
+            root: projectRoot,
+            source: await detectSource(projectRoot, {
+              outputDirs: [
+                reportRoot,
+                sandboxRoot,
+                resolve(projectRoot, '_evalkit-dashboard'),
+              ],
+            }),
             reportRoot,
             dashboardRoot: dashboardAssets(),
             outDir: resolve(

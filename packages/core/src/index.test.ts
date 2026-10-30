@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   agent,
+  defineAgent,
   defineEval,
   defineEvalMatrix,
   defineSuite,
@@ -80,12 +81,15 @@ describe('core definitions', () => {
         visibility: 'evaluator',
         source: 'static',
         mount: 'answers',
+        // The shape only: dataset values never reach the catalog.
+        value: { shape: { type: 'object', keys: ['a'] } },
       },
       {
         id: 'accounts',
         visibility: 'candidate',
         source: 'computed',
         mount: 'accounts',
+        hooks: { onLoad: true, onRun: false },
       },
     ]);
     expect(() =>
@@ -321,5 +325,45 @@ describe('core definitions', () => {
     expect(() => registerEvals([evaluation, { ...evaluation }])).toThrow(
       'duplicate eval ID',
     );
+  });
+});
+
+describe('library catalog', () => {
+  test('records where things are defined, relative to the root, and the transcript', () => {
+    const greeter = defineAgent({
+      identity: { id: 'greeter', kind: 'test' },
+      async start() {
+        return { async send() {} };
+      },
+    });
+    const says = predicate('says hi', () => 1, { passAt: 0.5 });
+    const evaluation = defineEval({
+      id: 'greets',
+      agent: greeter,
+      transcript: [user('hi'), says],
+      scoring: [says],
+      policy: { trials: 3, failfast: true },
+    });
+    const root = new URL('.', import.meta.url).pathname;
+    const [entry] = registerEvals([evaluation]).catalog({ root });
+    expect(entry?.definedAt).toMatch(/^index\.test\.ts:\d+$/);
+    expect(entry?.agent.definedAt).toMatch(/^index\.test\.ts:\d+$/);
+    expect(entry?.scorers).toEqual([
+      expect.objectContaining({
+        name: 'says hi',
+        kind: 'predicate',
+        passAt: 0.5,
+      }),
+    ]);
+    expect(entry?.transcript).toEqual([
+      { kind: 'user', message: 'hi' },
+      {
+        kind: 'checkpoint',
+        scorer: expect.objectContaining({ name: 'says hi' }),
+      },
+    ]);
+    expect(entry?.policy).toEqual({ trials: 3, failfast: true });
+    // Without a root, no paths at all: never absolute ones.
+    expect(registerEvals([evaluation]).catalog()[0]?.definedAt).toBeUndefined();
   });
 });

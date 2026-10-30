@@ -260,3 +260,68 @@ export function trialDatasets(
     digest,
   }));
 }
+
+/** A file a static dataset places below its mount, for browsing. */
+export type DatasetFileEntry = { path: string; size: number };
+
+/**
+ * The files a static dataset places in every workspace, relative to its
+ * mount. Computed datasets return `undefined`: their files only exist once
+ * `onLoad` runs, and browsing must never run project code.
+ */
+export async function staticDatasetFiles(
+  dataset: Dataset,
+  root: string,
+): Promise<DatasetFileEntry[] | undefined> {
+  const { source } = dataset;
+  if (source.kind === 'computed') return undefined;
+  if (source.files === undefined) return [];
+  if (typeof source.files === 'string') {
+    const directory = path.resolve(root, source.files);
+    return Promise.all(
+      (await listFiles(directory)).map(async (file) => ({
+        path: file,
+        size: (await stat(path.join(directory, file))).size,
+      })),
+    );
+  }
+  return Promise.all(
+    Object.entries(source.files)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(async ([file, content]) => ({
+        path: file,
+        size:
+          typeof content === 'string'
+            ? new TextEncoder().encode(content).byteLength
+            : content instanceof Uint8Array
+              ? content.byteLength
+              : (await stat(path.resolve(root, content.file))).size,
+      })),
+  );
+}
+
+/** One file of a static dataset, by its path below the mount. */
+export async function staticDatasetFile(
+  dataset: Dataset,
+  root: string,
+  file: string,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const { source } = dataset;
+  const missing = () =>
+    new Error(`Dataset ${dataset.id} has no file ${JSON.stringify(file)}`);
+  if (source.kind === 'computed' || source.files === undefined) throw missing();
+  if (typeof source.files === 'string') {
+    const directory = path.resolve(root, source.files);
+    const resolved = path.resolve(directory, file);
+    // Only files inside the dataset directory, never `../` out of it.
+    if (!resolved.startsWith(`${directory}${path.sep}`)) throw missing();
+    const info = await stat(resolved).catch(() => undefined);
+    if (!info?.isFile()) throw missing();
+    return readFile(resolved);
+  }
+  if (!Object.hasOwn(source.files, file)) throw missing();
+  const content = source.files[file]!;
+  if (typeof content === 'string') return new TextEncoder().encode(content);
+  if (content instanceof Uint8Array) return new Uint8Array(content);
+  return readFile(path.resolve(root, content.file));
+}
