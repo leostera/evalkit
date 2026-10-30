@@ -25,10 +25,10 @@ export default defineEval({
   scoring: [matchesGreeting],
 });`;
 
-export const scaffoldCommand = 'bunx @leostera/evalkit new ./evals';
+export const scaffoldCommand = 'bunx @leostera/evalkit new ./agent-evals';
 
 export const setupCommands = `${scaffoldCommand}
-cd evals
+cd agent-evals
 bun install
 bun run check
 bun run evalkit run

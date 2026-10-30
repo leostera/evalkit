@@ -26,7 +26,7 @@ describe('homepage examples', () => {
   test('setup includes installation before running the starter', () => {
     expect(setupCommands.split('\n')).toEqual([
       scaffoldCommand,
-      'cd evals',
+      'cd agent-evals',
       'bun install',
       'bun run check',
       'bun run evalkit run',
