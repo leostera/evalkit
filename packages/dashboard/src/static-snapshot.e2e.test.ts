@@ -137,7 +137,7 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
   expect(new URL(page.url()).pathname).toBe(`/share/runs/${runId}`);
 
   // Down the hierarchy to a trial, whose page also loads directly.
-  await page.click('button.view-trial');
+  await page.click('.nested tbody tr td:nth-child(2)');
   await page.waitForSelector('.trajectory');
   const trialPath = new URL(page.url()).pathname;
   expect(trialPath).toMatch(new RegExp(`^/share/runs/${runId}/trials/[^/]+$`));

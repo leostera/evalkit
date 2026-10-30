@@ -8,6 +8,16 @@ import {
   tableLinkClass,
   TableMessage,
 } from './DataTable.js';
+import {
+  displayValue as display,
+  OtherParametersCell,
+  ParameterCell,
+  ParameterChips,
+  parameterLayout,
+  ScoreCell,
+  StartedCell,
+  type ParameterLayout,
+} from './run-columns.js';
 import { Empty } from './Empty.js';
 import { Pager } from './Pager.js';
 import { RunFilters } from './RunFilters.js';
@@ -15,25 +25,13 @@ import { SearchField } from './SearchField.js';
 import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
 import { StatusBadge } from './StatusBadge.js';
 import { runHref, scenarioHref } from './links.js';
+import { rowLinkProps } from './row-link.js';
 import { filterRunFacets, runFacets } from './run-facets.js';
 import { useRunFilters } from './use-run-table-state.js';
 
 const PAGE_SIZE = 50;
-/** Run, status, scenario, agent, trials, score, runtime, started, commit, suite. */
-const FIXED_RUN_COLUMNS = 10;
-
-function display(value: unknown): string {
-  return typeof value === 'string'
-    ? value
-    : (JSON.stringify(value) ?? String(value));
-}
-
-/** Saved runs may have different axes and non-axis overrides. Show every key. */
-export function runParameterColumns(runs: readonly RunSummary[]): string[] {
-  return [
-    ...new Set(runs.flatMap((run) => Object.keys(run.parameters ?? {}))),
-  ].sort();
-}
+/** Run, status, scenario, score, started, commit; parameters follow, so outcomes never scroll away. */
+const FIXED_RUN_COLUMNS = 6;
 
 export function filterRuns(
   runs: readonly RunSummary[],
@@ -97,13 +95,14 @@ export function RunTable({
     [runs, showArchived],
   );
   const facets = useMemo(() => runFacets(listed), [listed]);
-  const parameterColumns = useMemo(() => runParameterColumns(listed), [listed]);
   const filteredRuns = filterRuns(
     filterRunFacets(listed, activeSearch),
     query,
     suites,
     catalog,
   );
+  // Columns follow the filtered runs: narrowing to one model drops its column.
+  const layout = parameterLayout(filteredRuns);
   const [page, setPage] = useState(0);
   const { sort, toggleSort } = useSort(
     { key: 'started', direction: 'desc' },
@@ -122,7 +121,10 @@ export function RunTable({
     currentPage * PAGE_SIZE,
     (currentPage + 1) * PAGE_SIZE,
   );
-  const columnCount = FIXED_RUN_COLUMNS + parameterColumns.length;
+  const columnCount =
+    FIXED_RUN_COLUMNS +
+    layout.columns.length +
+    (layout.overflow.length ? 1 : 0);
   const header = (label: string, key: string, sticky?: 'left') => (
     <SortableHeader
       label={label}
@@ -137,7 +139,14 @@ export function RunTable({
       <Empty message="No runs yet. Open a scenario or suite to start one." />
     );
   return (
-    <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start">
+    <div className="flex min-w-0 flex-col gap-2">
+      <SearchField
+        label="Filter runs"
+        placeholder="Scenario, parameter, agent or status"
+        value={query}
+        count={`${sortedRuns.length} of ${listed.length} runs`}
+        onChange={setQuery}
+      />
       <RunFilters
         facets={facets}
         search={activeSearch}
@@ -146,85 +155,84 @@ export function RunTable({
         onField={setField}
         onClear={clearFilters}
       />
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {activeSearch.get('invocation') ? (
-          <p className="text-[13px] text-kumo-subtle" role="note">
-            Showing the runs of invocation{' '}
-            <span className={monoClass}>
-              {activeSearch.get('invocation')!.slice(0, 8)}
-            </span>
-            .{' '}
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => setField('invocation', '')}
-            >
-              Show all runs
-            </Button>
-          </p>
-        ) : null}
-        <SearchField
-          label="Filter runs"
-          placeholder="Scenario, parameter, agent or status"
-          value={query}
-          count={`${sortedRuns.length} of ${listed.length} runs`}
-          onChange={setQuery}
-        />
-        <DataTable>
-          <Table.Header variant="compact">
-            <Table.Row>
-              {header('Run', 'run', 'left')}
-              {header('Status', 'status')}
-              {header('Scenario', 'eval')}
-              {parameterColumns.map((parameter) => (
-                <SortableHeader
-                  key={parameter}
-                  label={parameter}
-                  sortKey={`param:${parameter}`}
-                  sort={sort}
-                  onSort={toggleSort}
-                />
-              ))}
-              {header('Agent', 'agent')}
-              {header('Trials', 'trials')}
-              {header('Score', 'score')}
-              {header('Runtime', 'runtime')}
-              {header('Started', 'started')}
-              {header('Commit', 'commit')}
-              {header('Suite', 'suite')}
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {visibleRuns.map((run) => (
-              <RunRow
-                key={run.id}
-                run={run}
-                evaluation={evalFor(run)}
-                suiteName={suiteName(run)}
-                parameterColumns={parameterColumns}
+      {activeSearch.get('invocation') ? (
+        <p className="text-[13px] text-kumo-subtle" role="note">
+          Showing the runs of invocation{' '}
+          <span className={monoClass}>
+            {activeSearch.get('invocation')!.slice(0, 8)}
+          </span>
+          .{' '}
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setField('invocation', '')}
+          >
+            Show all runs
+          </Button>
+        </p>
+      ) : null}
+      {layout.constant.length ? (
+        <p
+          className="constant-parameters flex flex-wrap items-center gap-1 text-[13px] text-kumo-subtle"
+          role="note"
+        >
+          Same on every run shown:
+          <ParameterChips entries={layout.constant} />
+        </p>
+      ) : null}
+      <DataTable>
+        <Table.Header variant="compact">
+          <Table.Row>
+            {header('Run', 'run', 'left')}
+            {header('Status', 'status')}
+            {header('Scenario', 'eval')}
+            {header('Score', 'score')}
+            {header('Started', 'started')}
+            {header('Commit', 'commit')}
+            {layout.columns.map((parameter) => (
+              <SortableHeader
+                key={parameter}
+                label={parameter}
+                sortKey={`param:${parameter}`}
+                sort={sort}
+                onSort={toggleSort}
               />
             ))}
-            {!sortedRuns.length ? (
-              <TableMessage colSpan={columnCount}>
-                <span className="inline-flex items-center gap-2">
-                  No matching runs.
-                  <Button size="xs" variant="ghost" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                </span>
-              </TableMessage>
+            {layout.overflow.length ? (
+              <Table.Head>Other parameters</Table.Head>
             ) : null}
-          </Table.Body>
-        </DataTable>
-        <Pager
-          label="Run pages"
-          noun="Runs"
-          page={currentPage}
-          pageSize={PAGE_SIZE}
-          total={sortedRuns.length}
-          onPage={setPage}
-        />
-      </div>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {visibleRuns.map((run) => (
+            <RunRow
+              key={run.id}
+              run={run}
+              evaluation={evalFor(run)}
+              suiteName={suiteName(run)}
+              layout={layout}
+            />
+          ))}
+          {!sortedRuns.length ? (
+            <TableMessage colSpan={columnCount}>
+              <span className="inline-flex items-center gap-2">
+                No matching runs.
+                <Button size="xs" variant="ghost" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              </span>
+            </TableMessage>
+          ) : null}
+        </Table.Body>
+      </DataTable>
+      <Pager
+        label="Run pages"
+        noun="Runs"
+        page={currentPage}
+        pageSize={PAGE_SIZE}
+        total={sortedRuns.length}
+        onPage={setPage}
+      />
     </div>
   );
 }
@@ -264,18 +272,21 @@ function RunRow({
   run,
   evaluation,
   suiteName,
-  parameterColumns,
+  layout,
 }: {
   run: RunSummary;
   evaluation?: CatalogEval;
   suiteName?: string;
-  parameterColumns: readonly string[];
+  layout: ParameterLayout;
 }) {
+  const name = evaluation?.name ?? run.evalId;
+  const suite = suiteName ?? run.suiteId;
   return (
-    <Table.Row>
+    <Table.Row {...rowLinkProps}>
       <Table.Cell sticky="left">
         <Link
           to={runHref(run.id)}
+          data-row-link
           className={`${tableLinkClass} ${monoClass}`}
           title={run.id}
         >
@@ -291,61 +302,73 @@ function RunRow({
       >
         <StatusBadge status={run.status} />
       </Table.Cell>
-      <Table.Cell className="font-medium">
-        <Link to={scenarioHref(run.evalId)} className={tableLinkClass}>
-          {evaluation?.name ?? run.evalId}
-        </Link>
-        {run.archived ? (
-          <span
-            className="ml-2 rounded border border-kumo-line px-1 text-[11px] font-normal text-kumo-subtle"
-            title="This scenario is no longer in the project (evalkit tidy)"
-          >
-            archived
-          </span>
-        ) : null}
-      </Table.Cell>
-      {parameterColumns.map((parameter) => (
-        <Table.Cell key={parameter} className={monoClass}>
-          {Object.hasOwn(run.parameters ?? {}, parameter)
-            ? display(run.parameters?.[parameter])
-            : '—'}
-        </Table.Cell>
-      ))}
       <Table.Cell>
-        {evaluation?.agent.name ?? evaluation?.agent.kind ?? 'Unnamed agent'}
+        <span className="flex max-w-[14rem] flex-col">
+          <span className="flex min-w-0 items-center gap-2">
+            <Link
+              to={scenarioHref(run.evalId)}
+              className={`${tableLinkClass} truncate font-medium`}
+              title={name}
+            >
+              {name}
+            </Link>
+            {run.archived ? (
+              <span
+                className="shrink-0 rounded border border-kumo-line px-1 text-[11px] text-kumo-subtle"
+                title="This scenario is no longer in the project (evalkit tidy)"
+              >
+                archived
+              </span>
+            ) : null}
+          </span>
+          {suite ? (
+            <span className="truncate text-xs text-kumo-subtle" title={suite}>
+              {suite}
+            </span>
+          ) : null}
+        </span>
       </Table.Cell>
-      <Table.Cell className="tabular-nums">
-        {run.completedTrials}/{run.requestedTrials}
+
+      <Table.Cell>
+        <ScoreCell run={run} />
       </Table.Cell>
-      <Table.Cell className="tabular-nums">{run.score ?? '—'}</Table.Cell>
-      <Table.Cell className="tabular-nums">
-        {run.durationMs === undefined ? '—' : `${run.durationMs}ms`}
-      </Table.Cell>
-      <Table.Cell className="whitespace-nowrap tabular-nums">
-        {new Date(run.startedAt).toLocaleString()}
+      <Table.Cell className="whitespace-nowrap">
+        <StartedCell run={run} />
       </Table.Cell>
       <Table.Cell className="whitespace-nowrap">
         <CommitLabel source={run.source} />
       </Table.Cell>
-      <Table.Cell>{suiteName ?? '—'}</Table.Cell>
+      {layout.columns.map((parameter) => (
+        <Table.Cell key={parameter}>
+          <ParameterCell run={run} name={parameter} />
+        </Table.Cell>
+      ))}
+      {layout.overflow.length ? (
+        <Table.Cell>
+          <OtherParametersCell run={run} keys={layout.overflow} />
+        </Table.Cell>
+      ) : null}
     </Table.Row>
   );
 }
 
-/** Short SHA and branch; a dirty run came from uncommitted changes. */
+/** Short SHA, with the branch and full SHA on hover; dirty runs came from uncommitted changes. */
 export function CommitLabel({ source }: { source?: RunSummary['source'] }) {
   if (!source) return <span className="text-kumo-subtle">—</span>;
   return (
-    <span title={source.commit}>
+    <span
+      className="inline-flex items-center gap-1.5"
+      title={[
+        source.commit,
+        source.ref && `on ${source.ref}`,
+        source.dirty && 'with uncommitted changes',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <span className={monoClass}>{source.commit.slice(0, 7)}</span>
-      {source.ref ? (
-        <span className="ml-1 text-kumo-subtle">{source.ref}</span>
-      ) : null}
       {source.dirty ? (
-        <span
-          className="ml-2 rounded border border-kumo-line px-1 text-[11px] text-kumo-subtle"
-          title="Run with uncommitted changes"
-        >
+        <span className="rounded border border-kumo-line px-1 text-[11px] text-kumo-subtle">
           dirty
         </span>
       ) : null}

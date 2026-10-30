@@ -21,9 +21,18 @@ import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
 import { runHref } from './links.js';
+import { rowLinkProps } from './row-link.js';
 import { MatrixEvalTable } from './MatrixEvalTable.js';
 import { Pager } from './Pager.js';
-import { CommitLabel, runParameterColumns } from './RunTable.js';
+import { CommitLabel } from './RunTable.js';
+import {
+  OtherParametersCell,
+  ParameterCell,
+  ParameterChips,
+  parameterLayout,
+  ScoreCell,
+  StartedCell,
+} from './run-columns.js';
 import { StatusBadge } from './StatusBadge.js';
 
 const PAGE_SIZE = 25;
@@ -189,32 +198,44 @@ function ScenarioDefinition({
 /** A scenario's runs, newest first; each opens its run page. */
 export function ScenarioRuns({ runs }: { runs: readonly RunSummary[] }) {
   const [page, setPage] = useState(0);
-  const parameterColumns = runParameterColumns(runs);
+  const layout = parameterLayout(runs);
   const visible = runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const columns = 7 + parameterColumns.length;
+  const columns = 5 + layout.columns.length + (layout.overflow.length ? 1 : 0);
   return (
     <>
+      {layout.constant.length ? (
+        <p
+          className="flex flex-wrap items-center gap-1 text-[13px] text-kumo-subtle"
+          role="note"
+        >
+          Same on every run:
+          <ParameterChips entries={layout.constant} />
+        </p>
+      ) : null}
       <DataTable>
         <Table.Header variant="compact">
           <Table.Row>
             <Table.Head>Run</Table.Head>
             <Table.Head>Status</Table.Head>
-            {parameterColumns.map((parameter) => (
-              <Table.Head key={parameter}>{parameter}</Table.Head>
-            ))}
-            <Table.Head>Trials</Table.Head>
+
             <Table.Head>Score</Table.Head>
-            <Table.Head>Runtime</Table.Head>
             <Table.Head>Started</Table.Head>
             <Table.Head>Commit</Table.Head>
+            {layout.columns.map((parameter) => (
+              <Table.Head key={parameter}>{parameter}</Table.Head>
+            ))}
+            {layout.overflow.length ? (
+              <Table.Head>Other parameters</Table.Head>
+            ) : null}
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {visible.map((run) => (
-            <Table.Row key={run.id}>
+            <Table.Row key={run.id} {...rowLinkProps}>
               <Table.Cell>
                 <RouterLink
                   to={runHref(run.id)}
+                  data-row-link
                   className={`${tableLinkClass} ${monoClass}`}
                   title={run.id}
                 >
@@ -230,28 +251,26 @@ export function ScenarioRuns({ runs }: { runs: readonly RunSummary[] }) {
               >
                 <StatusBadge status={run.status} />
               </Table.Cell>
-              {parameterColumns.map((parameter) => (
-                <Table.Cell key={parameter} className={monoClass}>
-                  {Object.hasOwn(run.parameters ?? {}, parameter)
-                    ? display(run.parameters?.[parameter])
-                    : '—'}
-                </Table.Cell>
-              ))}
-              <Table.Cell className="tabular-nums">
-                {run.completedTrials}/{run.requestedTrials}
+
+              <Table.Cell>
+                <ScoreCell run={run} />
               </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {run.score ?? '—'}
-              </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {run.durationMs === undefined ? '—' : `${run.durationMs}ms`}
-              </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {new Date(run.startedAt).toLocaleString()}
+              <Table.Cell>
+                <StartedCell run={run} />
               </Table.Cell>
               <Table.Cell>
                 <CommitLabel source={run.source} />
               </Table.Cell>
+              {layout.columns.map((parameter) => (
+                <Table.Cell key={parameter}>
+                  <ParameterCell run={run} name={parameter} />
+                </Table.Cell>
+              ))}
+              {layout.overflow.length ? (
+                <Table.Cell>
+                  <OtherParametersCell run={run} keys={layout.overflow} />
+                </Table.Cell>
+              ) : null}
             </Table.Row>
           ))}
           {!runs.length ? (
@@ -269,10 +288,4 @@ export function ScenarioRuns({ runs }: { runs: readonly RunSummary[] }) {
       />
     </>
   );
-}
-
-function display(value: unknown): string {
-  return typeof value === 'string'
-    ? value
-    : (JSON.stringify(value) ?? String(value));
 }

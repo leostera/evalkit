@@ -1,19 +1,20 @@
-import { Button, Table } from '@cloudflare/kumo';
-import { ArrowRightIcon } from '@phosphor-icons/react';
+import { Table } from '@cloudflare/kumo';
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import type { RunSummary, TrialSummary } from '../api.js';
-import { NestedTable, TableMessage } from './DataTable.js';
+import { NestedTable, tableLinkClass, TableMessage } from './DataTable.js';
+import { trialHref } from './links.js';
+import { rowLinkProps } from './row-link.js';
 import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
 import { StatusBadge } from './StatusBadge.js';
 
+/** A run's trials; each row opens that trial's page. */
 export function TrialTable({
   run,
   trials,
-  onTrial,
 }: {
   run: RunSummary;
   trials: TrialSummary[];
-  onTrial(run: RunSummary, trial: TrialSummary): void;
 }) {
   const { sort, toggleSort: onSort } = useSort({
     key: 'index',
@@ -85,13 +86,21 @@ export function TrialTable({
             sort={sort}
             onSort={onSort}
           />
-          <Table.Head className="text-right">Details</Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>
         {sorted.map((trial) => (
-          <Table.Row key={trial.id}>
-            <Table.Cell className="tabular-nums">{trial.index + 1}</Table.Cell>
+          <Table.Row key={trial.id} {...rowLinkProps}>
+            <Table.Cell className="tabular-nums">
+              <Link
+                to={trialHref(run.id, trial.id)}
+                data-row-link
+                className={tableLinkClass}
+                title={trial.id}
+              >
+                Trial {trial.index + 1}
+              </Link>
+            </Table.Cell>
             <Table.Cell>
               <StatusBadge status={trial.status} />
             </Table.Cell>
@@ -110,21 +119,10 @@ export function TrialTable({
             <Table.Cell className="whitespace-nowrap tabular-nums">
               {new Date(trial.startedAt).toLocaleString()}
             </Table.Cell>
-            <Table.Cell className="text-right">
-              <Button
-                size="xs"
-                variant="secondary"
-                className="view-trial"
-                onClick={() => onTrial(run, trial)}
-              >
-                View trial
-                <ArrowRightIcon aria-hidden className="size-3" />
-              </Button>
-            </Table.Cell>
           </Table.Row>
         ))}
         {!sorted.length ? (
-          <TableMessage colSpan={scorerNames.length + 6}>
+          <TableMessage colSpan={scorerNames.length + 5}>
             No trials saved yet.
           </TableMessage>
         ) : null}

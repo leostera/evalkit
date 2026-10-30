@@ -1,5 +1,4 @@
 import { Link } from '@cloudflare/kumo';
-import { useNavigate } from 'react-router-dom';
 import type {
   CatalogEval,
   DashboardApi,
@@ -12,7 +11,6 @@ import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
-import { trialHref } from './links.js';
 import { CommitLabel } from './RunTable.js';
 import { StatusBadge } from './StatusBadge.js';
 import { TrialTable } from './TrialTable.js';
@@ -32,7 +30,6 @@ export function RunPage({
   runs: RunSummary[];
   runId: string;
 }) {
-  const navigate = useNavigate();
   const run = runs.find((entry) => entry.id === runId);
   const { trials, error } = useRunTrials(api, run);
   if (!run)
@@ -117,11 +114,7 @@ export function RunPage({
       <section aria-label="Trials" className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-kumo-strong">Trials</h3>
         {trials ? (
-          <TrialTable
-            run={run}
-            trials={trials}
-            onTrial={(_run, trial) => navigate(trialHref(run.id, trial.id))}
-          />
+          <TrialTable run={run} trials={trials} />
         ) : error ? null : (
           <output className="text-[13px] text-kumo-subtle">
             Loading trials…

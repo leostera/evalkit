@@ -199,15 +199,16 @@ describe('dashboard URL routing', () => {
     expect(await crumbs()).toContain('Starter');
 
     // Scenario: its runs; open one.
-    await page.click('section[aria-label="Runs"] a[href="/runs/run-123"]');
+    // The whole row opens the run, not only its ID link.
+    await page.click('section[aria-label="Runs"] tbody tr td:nth-child(2)');
     await waitForPath(page, '/runs/run-123');
     await page.waitForSelector('.run-overview');
     expect(await crumbs()).toContain('Greeting');
 
     // Run: its trials; open one, then reload the trial page.
     const trial = '0197f17c-4d89-7f81-9d42-6c497e6f6b22';
-    await page.waitForSelector('button.view-trial');
-    await page.click('button.view-trial');
+    await page.waitForSelector('.nested tbody tr td:nth-child(2)');
+    await page.click('.nested tbody tr td:nth-child(2)');
     await waitForPath(page, `/runs/run-123/trials/${trial}`);
     await page.waitForSelector('.trajectory');
     await page.reload({ waitUntil: 'networkidle0' });
@@ -612,7 +613,14 @@ describe('dashboard URL routing', () => {
       expect(
         await page.$eval('.data-table thead', (head) => head.textContent),
       ).toContain('retries');
-      await page.click('.data-table th:nth-child(5) button'); // retries ascending, numeric
+      await page.$$eval('.data-table th button', (buttons) => {
+        const retries = buttons.find((button) =>
+          button.textContent?.startsWith('retries'),
+        );
+        if (!(retries instanceof HTMLElement))
+          throw new Error('no retries column');
+        retries.click(); // ascending, numeric
+      });
       expect(
         await page.$eval(`${rows}:nth-child(3)`, (row) => row.textContent),
       ).toContain('10');
