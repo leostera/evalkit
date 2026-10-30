@@ -12,3 +12,4 @@ _evalkit-dashboard
 _evalkit-share
 .wrangler
 *.tgz
+.cloudflare
