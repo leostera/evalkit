@@ -691,7 +691,6 @@ describe('runEval', () => {
       report: localReportStore(root),
       concurrency: 2,
       signal: controller.signal,
-      invocation: { id: 'inv-1', selection: { evalIds: ['eval-cancel'] } },
       onEvent: (trial, event) => {
         seen.push(`${trial.trialIndex}:${event.kind}`);
         if (event.kind === 'transcript-step-started') controller.abort();
@@ -724,10 +723,6 @@ describe('runEval', () => {
         await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
       ),
     );
-    expect(manifest.invocation).toEqual({
-      id: 'inv-1',
-      selection: { evalIds: ['eval-cancel'] },
-    });
     expect(manifest.process?.pid).toBe(process.pid);
   });
 

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { dirname, resolve } from 'node:path';
@@ -352,14 +351,6 @@ export async function runProjectCommand(
           report: localReportStore(reportDir),
           workspaceRoot: sandboxDir,
           signal: controller.signal,
-          invocation: {
-            id: randomUUID(),
-            selection: {
-              ...(suiteId ? { suiteId } : {}),
-              ...(requestedEvals.length ? { evalIds: requestedEvals } : {}),
-              ...(values.matrix ? { matrixId: values.matrix } : {}),
-            },
-          },
           onEvent: (trial, event) => reporter.onEvent(trial, event),
           onResult: (cell, result) => {
             const scenario = scenarioResult(

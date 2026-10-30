@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, relative, resolve } from 'node:path';
@@ -109,13 +108,6 @@ async function runEvals(options: {
   const evaluations = options.evalIds.map((id) => registry.get(id));
   if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
   const provenance = await runProvenance(registry);
-  const invocation = {
-    id: randomUUID(),
-    selection: {
-      ...(options.suiteId ? { suiteId: options.suiteId } : {}),
-      evalIds: options.evalIds,
-    },
-  };
   await Effect.runPromise(
     runnerLogs(
       Effect.all(
@@ -130,7 +122,6 @@ async function runEvals(options: {
                 report: localReportStore(reportRoot),
                 workspaceRoot: sandboxRoot,
                 suiteId: options.suiteId,
-                invocation,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
                 ...provenance,

@@ -155,22 +155,6 @@ export function RunTable({
         onField={setField}
         onClear={clearFilters}
       />
-      {activeSearch.get('invocation') ? (
-        <p className="text-[13px] text-kumo-subtle" role="note">
-          Showing the runs of invocation{' '}
-          <span className={monoClass}>
-            {activeSearch.get('invocation')!.slice(0, 8)}
-          </span>
-          .{' '}
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => setField('invocation', '')}
-          >
-            Show all runs
-          </Button>
-        </p>
-      ) : null}
       {layout.constant.length ? (
         <p
           className="constant-parameters flex flex-wrap items-center gap-1 text-[13px] text-kumo-subtle"

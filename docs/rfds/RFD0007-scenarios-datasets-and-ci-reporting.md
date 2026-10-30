@@ -4,7 +4,7 @@
 - Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-10-30`
-- Updated: `2026-10-30`
+- Updated: `2026-10-30` (invocations dropped; dashboard hierarchy)
 - Discussion PR: `TBD`
 - Tracking Issue: `TBD`
 
@@ -18,11 +18,11 @@ An eval is a concrete **scenario**: one conversation with the agent, scored in a
 - **Scoring helpers:** the final output on the scoring context, pass thresholds for 0–1 scores, and a real "not applicable" result.
 - **JSON at the boundary:** events, metadata, evidence and dataset values accept plain values and are converted once, with errors that name the bad field.
 - **Isolated loading:** one eval file that fails to load no longer breaks every command.
-- **Invocations:** one `evalkit run` is one group in reports, the dashboard and the CLI summary, so a suite of a hundred scenarios is one thing to look at.
+- **A summary per run of the CLI:** one `evalkit run` ends with one summary and one JUnit file, so a suite of a hundred scenarios is one thing to look at.
 - **CI reporting:** live progress, a final summary, quieter result lines, JUnit output, and clean Ctrl+C cancellation.
 - **`evalkit compare`:** compares a commit's results with a base commit's, for merge request gates and comments.
 
-It also covers three release items that need no design: running the CLI on Node, readable published types, and shipping the skills in the npm package. Report schema version 5 records datasets, invocations, cancellation and skipped scores. Readers keep accepting versions 2 to 4.
+It also covers three release items that need no design: running the CLI on Node, readable published types, and shipping the skills in the npm package. Report schema version 5 records datasets, the owning process, cancellation and skipped scores. Readers keep accepting versions 2 to 4.
 
 ## Motivation
 
@@ -34,7 +34,7 @@ Writing and running a suite of many related scenarios takes more code and more s
 - **Casting to JSON.** `JSON.parse(JSON.stringify(x)) as JsonValue` shows up wherever events, metadata or evidence carry ordinary objects.
 - **One module breaks everything.** An eval module that checks credentials when it is imported stops every command, even `--dry-run` and `build`, for every eval in the project.
 - **A registry only for grouping.** Projects write an explicit registry just to put evals into suites. And an eval project is often itself called `evals/`, so it ends up containing `evals/evals/`.
-- **A suite is a hundred loose runs.** Running a suite of a hundred scenarios creates a hundred unrelated runs in the dashboard, and the CLI has no summary of the invocation.
+- **A suite is a hundred loose runs.** Running a suite of a hundred scenarios prints a hundred result lines with no summary at the end, and the dashboard lists runs with nothing leading from a scenario to its runs and trials.
 - **CI logs that are hard to read.** Result lines end in `{}` when there are no parameters, score lines repeat themselves (`predicate correct: 0.5 correct scored 0.5 (passes at 0.5)`), there is no final count, and CI gets no test report.
 - **No baseline comparison.** Teams want a merge request to show what got better or worse than the target branch, and to fail on regressions. EvalKit cannot do that yet.
 
@@ -47,7 +47,7 @@ Writing and running a suite of many related scenarios takes more code and more s
 - Scorers read the final output directly, can declare a pass threshold, and can report "not applicable".
 - A failing eval module affects only the evals it defines.
 - Suites need no registry when scenarios are organized in directories.
-- One invocation of a suite reads as one result, in the CLI, the dashboard and CI.
+- Running a suite reads as one result in the CLI and in CI, and the dashboard leads from a scenario to its runs, trials and trajectories.
 - CI output is short, has a summary, and can produce JUnit. Ctrl+C leaves no run looking "running" forever.
 - `evalkit compare` reports regressions and fixes between two commits and can gate a pipeline.
 - The CLI runs on Node 22 as well as Bun.
@@ -211,7 +211,6 @@ bun run evalkit run --suite support
 - The `◇` line is live on a terminal. In CI it is replaced by one line per finished scenario.
 - `--junit <file>` also writes a JUnit XML report (suites as test suites, scenarios as test cases).
 - Ctrl+C stops starting new trials and finalizes the running ones as **cancelled**. A second Ctrl+C exits immediately.
-- The dashboard shows the invocation as one entry: 98/100, with the two failures first.
 
 ### Comparing against the base branch
 
@@ -240,11 +239,11 @@ The base results come from the share server (the base commit was shared by its o
 
 ## Reference-level explanation
 
-### 1. Scenarios, suites and invocations
+### 1. Scenarios and suites
 
 - **The directory.** `evalkit new` scaffolds `scenarios/` instead of `evals/`, and `datasets/` instead of `fixtures/`. The docs, skills and examples use them. Discovery is unchanged: it finds `*.eval.ts` files anywhere in the project, so projects with `evals/` keep being discovered.
 - **Suites.** With discovery (no `registry` or `evals` in the config), each eval's suite is its file's directory relative to the project root, with a leading `scenarios/` (or, for existing projects, `evals/`) segment dropped and `/` kept: `scenarios/billing/eu/refunds.eval.ts` is in suite `billing/eu`. Files directly in `scenarios/` have no suite. `discovery.suites: false` turns this off. An explicit registry keeps full control and ignores directories.
-- **Invocations.** Every `evalkit run`, and every launch from the dashboard, gets an `invocationId` (as planned in RFD0005), recorded in each run's manifest with the selection that produced it (suite, eval IDs, matrix). The CLI summary, JUnit, the dashboard's invocation view and `compare` are all per invocation.
+- **No invocation record.** The summary and JUnit file belong to the `evalkit run` process that wrote them and are computed from its results; `compare` matches runs by commit, eval ID and parameters. Nothing needs to group runs by launch after the launch ends, and in CI the job already does (see Alternatives). RFD0005's planned `invocationId` is not recorded.
 - **Cell limit.** `execution.maxCells` applies to matrix expansion only. A plain selection of evals is never refused for its size.
 
 ### 2. Datasets
@@ -404,7 +403,7 @@ A config or explicit registry that throws still stops every command, because Eva
 
 ```text
 _evalkit-results/{run}/
-├── manifest.json        schemaVersion 5, + invocation { id, selection }, + datasets [{ id, visibility, source, digests }],
+├── manifest.json        schemaVersion 5, + datasets [{ id, visibility, source, digests }],
 │                        + process { pid, hostname }
 ├── summary.json         status may be "cancelled"
 └── trials/{trial}/
@@ -414,7 +413,7 @@ _evalkit-results/{run}/
 
 - `source` is `static` or `computed`.
 - Evaluator dataset values and files are stored like evaluator fixtures today: on the evaluator side, never in the candidate snapshot, never uploaded by `share`.
-- Readers accept versions 2 to 5. Older runs have no invocation, datasets or cancellation; the dashboard groups them by run as today.
+- Readers accept versions 2 to 5. Older runs have no datasets or cancellation.
 - A run whose summary is missing, whose manifest says `running`, and whose owning process is no longer alive on this host is read as **cancelled (interrupted)**. Runs owned by another host stay `running`.
 - `cancelled` is its own status everywhere: the dashboard shows it, `share` never uploads it, and the share server rejects it. It never counts as a failure.
 
@@ -436,7 +435,7 @@ stateDiagram-v2
 - **Progress** comes from a runner hook fed by the same trajectory events that are written to the report, so the terminal never disagrees with the report.
 - **Terminal:** failures print when they happen; one live status line shows counts and what is running, redrawn at most every 100 ms. **Non-terminal (CI):** one plain line per finished scenario.
 - **Result lines** print parameters only when there are any, and each score once: `answers-like 0.5 (passes at 0.5)`.
-- **Summary:** totals for the invocation, duration, and next commands.
+- **Summary:** totals for the whole `evalkit run`, its duration, and next commands.
 - **`--json`** keeps printing one JSON object per finished run, and adds a final `{ "summary": … }` line.
 - **`--junit <file>`**: `testsuite` per suite (or `default` for scenarios without one), `testcase` per scenario (per matrix cell when parameters are present), `failure` with the failing scores, `skipped` for cancelled or all-skipped scenarios. Written even when the run fails.
 - **Cancellation:** the first Ctrl+C aborts an `AbortSignal` passed to the runner (and to dataset `onLoad` and `onRun`). No new trials start. Running trials stop at their next step boundary or when their agent session is closed, run no further scorers, and are finalized as `cancelled`. A second Ctrl+C exits immediately, and those runs are later read as interrupted (section 7).
@@ -468,7 +467,8 @@ sequenceDiagram
 
 ### 10. Dashboard
 
-- **Invocations:** the Runs page groups runs by invocation: suite or selection, commit, passed/failed counts, duration, failures first when expanded.
+- **Scenario › Run › Trial › Trajectory:** pages and URLs follow the domain. `/scenarios` lists scenarios grouped by suite; `/scenarios/{id}` shows a scenario's definition and runs; `/runs/{id}` a run's trials; `/runs/{id}/trials/{id}` the trajectory first, with scores, datasets and artifacts beside it; `…/workspace` the candidate files. Breadcrumbs lead back up, and table rows open their page.
+- **Runs:** every run across scenarios, filterable. Filters sit in a bar above the table; long facets (a hundred scenarios) show the most common values with a search. Only parameters that differ between the runs shown get columns (at most three), and outcome columns come first, so wide matrices stay readable.
 - **Datasets page:** the project's datasets, whether static or computed, their visibility, and which scenarios use each. A trial's detail lists the datasets it used, with their digests.
 - **Commit and dirty:** runs show the commit (short SHA, branch) and a **dirty** label for runs made with uncommitted changes (left over from RFD0006).
 - **Cancelled:** `cancelled` has its own status badge.
@@ -476,7 +476,7 @@ sequenceDiagram
 
 ### 11. Packaging (no design changes)
 
-- **Node.** The CLI runs on Node 22.18 or later as well as Bun. Bun-only APIs (`Bun.serve`, `Bun.Glob`, `Bun.spawn`, `Bun.file`, `Bun.sleep`) move behind small runtime-neutral helpers. TypeScript eval files load through Node's built-in type stripping when it is enough, and through `jiti` otherwise (path aliases, extensionless imports). The bin uses `#!/usr/bin/env node`; Bun still runs it natively with `bun run evalkit`.
+- **Node.** The CLI runs on Node 22.18 or later as well as Bun. Bun-only APIs (`Bun.serve`, `Bun.Glob`, `Bun.spawn`, `Bun.file`, `Bun.sleep`, `bun:sqlite`) move behind small runtime-neutral helpers (`node:sqlite` on Node). On Node, TypeScript project files load through `jiti`, which also handles `.js` specifiers that point at `.ts` files. The bin runs on Bun when it is installed and on Node otherwise; `EVALKIT_RUNTIME` picks one.
 - **Types.** The published `.d.mts` files are bundled per entry point, so `index.d.mts` is readable on its own instead of pointing at hashed chunks.
 - **Skills.** The EvalKit skills ship in the package under `skills/`, and `evalkit new` mentions where they are.
 
@@ -494,10 +494,10 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  p1["1 · core: defineDataset replaces<br/>fixtures, defineAgent DX, scoring<br/>helpers, JSON boundary"] --> p2["2 · runner: dataset lifecycle,<br/>progress hook, cancellation,<br/>invocations, v5 reports"]
+  p1["1 · core: defineDataset replaces<br/>fixtures, defineAgent DX, scoring<br/>helpers, JSON boundary"] --> p2["2 · runner: dataset lifecycle,<br/>progress hook, cancellation,<br/>v5 reports"]
   p2 --> p3["3 · CLI: output, summary, --junit,<br/>isolated loading, scenarios/ suites"]
   p3 --> p4["4 · evalkit compare"]
-  p2 --> p5["5 · dashboard: invocations, datasets,<br/>commit, dirty, cancelled"]
+  p2 --> p5["5 · dashboard: scenario, run, trial<br/>pages, datasets, commit, cancelled"]
   p3 --> p6["6 · Node runtime, bundled types,<br/>skills in package"]
   p4 --> rel["docs, skills, examples,<br/>migration guide · v0.6.0"]
   p5 --> rel
@@ -520,6 +520,7 @@ The starter moves to `scenarios/` and `datasets/` and its fixture becomes a data
 - **Keep fixtures and add datasets for values.** Two concepts for "what a scenario uses", with different loading, caching and visibility rules.
 - **A single loader function per dataset.** Simpler than `onLoad` plus `onRun`, but either every trial rebuilds the data, or seeded and parameterized copies need their own caching.
 - **A function-shaped agent kind.** Less code for the simplest agents, but a second way to define agents. Making sessions able to return results gets most of the benefit and keeps one contract.
+- **Invocations: grouping the runs of one `evalkit run`.** RFD0005 planned an `invocationId` in each run's manifest, and an early implementation recorded it with the selection and listed launches in the dashboard. Nothing else read it: the CLI summary and JUnit come from the process itself, `compare` matches by commit, eval ID and parameters, and in CI the job already groups its runs (log, JUnit artifact, compare output). It was removed before release. If "who ran what, when" becomes a need, it can return as an optional field.
 - **Comparison inside the dashboard only.** Useful later, but CI needs a command with an exit code and a markdown file.
 
 ## Unresolved questions

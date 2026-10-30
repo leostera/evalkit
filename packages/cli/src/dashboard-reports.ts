@@ -38,8 +38,6 @@ export type LocalRun = {
   archived?: boolean;
   /** Repository and commit the run's eval code came from (schema version 4+). */
   source?: RunSource;
-  /** The `evalkit run` or dashboard launch that started it (schema version 5+). */
-  invocationId?: string;
   /** Each scorer's mean over the run's trials; skipped results are left out. */
   scorers?: RunScorer[];
   /** Content digests of the datasets the run's trials used (schema version 5+). */
@@ -298,7 +296,6 @@ export function createDashboardReportReader(
           ? 'cancelled'
           : 'running',
       ...(interrupted ? { interrupted: true as const } : {}),
-      ...(manifest.invocation ? { invocationId: manifest.invocation.id } : {}),
       startedAt: manifest.startedAt,
       ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
       ...(summary?.durationMs !== undefined

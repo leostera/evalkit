@@ -6,7 +6,6 @@ import {
 import {
   ClockCounterClockwiseIcon,
   FolderOpenIcon,
-  ListChecksIcon,
   RobotIcon,
   StackIcon,
 } from '@phosphor-icons/react';
@@ -34,8 +33,8 @@ const under = (prefix: string) => (pathname: string) =>
 /**
  * Scenarios lead: a scenario's page lists its runs, a run's page its trials,
  * and a trial's page its trajectory, so every run and trial page belongs to
- * Scenarios. Runs and Invocations are the history across scenarios; Agents
- * and Datasets are what scenarios are built from.
+ * Scenarios. Runs lists every run across scenarios; Agents and Datasets are
+ * what scenarios are built from.
  */
 const groups: ReadonlyArray<{ label?: string; sections: readonly Section[] }> =
   [
@@ -50,22 +49,11 @@ const groups: ReadonlyArray<{ label?: string; sections: readonly Section[] }> =
             under('/scenarios')(pathname) ||
             pathname.startsWith('/runs/'),
         },
-      ],
-    },
-    {
-      label: 'History',
-      sections: [
         {
           label: 'Runs',
           href: '/runs',
           icon: ClockCounterClockwiseIcon,
           matches: (pathname) => pathname === '/runs',
-        },
-        {
-          label: 'Invocations',
-          href: '/invocations',
-          icon: ListChecksIcon,
-          matches: under('/invocations'),
         },
       ],
     },

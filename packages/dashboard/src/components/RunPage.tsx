@@ -1,4 +1,3 @@
-import { Link } from '@cloudflare/kumo';
 import type {
   CatalogEval,
   DashboardApi,
@@ -90,21 +89,6 @@ export function RunPage({
               run.durationMs === undefined ? '—' : `${run.durationMs}ms`,
             ],
             ['Commit', <CommitLabel key="commit" source={run.source} />],
-            ...(run.invocationId
-              ? ([
-                  [
-                    'Invocation',
-                    <Link
-                      key="invocation"
-                      href={`/runs?invocation=${encodeURIComponent(run.invocationId)}`}
-                    >
-                      <span className={monoClass}>
-                        {run.invocationId.slice(0, 8)}
-                      </span>
-                    </Link>,
-                  ],
-                ] as const)
-              : []),
           ]}
         />
       </div>

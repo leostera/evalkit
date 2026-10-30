@@ -205,7 +205,6 @@ export function activeChips(
   const fields: Record<string, string> = {
     from: 'From',
     to: 'To',
-    invocation: 'Invocation',
     archived: 'Archived',
   };
   return [...search.entries()].flatMap(([field, value]): Chip[] => {
@@ -228,7 +227,7 @@ export function activeChips(
         field,
         value,
         label: fields[field] ?? field,
-        choice: field === 'invocation' ? value.slice(0, 8) : value,
+        choice: value,
         facet: false,
       },
     ];

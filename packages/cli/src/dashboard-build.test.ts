@@ -183,7 +183,6 @@ test('static routes follow scenario, run, trial and skip unsafe IDs', () => {
   ).toEqual([
     'scenarios',
     'runs',
-    'invocations',
     'agents',
     'datasets',
     'scenarios/hello',

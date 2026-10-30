@@ -14,7 +14,6 @@ import type {
 } from './api.js';
 import { AgentTable } from './components/AgentTable.js';
 import { DatasetTable } from './components/DatasetTable.js';
-import { InvocationTable } from './components/InvocationTable.js';
 import { RunPage } from './components/RunPage.js';
 import { RunTable } from './components/RunTable.js';
 import { ScenarioPage } from './components/ScenarioPage.js';
@@ -49,10 +48,6 @@ export function DashboardRoutes(data: Data) {
       <Route
         path="/runs/:runId/trials/:trialId/workspace"
         element={<TrialRoute {...data} workspace />}
-      />
-      <Route
-        path="/invocations"
-        element={<InvocationTable runs={data.runs} />}
       />
       <Route path="/agents" element={<AgentRoute catalog={data.catalog} />} />
       <Route

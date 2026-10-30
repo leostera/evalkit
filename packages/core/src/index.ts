@@ -634,13 +634,6 @@ export type RunCatalog = {
   suites: EvalSuiteMetadata[];
 };
 
-/** One `evalkit run` (or dashboard launch): every run it starts shares the ID. */
-export type RunInvocation = {
-  id: string;
-  /** What was asked for; absent fields mean "not restricted". */
-  selection: { suiteId?: string; evalIds?: string[]; matrixId?: string };
-};
-
 /** The process that owns a running run, so readers can tell an interrupted run from a live one. */
 export type RunProcess = { pid: number; hostname: string };
 
@@ -656,8 +649,6 @@ export type RunMetadata = {
   startedAt: string;
   /** Present from schema version 4 when the run's commit could be determined. */
   source?: RunSource;
-  /** From schema version 5. */
-  invocation?: RunInvocation;
   /** From schema version 5. */
   process?: RunProcess;
 };

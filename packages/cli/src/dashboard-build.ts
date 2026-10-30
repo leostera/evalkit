@@ -166,7 +166,6 @@ export function staticRoutes(ids: {
   return [
     'scenarios',
     'runs',
-    'invocations',
     'agents',
     'datasets',
     ...ids.scenarios.filter(safe).map((id) => `scenarios/${id}`),

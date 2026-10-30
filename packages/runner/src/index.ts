@@ -32,7 +32,6 @@ import {
   type RunWriter,
   type RunMetadata,
   type RunCatalog,
-  type RunInvocation,
   type RunSource,
   type ScoreResult,
   type TrialScoring,
@@ -91,8 +90,6 @@ export type RunEvalOptions = {
    * step and are finalized as cancelled. Also passed to dataset loaders.
    */
   signal?: AbortSignal;
-  /** The `evalkit run` (or dashboard launch) this run belongs to. */
-  invocation?: RunInvocation;
   /**
    * Observes every trajectory event after it is recorded, for live progress.
    * It must not throw; an error it throws is ignored.
@@ -175,7 +172,6 @@ function runMetadata(
     evalId: definition.id,
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(options.source ? { source: options.source } : {}),
-    ...(options.invocation ? { invocation: options.invocation } : {}),
     process: { pid: process.pid, hostname: os.hostname() },
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     parameters: options.parameters,
