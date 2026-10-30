@@ -6,6 +6,7 @@ import {
 import {
   ClockCounterClockwiseIcon,
   FolderOpenIcon,
+  ListChecksIcon,
   RobotIcon,
   StackIcon,
 } from '@phosphor-icons/react';
@@ -40,6 +41,12 @@ const sections: readonly Section[] = [
     href: '/datasets',
     icon: FolderOpenIcon,
     matches: ['/datasets'],
+  },
+  {
+    label: 'Invocations',
+    href: '/invocations',
+    icon: ListChecksIcon,
+    matches: ['/invocations'],
   },
   {
     label: 'Runs',

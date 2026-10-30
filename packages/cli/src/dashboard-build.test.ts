@@ -180,6 +180,7 @@ test('static routes cover known pages and skip unsafe IDs', () => {
     'suites',
     'agents',
     'datasets',
+    'invocations',
     'runs',
     'suites/basics',
     'evals/basics#hello',

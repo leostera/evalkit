@@ -634,6 +634,7 @@ async function runTrial(
     await runWriter.finalize({
       status,
       endedAt,
+      durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
       trialCount: 1,
       passed: counts.passed,
       failed: counts.failed,

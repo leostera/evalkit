@@ -24,8 +24,8 @@ import { filterRunFacets, runFacets } from './run-facets.js';
 import { useRunFilters, useRunTrials } from './use-run-table-state.js';
 
 const PAGE_SIZE = 50;
-/** Run, status, eval, agent, trials, score, runtime, started, suite. */
-const FIXED_RUN_COLUMNS = 9;
+/** Run, status, eval, agent, trials, score, runtime, started, commit, suite. */
+const FIXED_RUN_COLUMNS = 10;
 
 function display(value: unknown): string {
   return typeof value === 'string'
@@ -66,6 +66,9 @@ export function filterRuns(
       run.status,
       run.score,
       run.startedAt,
+      run.source?.commit,
+      run.source?.ref,
+      run.source?.dirty ? 'dirty' : undefined,
       ...parameters,
     ]
       .map(display)
@@ -161,6 +164,22 @@ export function RunTable({
         onClear={clearFilters}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {activeSearch.get('invocation') ? (
+          <p className="text-[13px] text-kumo-subtle" role="note">
+            Showing the runs of invocation{' '}
+            <span className={monoClass}>
+              {activeSearch.get('invocation')!.slice(0, 8)}
+            </span>
+            .{' '}
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setField('invocation', '')}
+            >
+              Show all runs
+            </Button>
+          </p>
+        ) : null}
         <SearchField
           label="Filter runs"
           placeholder="Eval, parameter, agent or status"
@@ -188,6 +207,7 @@ export function RunTable({
               {header('Score', 'score')}
               {header('Runtime', 'runtime')}
               {header('Started', 'started')}
+              {header('Commit', 'commit')}
               {header('Suite', 'suite')}
             </Table.Row>
           </Table.Header>
@@ -272,6 +292,7 @@ function runSortValue(
       score: run.score,
       runtime: run.durationMs,
       started: run.startedAt,
+      commit: run.source?.commit,
     } as Record<string, unknown>
   )[key];
 }
@@ -304,7 +325,13 @@ function RunRow({
           {run.id.slice(0, 8)}
         </button>
       </Table.Cell>
-      <Table.Cell>
+      <Table.Cell
+        title={
+          run.interrupted
+            ? 'Its process stopped before the run finished'
+            : undefined
+        }
+      >
         <StatusBadge status={run.status} />
       </Table.Cell>
       <Table.Cell className="font-medium">
@@ -338,7 +365,31 @@ function RunRow({
       <Table.Cell className="whitespace-nowrap tabular-nums">
         {new Date(run.startedAt).toLocaleString()}
       </Table.Cell>
+      <Table.Cell className="whitespace-nowrap">
+        <CommitLabel source={run.source} />
+      </Table.Cell>
       <Table.Cell>{suiteName ?? '—'}</Table.Cell>
     </Table.Row>
+  );
+}
+
+/** Short SHA and branch; a dirty run came from uncommitted changes. */
+export function CommitLabel({ source }: { source?: RunSummary['source'] }) {
+  if (!source) return <span className="text-kumo-subtle">—</span>;
+  return (
+    <span title={source.commit}>
+      <span className={monoClass}>{source.commit.slice(0, 7)}</span>
+      {source.ref ? (
+        <span className="ml-1 text-kumo-subtle">{source.ref}</span>
+      ) : null}
+      {source.dirty ? (
+        <span
+          className="ml-2 rounded border border-kumo-line px-1 text-[11px] text-kumo-subtle"
+          title="Run with uncommitted changes"
+        >
+          dirty
+        </span>
+      ) : null}
+    </span>
   );
 }

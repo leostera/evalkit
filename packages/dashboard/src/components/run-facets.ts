@@ -85,7 +85,9 @@ export function filterRunFacets(
   );
   const from = search.get('from');
   const to = search.get('to');
+  const invocation = search.get('invocation');
   return runs.filter((run) => {
+    if (invocation && run.invocationId !== invocation) return false;
     if (from && run.startedAt.slice(0, 10) < from) return false;
     if (to && run.startedAt.slice(0, 10) > to) return false;
     return facets.every((facet) => {

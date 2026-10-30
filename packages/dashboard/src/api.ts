@@ -125,6 +125,8 @@ export type TrialSummary = {
     explanation?: string;
     error?: { name: string; message: string };
     durationMs: number;
+    /** The scorer returned skip(); `explanation` is the reason. */
+    skipped?: true;
   }>;
   checkpoints?: CheckpointResult[];
   skippedScorers?: string[];

@@ -86,6 +86,18 @@ export function TrialDetail({
               trial.durationMs === undefined ? '—' : `${trial.durationMs}ms`,
             ],
             ['Events', events.length],
+            ...trialDatasets(detail?.manifest).map(
+              (dataset) =>
+                [
+                  `Dataset ${dataset.id}`,
+                  <span key={dataset.id} title={dataset.digest}>
+                    {dataset.visibility} · {dataset.source} ·{' '}
+                    <span className={monoClass}>
+                      {dataset.digest.replace('sha256:', '').slice(0, 12)}
+                    </span>
+                  </span>,
+                ] as [string, ReactNode],
+            ),
           ]}
         />
         <Button
@@ -228,6 +240,7 @@ function CheckpointTable({
 /** Never reports a pass unless the scorer recorded one. */
 function scoreResult(score: TrialSummary['scores'][number]): string {
   if (score.error) return 'error';
+  if (score.skipped) return 'skipped';
   if (score.passed === true) return 'passed';
   if (score.passed === false) return 'failed';
   return 'not scored';
@@ -257,6 +270,11 @@ function ScoreTable({ scores }: { scores: TrialSummary['scores'] }) {
             </Table.Cell>
             <Table.Cell>
               <StatusBadge status={scoreResult(score)} />
+              {score.skipped && score.explanation ? (
+                <p className="mt-1 text-xs text-kumo-subtle">
+                  {score.explanation}
+                </p>
+              ) : null}
               {score.error ? (
                 <p className="mt-1 text-xs text-kumo-danger">
                   {score.error.message}
@@ -274,5 +292,25 @@ function ScoreTable({ scores }: { scores: TrialSummary['scores'] }) {
         ) : null}
       </Table.Body>
     </NestedTable>
+  );
+}
+
+type TrialDatasetEntry = {
+  id: string;
+  visibility: string;
+  source: string;
+  digest: string;
+};
+
+/** The datasets a trial used (schema version 5+); older manifests have none. */
+function trialDatasets(manifest: unknown): TrialDatasetEntry[] {
+  const datasets = (manifest as { datasets?: unknown } | undefined)?.datasets;
+  if (!Array.isArray(datasets)) return [];
+  return datasets.filter(
+    (entry): entry is TrialDatasetEntry =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as TrialDatasetEntry).id === 'string' &&
+      typeof (entry as TrialDatasetEntry).digest === 'string',
   );
 }

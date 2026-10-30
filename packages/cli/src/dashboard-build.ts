@@ -174,6 +174,7 @@ export function staticRoutes(ids: {
     'suites',
     'agents',
     'datasets',
+    'invocations',
     'runs',
     ...under('suites', ids.suites),
     ...under('evals', ids.evals),

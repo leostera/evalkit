@@ -87,7 +87,7 @@ test('runs show a stable union of saved parameter keys, including overrides', ()
   expect(html).toContain('aria-label="Filter runs"');
   expect(html).toContain('{&quot;docs&quot;:true}');
   expect(html).toContain('false');
-  expect(html).toContain('colSpan="13"');
+  expect(html).toContain('colSpan="14"');
 });
 
 test('large run histories render one page without losing the full count', () => {

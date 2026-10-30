@@ -17,6 +17,7 @@ import type {
 import { AgentTable } from './components/AgentTable.js';
 import { EvalDetail } from './components/EvalDetail.js';
 import { DatasetTable } from './components/DatasetTable.js';
+import { InvocationTable } from './components/InvocationTable.js';
 import { RunTable } from './components/RunTable.js';
 import { SuiteTable } from './components/SuiteTable.js';
 import { TrialDetail } from './components/TrialDetail.js';
@@ -74,6 +75,7 @@ export function DashboardRoutes({
       <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
       <Route path="/agents" element={<AgentRoute catalog={catalog} />} />
       <Route path="/datasets" element={<DatasetTable catalog={catalog} />} />
+      <Route path="/invocations" element={<InvocationTable runs={runs} />} />
       <Route
         path="/runs"
         element={
