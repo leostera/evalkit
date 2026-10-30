@@ -1,7 +1,7 @@
 # RFD0007 - Scenarios, Datasets, and CI Reporting
 
 - Feature Name: `scenarios-datasets-and-ci-reporting`
-- Status: Draft
+- Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-10-30`
 - Updated: `2026-10-30`
