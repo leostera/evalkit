@@ -117,7 +117,7 @@ import { defineDataset } from '@leostera/evalkit';
 
 export default defineDataset({
   id: 'help-center',
-  files: { directory: 'datasets/help-center' }, // copied to help-center/ in the workspace
+  files: 'datasets/help-center', // copied to help-center/ in the workspace
 });
 ```
 
@@ -241,8 +241,8 @@ The base results come from the share server (the base commit was shared by its o
 
 ### 1. Scenarios and suites
 
-- **The directory.** `evalkit new` scaffolds `scenarios/` instead of `evals/`, and `datasets/` instead of `fixtures/`. The docs, skills and examples use them. Discovery is unchanged: it finds `*.eval.ts` files anywhere in the project, so projects with `evals/` keep being discovered.
-- **Suites.** With discovery (no `registry` or `evals` in the config), each eval's suite is its file's directory relative to the project root, with a leading `scenarios/` (or, for existing projects, `evals/`) segment dropped and `/` kept: `scenarios/billing/eu/refunds.eval.ts` is in suite `billing/eu`. Files directly in `scenarios/` have no suite. `discovery.suites: false` turns this off. An explicit registry keeps full control and ignores directories.
+- **The directory.** Discovery looks for `*.eval.ts` files below `scenarios/` (`testDir` in the config changes it). `evalkit new` scaffolds `scenarios/` and `datasets/`, and the docs, skills and examples use them. A project that still has `evals/` and no `scenarios/` gets an error saying to move it or set `testDir: 'evals'`.
+- **Suites.** With discovery (no `registry` or `evals` in the config), each directory directly below `scenarios/` is a suite: `scenarios/billing/refunds.eval.ts` is in suite `billing`, and so are files in deeper directories below it. Suite directory names must be lowercase kebab-case. Files directly in `scenarios/` have no suite. `discovery.suites: false` turns this off. An explicit registry keeps full control and ignores directories.
 - **No invocation record.** The summary and JUnit file belong to the `evalkit run` process that wrote them and are computed from its results; `compare` matches runs by commit, eval ID and parameters. Nothing needs to group runs by launch after the launch ends, and in CI the job already does (see Alternatives). RFD0005's planned `invocationId` is not recorded.
 - **Cell limit.** `execution.maxCells` applies to matrix expansion only. A plain selection of evals is never refused for its size.
 
@@ -257,7 +257,7 @@ type DatasetContent = {
 };
 
 type Files =
-  | { directory: string } // a directory, relative to the project root
+  | string // a directory, relative to the project root
   | Record<string, string | Uint8Array | { file: string }>; // path → inline content or a source file
 
 type Value = unknown | { file: string }; // inline, or a .json / .jsonl file (parsed)
@@ -321,14 +321,14 @@ flowchart LR
 - **Values.** `{ file: 'x.json' }` is parsed as JSON; `.jsonl` is parsed into an array of one object per line, with blank lines ignored. Errors name the dataset, file and line. The agent sees candidate values as `context.data[id]`; scorers see every dataset's value as `data[id]` on the scoring context.
 - **`onLoad`.** Called the first time a trial needs the dataset in this process, never at import. The result is cached by dataset ID for the life of the process: all scenarios, matrix cells and trials of one `evalkit run` share one load, and `evalkit dev` reuses it across dashboard launches until the project is reloaded. A failed load is not cached, so the next trial retries. A load failure fails the trials that need the dataset, with the error recorded in their reports.
 - **`onRun`.** Called for each trial with the cached content and the trial's context, typically to choose, seed or parameterize that trial's copy. Without `onRun`, every trial gets the loaded content. Each trial's files are written fresh, so trials never share mutable state.
-- **Digest.** Each trial records, per dataset, the SHA-256 of its content (file paths and bytes, and the canonical JSON of its value). The run manifest records the set of digests its trials used. `compare` uses them to say which datasets changed between commits.
+- **Digest.** Each trial records, per dataset, the SHA-256 of its content (file paths and bytes, and the canonical JSON of its value). Readers collect a run's digests from its trials. `compare` uses them to say which datasets changed between commits.
 - **Where datasets live.** By convention in `./datasets/`. Nothing is discovered from that directory: scenarios import the datasets they use, so a broken dataset only affects the scenarios that import it.
 
 **Removing fixtures.** `fixtures`, `directory()`, `file()`, `inlineFile()` and `dynamic()` are removed in the same release. Each maps directly onto a dataset:
 
 | Before                                     | After                                                                         |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `directory('fixtures/repo')`               | `defineDataset({ id: 'repo', files: { directory: 'datasets/repo' } })`        |
+| `directory('fixtures/repo')`               | `defineDataset({ id: 'repo', files: 'datasets/repo' })`                       |
 | `file(src, { dst, visibility })`           | `defineDataset({ id, visibility, files: { [dst]: { file: src } } })`          |
 | `inlineFile('notes.md', text, visibility)` | `defineDataset({ id, visibility, files: { 'notes.md': text } })`              |
 | `dynamic(async (context) => files)`        | `defineDataset({ id, onLoad: () => ({}), onRun: (_, trial) => ({ files }) })` |
@@ -403,12 +403,11 @@ A config or explicit registry that throws still stops every command, because Eva
 
 ```text
 _evalkit-results/{run}/
-├── manifest.json        schemaVersion 5, + datasets [{ id, visibility, source, digests }],
-│                        + process { pid, hostname }
+├── manifest.json        schemaVersion 5, + process { pid, hostname }
 ├── summary.json         status may be "cancelled"
 └── trials/{trial}/
-    ├── manifest.json    + datasets [{ id, digest }]
-    └── scores.json      score results may have skipped: true
+    ├── manifest.json    + datasets [{ id, visibility, source, digest }]
+    └── scoring.json     score results may have skipped: true
 ```
 
 - `source` is `static` or `computed`.

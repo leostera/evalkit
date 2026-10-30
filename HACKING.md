@@ -42,7 +42,7 @@ The examples use internal workspace packages (`@evalkit/*`). External projects i
 
 ## Working on evals and reports
 
-Run CLI commands **from the example or eval project directory**: discovery, fixture paths, `_evalkit-results/`, and `_evalkit-sandbox/` are project-relative. The starter's `greeting` eval does not require a provider; `bun run evalkit run` also runs Pi-backed evals and requires a configured model. The interleaved example's `bun run evalkit run failfast-file` intentionally fails and exits nonzero.
+Run CLI commands **from the example or eval project directory**: discovery, dataset paths, `_evalkit-results/`, and `_evalkit-sandbox/` are project-relative. The starter's `greeting` eval does not require a provider; `bun run evalkit run` also runs Pi-backed evals and requires a configured model. The interleaved example's `bun run evalkit run failfast-file` intentionally fails and exits nonzero.
 
 `bun test` covers core contracts, runner reports, CLI/dashboard integration, and examples. Check the [manual](sites/evalkit.leostera.dev/src/content/docs/manual/) when changing authoring APIs or report semantics, and update its source pages along with examples. Treat reports, judge observations, and evaluator workspaces as potentially sensitive; don't commit local runs or secrets.
 

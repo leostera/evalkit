@@ -1,0 +1,15 @@
+{
+  "name": "@evalkit/example-support-suite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@evalkit/cli": "workspace:*",
+    "@evalkit/core": "workspace:*",
+    "@evalkit/runner": "workspace:*",
+    "effect": "^3.19.0"
+  }
+}

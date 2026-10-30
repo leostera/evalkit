@@ -1,29 +1,32 @@
 # EvalKit
 
-> EvalKit is a local-first kit for authoring agent evals as code. Teams can version TypeScript eval definitions in Git, reuse fixtures and executable predicate judges, compare configured model settings, and inspect or deliberately share local result files. This site is a static guide, not a hosted evaluation service.
+> EvalKit is a local-first kit for authoring agent evals as code. Teams write each scenario as a small TypeScript file, share agents, judges and datasets between scenarios, version them in Git, sweep configured model settings, report to CI, compare results against a base branch, and inspect or deliberately share local result files. This site is a static guide, not a hosted evaluation service.
 
 ## Documentation
 
-- [Manual overview](https://evalkit.leostera.dev/docs/manual/): Entry point to separate Markdown chapters for setup, agents, fixtures, scoring, CLI, reports, and troubleshooting. [Markdown sources](https://github.com/leostera/evalkit/tree/main/www/src/content/docs/manual).
-- [Get started](https://evalkit.leostera.dev/docs/): A walkthrough for the included starter project. [Markdown source](https://github.com/leostera/evalkit/blob/main/www/src/content/docs/index.md).
-- [Project structure and discovery](https://evalkit.leostera.dev/docs/manual/project-structure/): IDs, suites, config, and automatic discovery.
-- [Agents under test](https://evalkit.leostera.dev/docs/manual/agents/): AUT adapter and event contract.
-- [Fixtures](https://evalkit.leostera.dev/docs/manual/fixtures/): Candidate and evaluator workspace inputs.
-- [Scorers and evals](https://evalkit.leostera.dev/docs/manual/scoring-and-evals/): Predicates and eval definitions.
-- [CLI and matrices](https://evalkit.leostera.dev/docs/manual/cli-and-matrices/): Selection, runs, sweeps, and safety limits.
-- [Results and reports](https://evalkit.leostera.dev/docs/manual/results/): Local manifests, scoring, artifacts, and CI gates.
+- [Manual overview](https://evalkit.leostera.dev/docs/manual/): Entry point to separate Markdown chapters for setup, agents, datasets, scoring, CLI, reports, and troubleshooting. [Markdown sources](https://github.com/leostera/evalkit/tree/main/sites/evalkit.leostera.dev/src/content/docs/manual).
+- [Get started](https://evalkit.leostera.dev/docs/): A walkthrough for the generated starter project. [Markdown source](https://github.com/leostera/evalkit/blob/main/sites/evalkit.leostera.dev/src/content/docs/index.md).
+- [Project structure and discovery](https://evalkit.leostera.dev/docs/manual/project-structure/): `scenarios/`, directory suites, IDs, config, load errors, and explicit registries.
+- [Agents under test](https://evalkit.leostera.dev/docs/manual/agents/): The adapter contract: returning turn results or streaming events.
+- [Datasets](https://evalkit.leostera.dev/docs/manual/datasets/): Files and values for scenarios, computed and cached inputs, and candidate versus evaluator visibility.
+- [Scorers and evals](https://evalkit.leostera.dev/docs/manual/scoring-and-evals/): Predicates, judges, `output`, `passAt`, and `skip`.
+- [CLI and matrices](https://evalkit.leostera.dev/docs/manual/cli-and-matrices/): Selection, sweeps, CI reporting with JUnit, `evalkit compare`, the dashboard, and sharing.
+- [Results and reports](https://evalkit.leostera.dev/docs/manual/results/): Local manifests, scoring, artifacts, and running from code.
 - [Troubleshooting](https://evalkit.leostera.dev/docs/manual/troubleshooting/): Common issues and current limitations.
+- [Migration guide from 0.5](https://github.com/leostera/evalkit/blob/main/CHANGELOG.md#migrating-from-05): `evals/` to `scenarios/`, fixtures to datasets.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
-- [EvalKit package](https://www.npmjs.com/package/@leostera/evalkit): The repository root builds `@leostera/evalkit` with authoring API, CLI, and dashboard.
-- [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported eval discovery, no registry or config.
-- [Configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix): Runnable project with an optional `evalkit.config.ts` and a provider-free parameter sweep.
+- [EvalKit package](https://www.npmjs.com/package/@leostera/evalkit): The repository root builds `@leostera/evalkit` with the authoring API, CLI, dashboard, and agent skills (`dist/skills/`).
+- [Starter example](https://github.com/leostera/evalkit/tree/main/examples/starter): Runnable local project with default-exported scenario discovery, no registry or config.
+- [Support suite example](https://github.com/leostera/evalkit/tree/main/examples/support-suite): A few dozen short scenarios in directory suites, sharing one agent, its judges, and static, computed and evaluator-only datasets.
+- [Configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix): An optional `evalkit.config.ts` and a provider-free parameter sweep.
 
 ## Implementation notes
 
-- Start with `bunx @leostera/evalkit new ./evals`, then `cd evals && bun install && bun run evals` to run the provider-free eval from a standalone project.
-- Authored suites, evals, agents, and matrices use human-readable lowercase kebab-case IDs; the CLI selects evals and suites by ID. Fixtures have no ID: their destinations are scoped to an eval's trial workspace. Only runs and trials have generated URIs.
-- The local CLI discovers default-exported `evals/**/*.eval.ts`/`.js` by default. An optional `evalkit.config.js`/`.ts`/`.mjs` customizes discovery and execution; `src/registry.ts` is for an optional explicit registry or suite. A config takes precedence over that file unless it explicitly supplies a registry. Reports are saved under `_evalkit-results/`.
-- Config can define a parameter matrix with `id`, axes, defaults, and execution safety limits. Matrices expand lazily; select by ID with `run --matrix <matrix-id> --eval <eval-id>` and inspect a plan with `--dry-run`. The agent adapter must consume `context.parameters` for a model axis to change the model.
-- The Agent Under Test (AUT) is the system whose behavior the eval measures, not the scorer. An adapter starts a fresh session, receives user messages, and emits events for scorers to inspect. Today `user(...)`, inline and final `predicate(...)` / `judge(...)` rules, and observed `expectToolCall(...)` checkpoints execute. Judge rules require a distinct eval-level agent. The `evalkit new` standalone project scaffold works from the public Git URL without a registry release. Remote Agents SDK transport and enforced timeout policies are not available.
-- Eval definitions can be versioned in Git; reports are local files, not automatically versioned or shared. The starter ignores report directories in Git; review for sensitive data and commit selected summaries if a versioned outcome history is needed. Run completion is not the same as a scoring pass: consult the run summary's `failed` count for trial outcomes.
+- Start with `bunx @leostera/evalkit new ./agent-evals`, then `cd agent-evals && bun install && bun run evalkit run` to run the provider-free scenario. The CLI runs on Bun or Node 22.18+.
+- The CLI discovers default-exported `scenarios/**/*.eval.ts`/`.js`; each directory directly below `scenarios/` is a suite. A file that throws on import is a load error for that file only. An optional `evalkit.config.ts` customizes discovery and execution or supplies an explicit registry.
+- Authored scenarios, suites, datasets, agents, and matrices use lowercase kebab-case IDs; the CLI selects by ID. Only runs and trials have generated URIs.
+- Datasets (`defineDataset`) give scenarios files and values: static (`files`, `value`, `valueFile`) or computed (`onLoad` once per process, cached; `onRun` per trial). `visibility: 'evaluator'` keeps a dataset from the agent.
+- An adapter (`defineAgent`) starts a fresh session per trial; `send()` may return the reply, tool calls, and usage, or stream events with `onEvent`. Scorers get the final `output` and dataset `data`; `predicate(..., { passAt })` sets a threshold and `skip(reason)` marks a check as not applicable. Judge rules require a distinct eval-level agent. Remote Agents SDK transport and enforced timeouts are not available.
+- `evalkit run --junit <file>` writes a JUnit report; `evalkit compare --base <branch> --fail-on regression` gates merge requests. Ctrl+C cancels cleanly; cancelled runs never count as failures.
+- Scenario definitions are versioned in Git; reports are local files, not automatically shared. Review them for sensitive data before `evalkit build` or `evalkit share`.
 - The website is static Astro served as Cloudflare Workers Static Assets. It does not run evaluations or expose an evaluation API.

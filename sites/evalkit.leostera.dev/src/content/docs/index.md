@@ -7,19 +7,19 @@ Write an agent task in TypeScript, run it locally, then inspect the messages, sc
 
 ## First run
 
-You need [Bun](https://bun.sh/) 1.4.2 (the version used by this repository). Create a project from npm; no model key is needed:
+You need [Bun](https://bun.sh/) 1.4.2, or Node 22.18 or later (the CLI prefers Bun when both are installed). Create a project from npm; no model key is needed:
 
 ```sh
-bunx @leostera/evalkit new ./evals
-cd evals
+bunx @leostera/evalkit new ./agent-evals
+cd agent-evals
 bun install
 bun run check
 bun run evalkit run
 ```
 
-`bun run evalkit run` runs the generated `greeting` eval in two styles. To see which cells will run first, use `bun run evalkit run --matrix styles --dry-run`. To browse results, start `bun run evalkit dev`; `bun run evalkit build` writes a read-only snapshot you can host and share. Reports are saved under `_evalkit-results/` in the project you just created.
+`bun run evalkit run` runs the generated `greeting` scenario in two styles and ends with a summary. To see which cells will run first, use `bun run evalkit run --matrix styles --dry-run`. To browse results, start `bun run evalkit dev`; `bun run evalkit build` writes a read-only snapshot you can host and share. Reports are saved under `_evalkit-results/` in the project you just created.
 
-The scaffold includes `agents/`, `fixtures/`, `evals/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Run commands **from the eval project directory** so discovery, fixtures, and reports resolve there. See [CLI and matrices](/docs/manual/cli-and-matrices/) for selection and safety limits.
+The scaffold includes `scenarios/`, `agents/`, `datasets/`, `judges/`, `evalkit.config.ts`, and `tsconfig.json`. Run commands **from the eval project directory** so discovery, datasets, and reports resolve there. See [CLI and matrices](/docs/manual/cli-and-matrices/) for selection and safety limits.
 
 ### Already have a Bun project?
 
@@ -33,31 +33,27 @@ bun install
 
 The scaffold preserves existing scripts, dependencies, and README; it stops before changing anything if a generated path already exists. See [project setup](/docs/manual/project-structure/) for the full contract.
 
-## Define an eval
+## Define a scenario
 
-An eval composes an Agent Under Test (AUT), user messages, optional fixtures, and scoring rules. Give it a stable lowercase kebab-case `id`; evals, suites, agents, and matrices use IDs, while fixtures do not. EvalKit generates run and trial identities.
+A scenario is one concrete conversation with the Agent Under Test (AUT), scored in a specific way. It composes an agent, user messages, optional datasets, and scoring rules, each defined once in its own directory and imported. Give it a stable lowercase kebab-case `id`.
 
 ```ts
-// evals/greeting.eval.ts
-import { defineEval, file, user } from '@leostera/evalkit';
+// scenarios/greeting.eval.ts
+import { defineEval, user } from '@leostera/evalkit';
 import { greetingAgent } from '../agents/greeting-agent.js';
+import { greeting } from '../datasets/greeting.dataset.js';
 import { matchesGreeting } from '../judges/matches-greeting.js';
 
 export default defineEval({
   id: 'greeting',
   agent: greetingAgent,
-  fixtures: [
-    file('fixtures/greeting.txt', {
-      dst: 'greeting.txt',
-      visibility: 'candidate',
-    }),
-  ],
+  datasets: [greeting],
   transcript: [user('Ada')],
   scoring: [matchesGreeting],
 });
 ```
 
-Default-export an eval under `evals/` and run it with `bun run evalkit run greeting`. The CLI discovers `evals/**/*.eval.ts` and `.js` files automatically: no registry or config is required. This is the generated `evals/greeting.eval.ts`. Edit it or add another default-exported `.eval.ts` file; `evalkit.config.ts` already defines the `styles` matrix. The `@leostera/evalkit` import resolves from the npm package installed by `bun install`.
+Default-export a scenario from a file in `scenarios/` and run it with `bun run evalkit run greeting`. The CLI discovers `scenarios/**/*.eval.ts` and `.js` files automatically: no registry is required. Each directory directly below `scenarios/` is a suite, so `scenarios/billing/refunds.eval.ts` is in suite `billing`. Keep each scenario small and write a hundred of them rather than one that loops; share the agents, datasets and judges.
 
 Learn more: [Project structure and discovery](/docs/manual/project-structure/) · [Scorers and evals](/docs/manual/scoring-and-evals/).
 
@@ -65,55 +61,55 @@ Learn more: [Project structure and discovery](/docs/manual/project-structure/) �
 
 The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each trial, EvalKit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
 
-An adapter implements `start()`, returning a session with `send(message)` and `close()`. `send()` should resolve when the turn finishes; returning an answer alone does not record it. Emit assistant messages as events so they appear in the timeline and can be scored.
+An adapter implements `start()`, returning a session with `send(message)`. `send()` resolves when the turn finishes and may return the reply; EvalKit records it. Return `{ reply, toolCalls, usage }` to record tool calls and token usage too, or call `onEvent` to stream events as they happen.
 
 ```ts
-// agents/greeting-agent.ts · essentials of the generated adapter
+// agents/greeting-agent.ts
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defineAgent } from '@leostera/evalkit';
 
 export const greetingAgent = defineAgent({
-  identity: { kind: 'in-process', id: 'greeting-agent' },
-  runtimes: { local: { kind: 'in-process' } },
-  async start({ context, onEvent }) {
+  identity: { id: 'greeting-agent', kind: 'in-process' },
+  async start({ context }) {
     return {
       async send(message: string) {
-        const prefix = (
-          await readFile(join(context.workspace.root, 'greeting.txt'), 'utf8')
-        ).trim();
-        const greeting = `${prefix}, ${message}!`;
-        await onEvent({
-          kind: 'message',
-          role: 'assistant',
-          content:
-            context.parameters?.style === 'shout'
-              ? greeting.toUpperCase()
-              : greeting,
-          timestamp: new Date().toISOString(),
-        });
+        const file = join(context.workspace.root, 'greeting', 'greeting.txt');
+        const greeting = `${(await readFile(file, 'utf8')).trim()}, ${message}!`;
+        return context.parameters?.style === 'shout'
+          ? greeting.toUpperCase()
+          : greeting;
       },
-      async close() {},
     };
   },
 });
 ```
 
-Use `context.workspace.root` for candidate-visible files. Never pass `context.evaluatorWorkspace.root` to a model. For a local Pi process, `piAgent()` is available from `@leostera/evalkit`, but it invokes Pi independently for each message.
+Use `context.workspace.root` for candidate-visible files and `context.data` for candidate dataset values. Never pass `context.evaluatorWorkspace.root` to a model. For a local Pi process, `piAgent()` is available from `@leostera/evalkit`, but it invokes Pi independently for each message.
 
 Learn more: [Agents under test](/docs/manual/agents/).
 
-## Add fixtures
+## Add datasets
 
-Fixtures are project files or generated inputs copied into isolated workspaces before each trial. Candidate files are visible to the AUT; evaluator files stay private to trusted scoring code. Source paths resolve from the project directory.
+A dataset is named data a scenario uses: files copied into each trial's workspace, a value given to the agent and scorers, or both. Define it once in `datasets/` and import it from every scenario that needs it.
 
-The generated `fixtures/greeting.txt` contains `Hello`. Its eval copies that file to the AUT's candidate workspace with `file('fixtures/greeting.txt', { dst: 'greeting.txt', visibility: 'candidate' })` before each trial. The generated agent reads it to form a reply. For private reference answers, use `visibility: 'evaluator'` instead. `directory()`, `inlineFile()`, and `dynamic()` support larger or generated inputs. Fixtures need no IDs; destinations must be unique within each trial workspace. Keep expected answers out of candidate files.
+```ts
+// datasets/greeting.dataset.ts
+import { defineDataset } from '@leostera/evalkit';
 
-Learn more: [Fixtures](/docs/manual/fixtures/).
+export const greeting = defineDataset({
+  id: 'greeting',
+  files: 'datasets/greeting', // copied to greeting/ in each trial's workspace
+});
+```
+
+Candidate datasets (the default) are visible to the agent; `visibility: 'evaluator'` keeps expected answers for the scorers only. Inputs that are expensive to build can be computed with `onLoad`, called once per process and cached, and varied per trial with `onRun`.
+
+Learn more: [Datasets](/docs/manual/datasets/).
 
 ## Score a trial
 
-A reusable `predicate(...)` is an executable judge. It inspects events and files after the session closes. A numeric score passes only when it is exactly `1`; return an object with `passed` to set a different threshold.
+A reusable `predicate(...)` is an executable judge. It runs after the session closes, with the final reply as `output`, the dataset values as `data`, and the full trajectory and files. A numeric score passes only at `1` unless you give `passAt`; return `skip(reason)` when a check does not apply.
 
 ```ts
 // judges/matches-greeting.ts
@@ -121,31 +117,24 @@ import { predicate } from '@leostera/evalkit';
 
 export const matchesGreeting = predicate(
   'matches greeting and style',
-  ({ context, trajectory }) => {
-    const reply = trajectory.events
-      .filter(
-        (event) =>
-          event.source === 'aut' &&
-          event.kind === 'message' &&
-          event.role === 'assistant',
-      )
-      .at(-1);
+  ({ context, output }) => {
     const expected =
       context.parameters?.style === 'shout' ? 'HELLO, ADA!' : 'Hello, Ada!';
     return {
-      value: reply?.kind === 'message' && reply.content === expected ? 1 : 0,
+      value: output === expected ? 1 : 0,
+      explanation: `Expected ${expected}`,
     };
   },
 );
 ```
 
-The callback can also inspect `artifacts.candidate.root` and `artifacts.evaluator.root`. Score errors are saved, not silently counted as passes.
+Score errors are saved, not silently counted as passes.
 
 Learn more: [Scorers and evals](/docs/manual/scoring-and-evals/).
 
 ## Read results
 
-Keep eval definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`; read its `summary.json` for passed and failed trial counts. Under `trials/<trial-id>/`, inspect `trajectory.jsonl`, `scoring.json`, `summary.json`, and candidate artifacts.
+Keep scenario definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`; read its `summary.json` for passed and failed trial counts. Under `trials/<trial-id>/`, inspect `trajectory.jsonl`, `scoring.json`, `summary.json`, and candidate artifacts.
 
 ```sh
 RUN="_evalkit-results/<run-id>"
@@ -153,7 +142,7 @@ jq '{trialCount, passed, failed}' "$RUN/summary.json"
 jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN"/trials/*/scoring.json
 ```
 
-> **Important:** Execution status `completed` does not mean the scores passed. Use the run-level `failed` count for a CI gate. Local `_evalkit-sandbox/` directories retain _both_ candidate and evaluator workspaces; review them for sensitive data before sharing.
+> **Important:** Execution status `completed` does not mean the scores passed. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Local `_evalkit-sandbox/` directories retain _both_ candidate and evaluator workspaces; review them for sensitive data before sharing.
 
 Learn more: [Results and reports](/docs/manual/results/).
 
@@ -191,6 +180,6 @@ Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
 ## What's next
 
-Use the sidebar to explore the [manual](/docs/manual/) for explicit suites, fixture visibility, scorer contracts, CLI selection, and report processing. The generated project is a runnable reference for project layout and matrix configuration; the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter) and [interleaved scenario](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) show additional eval patterns.
+Use the sidebar to explore the [manual](/docs/manual/) for suites, dataset visibility, scorer contracts, CLI selection, and report processing. The generated project is a runnable reference for project layout and matrix configuration; the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter) and [interleaved scenario](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) show additional eval patterns.
 
 Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport and enforced timeouts are not available. Install the public npm package to get started; see [project setup](/docs/manual/project-structure/).

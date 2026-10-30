@@ -1,6 +1,6 @@
 ---
 title: CLI and matrices
-description: Select evals and suites, sweep parameter axes, inspect plans, and use the local dashboard.
+description: Select scenarios and suites, sweep parameter axes, report to CI, compare against a base, and use the dashboard.
 ---
 
 Run the CLI **from the eval project's directory**. In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
@@ -8,7 +8,7 @@ Run the CLI **from the eval project's directory**. In this repository, `bun run 
 ## Run commands
 
 ```sh
-# In examples/starter: the only provider-free eval is greeting.
+# In examples/starter: the only provider-free scenario is greeting.
 bun run evalkit run greeting --trials 1
 bun run evalkit run greeting --dry-run
 bun run evalkit run greeting --json
@@ -18,20 +18,21 @@ bun run evalkit build
 # In examples/configured-matrix: both style choices use a local agent.
 bun run evalkit run --matrix letter-case --dry-run
 bun run evalkit run --matrix letter-case --eval case-transform --select style=upper
-# With an explicitly registered suite:
-bun run evalkit run --suite conversation-basics
+# A suite: every scenario in one directory below scenarios/.
+bun run evalkit run --suite billing
 ```
 
-| Command             | Selection                                                                                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `new <directory>`   | Generate a provider-free project with `bunx @leostera/evalkit new ./evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add @leostera/evalkit`. Never overwrites existing evals. |
-| `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` for a named matrix and `--suite <id>` for a registered suite. These selectors are mutually exclusive.               |
-| `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                          |
-| `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                              |
-| `tidy`              | Mark runs of evals that are no longer in the project as archived. See [Archiving removed evals](#archiving-removed-evals).                                                                                         |
-| `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                  |
+| Command             | Selection                                                                                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new <directory>`   | Generate a provider-free project with `bunx @leostera/evalkit new ./agent-evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add @leostera/evalkit`. Never overwrites existing files. |
+| `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` for a named matrix and `--suite <id>` for a suite. These selectors are mutually exclusive.                                |
+| `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                                |
+| `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                                    |
+| `tidy`              | Mark runs of evals that are no longer in the project as archived. See [Archiving removed evals](#archiving-removed-evals).                                                                                               |
+| `compare`           | Compare this commit's results with a base commit's. See [Comparing against a base](#comparing-against-a-base).                                                                                                           |
+| `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                        |
 
-Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. A zero-config discovery project has no suites and no named project matrix. See [Project structure](/docs/manual/project-structure/) for registering those.
+Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. Suites come from directories below `scenarios/`; see [Project structure](/docs/manual/project-structure/#suites).
 
 `--dry-run` prints a JSON plan (`matrix`, selected `evals`, cell count, axis selection, overrides, and trial override) **without creating reports, workspaces, or agent sessions**. It does not calculate the total trial count when evals have different `policy.trials`. The CLI refuses more than `execution.maxCells` cells (default **100**) unless you pass `--all`; inspect the dry run and narrow your selection before bypassing the limit. Unknown eval IDs, axes, and axis values fail before dispatch. If any executed cell fails its execution or scoring gate, the CLI exits nonzero.
 
@@ -77,13 +78,15 @@ An AUT only responds to these choices if its adapter reads `context.parameters`.
 | `--local`                                                        | Require a declared `local` AUT runtime rather than auto-selecting the first declared runtime (`local`, then `remote`, then `sandbox`).                                            |
 | `--max-tokens <n>`, `--turn-budget <n>`, `--chat-timeout-ms <n>` | Positive-integer values forwarded as `maxTokens`, `turnBudget`, `chatTimeoutMs` in `context.parameters`. EvalKit does **not** enforce these budgets/timeouts.                     |
 | `--json`                                                         | Print one JSON object **per completed cell** containing the cell key, eval ID, effective parameters, and run result; not a single JSON array.                                     |
+| `--junit <file>`                                                 | Write a JUnit XML report with one test case per scenario and matrix cell. See [Running in CI](#running-in-ci).                                                                    |
+| `--skip-broken`                                                  | Run the healthy scenarios when some files fail to load, then exit 1. See [load errors](/docs/manual/project-structure/#load-errors).                                              |
 | `--config <file>`, `--dry-run`, `--all`                          | Choose a config, inspect a no-execution plan, or lift the cell-count limit.                                                                                                       |
 
 CLI flags expecting positive integers reject zero, fractions, and negative numbers. Cell count does **not** include trial repetitions; a plan of two cells at ten trials per eval can perform twenty trials. Factor that into provider costs and rate limits. `--local` does not magically run a remote-only adapter locally; it fails if `local` is undeclared.
 
 ## Comparing an intervention against a baseline
 
-Use a matrix axis for a controlled comparison such as memory off/on. Keep the eval task and model fixed, and make the AUT read only the treatment parameter. For a saved-memory fixture, the adapter can inject that content only when `memory === 'on'`; this measures whether the content helps when supplied, not whether the agent can retrieve it through MCP.
+Use a matrix axis for a controlled comparison such as memory off/on. Keep the scenario and model fixed, and make the AUT read only the treatment parameter. For a saved-memory dataset, the adapter can inject that content only when `memory === 'on'`; this measures whether the content helps when supplied, not whether the agent can retrieve it through MCP.
 
 ```ts
 // evalkit.config.ts
@@ -106,6 +109,43 @@ bun run evalkit run --matrix memory-ablation --local
 ```
 
 Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat trials and inspect every cell's run summary and trial scores; a three-trial pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use a tool-enabled custom AUT that records actual tool events; the built-in `piAgent()` disables tools. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
+
+## Running in CI
+
+`evalkit run` reports per scenario and matrix cell, with the reason for each failure on the same line (for example `correct 0.0 (passes at 0.5)`). On a terminal, failures print as they happen below a live progress line; elsewhere, such as in CI, every finished scenario prints one plain line. One summary of passed, failed and cancelled scenarios ends the run. It exits 1 when any scenario fails or a selected file failed to load, and 130 when cancelled.
+
+```sh
+bun run evalkit run --junit _evalkit-results/junit.xml
+```
+
+`--junit <file>` writes one JUnit test case per scenario and matrix cell, grouped by suite, so CI systems show failures as test results. Upload the file as a test report artifact.
+
+Ctrl+C (or `SIGINT` from CI) cancels a run cleanly: running trials are stopped, their runs are saved as `cancelled`, and the summary and JUnit file are still written. A second Ctrl+C exits at once; those runs are shown as cancelled (interrupted) later. Cancelled runs never count as failures and are never shared.
+
+## Comparing against a base
+
+`evalkit compare` compares the current commit's results with a base commit's, for merge request gates and comments. Scenarios are matched by ID and parameters, using the latest finished run of each.
+
+```sh
+# Base results from the share server, by branch, tag or commit:
+bun run evalkit compare --base main
+# Or from a directory of results, such as a CI artifact from the base pipeline:
+bun run evalkit compare --base-dir base-results/_evalkit-results
+# Gate and comment:
+bun run evalkit compare --base main --fail-on regression --markdown compare.md
+```
+
+Each scenario is **regressed** (passed on base, failed now), **fixed**, **new**, **removed**, **unchanged**, or **not comparable** (cancelled, errored, or scored by a different set of scorers). Per suite, the output shows the mean of each scorer on both sides, and it lists datasets whose [digests](/docs/manual/datasets/#digests) changed, so a score change can be read against changed inputs.
+
+| Flag                               | Effect                                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--base <ref>`, `--base-dir <dir>` | Where the base results come from. Give exactly one.                                                  |
+| `--fail-on regression`             | Exit 1 when any scenario regressed. Default: never fail.                                             |
+| `--fail-on score-drop=0.05`        | Also exit 1 when a scorer's mean drops by more than the given amount. Repeat `--fail-on` to combine. |
+| `--markdown <file>`                | Write the comparison as Markdown for a merge request comment.                                        |
+| `--json`                           | Print the comparison as JSON.                                                                        |
+| `--require-base`                   | Exit 1 when the base has no results. By default `compare` says so and exits 0.                       |
+| `--allow-dirty`                    | Include this commit's runs made with uncommitted changes.                                            |
 
 ## Dashboard runs and inspection
 

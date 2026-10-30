@@ -264,7 +264,7 @@ import {
         <article>
           <h3>Define what good looks like.</h3>
           <p>
-            Compose an agent, input fixtures, a transcript, and scoring rules.
+            Write each scenario as a small file: an agent, datasets, a transcript, and scoring rules.
             Start with deterministic checks you can read and debug.
           </p>
           <a class="text-link" href="/docs/manual/scoring-and-evals/">
@@ -284,11 +284,11 @@ import {
         <article>
           <h3>Give the agent only what it needs.</h3>
           <p>
-            Reuse fixtures across isolated trials. Keep reference answers in the
-            evaluator workspace, out of the agent’s inputs.
+            Share datasets across scenarios and isolated trials. Keep expected
+            answers in evaluator datasets, out of the agent’s inputs.
           </p>
-          <a class="text-link" href="/docs/manual/fixtures/">
-            Fixtures and visibility <Icon name="arrow" />
+          <a class="text-link" href="/docs/manual/datasets/">
+            Datasets and visibility <Icon name="arrow" />
           </a>
         </article>
       </div>
@@ -329,7 +329,7 @@ import {
         >
           <img
             src="/images/dashboard-trial.png"
-            alt="EvalKit local dashboard showing the starter greeting trial, its passing predicate score, runtime, 11 recorded events, and candidate artifacts."
+            alt="EvalKit local dashboard showing a starter greeting trial: its trajectory of 11 recorded events beside its passing predicate score and candidate artifacts, with the Evals and Library navigation."
             width="2560"
             height="1380"
             loading="lazy"

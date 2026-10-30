@@ -46,7 +46,7 @@ export default defineConfig({
               link: '/docs/manual/project-structure/',
             },
             { label: 'Agents under test', link: '/docs/manual/agents/' },
-            { label: 'Fixtures', link: '/docs/manual/fixtures/' },
+            { label: 'Datasets', link: '/docs/manual/datasets/' },
             {
               label: 'Scorers & evals',
               link: '/docs/manual/scoring-and-evals/',
