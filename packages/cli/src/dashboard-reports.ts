@@ -7,6 +7,7 @@ import type {
   RunSource,
 } from '@evalkit/core';
 import {
+  ownerIsGone,
   readRunManifest,
   readRunSummary,
   readTrialEvents,
@@ -24,7 +25,9 @@ export type LocalRun = {
   agent?: string;
   matrixId?: string;
   parameters?: JsonObject;
-  status: 'running' | 'passed' | 'failed' | 'errored';
+  status: 'running' | 'passed' | 'failed' | 'errored' | 'cancelled';
+  /** Cancelled because its process stopped without finishing it (e.g. a second Ctrl+C). */
+  interrupted?: true;
   startedAt: string;
   completedAt?: string;
   completedTrials: number;
@@ -35,6 +38,8 @@ export type LocalRun = {
   archived?: boolean;
   /** Repository and commit the run's eval code came from (schema version 4+). */
   source?: RunSource;
+  /** The `evalkit run` or dashboard launch that started it (schema version 5+). */
+  invocationId?: string;
 };
 
 /** Written into a run directory by `evalkit tidy`; deleting it restores the run. */
@@ -99,6 +104,7 @@ function runStatus(summary: {
   trialCount: number;
 }): LocalRun['status'] {
   if (summary.status === 'running') return 'running';
+  if (summary.status === 'cancelled') return 'cancelled';
   if (summary.status !== 'completed') return 'errored';
   return summary.failed === 0 && summary.passed === summary.trialCount
     ? 'passed'
@@ -110,6 +116,7 @@ function trialStatus(summary: {
   scoring?: { passed?: boolean };
 }): LocalTrial['status'] {
   if (summary.status === 'running') return 'running';
+  if (summary.status === 'cancelled') return 'cancelled';
   if (summary.status !== 'completed') return 'errored';
   return summary.scoring?.passed === true ? 'passed' : 'failed';
 }
@@ -186,6 +193,7 @@ export function createDashboardReportReader(
     const archived = await ifPresent(() =>
       stat(resolve(root, id, ARCHIVE_MARKER)),
     );
+    const interrupted = !summary && ownerIsGone(manifest.process);
     return {
       id,
       ...(archived ? { archived: true } : {}),
@@ -206,7 +214,13 @@ export function createDashboardReportReader(
               .join(' / '),
           }
         : {}),
-      status: summary ? runStatus(summary) : 'running',
+      status: summary
+        ? runStatus(summary)
+        : interrupted
+          ? 'cancelled'
+          : 'running',
+      ...(interrupted ? { interrupted: true as const } : {}),
+      ...(manifest.invocation ? { invocationId: manifest.invocation.id } : {}),
       startedAt: manifest.startedAt,
       ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
       ...(summary?.durationMs !== undefined
@@ -230,6 +244,8 @@ export function createDashboardReportReader(
     assertUuid(runId, 'run ID');
     const ids = await ifPresent(() => readdir(resolve(root, runId, 'trials')));
     if (!ids) return [];
+    const runManifest = await ifPresent(() => readRunManifest(root, runId));
+    const ownerGone = ownerIsGone(runManifest?.process);
     const trials = await Promise.all(
       ids.map(async (id) => {
         const manifest = await readTrialManifest(root, runId, id);
@@ -239,7 +255,11 @@ export function createDashboardReportReader(
         return {
           id,
           index: manifest.trialIndex,
-          status: summary ? trialStatus(summary) : 'running',
+          status: summary
+            ? trialStatus(summary)
+            : ownerGone
+              ? ('cancelled' as const)
+              : ('running' as const),
           startedAt: manifest.startedAt,
           ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
           ...(summary?.durationMs !== undefined

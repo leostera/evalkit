@@ -27,7 +27,7 @@ test('discovers a configured matrix and records both selected parameter cells', 
         concurrency: 2,
       }),
     );
-    expect(result).toEqual({ cells: 2, passed: 2, failed: 0 });
+    expect(result).toEqual({ cells: 2, passed: 2, failed: 0, cancelled: 0 });
     const styles: string[] = [];
     for (const runId of await readdir(reports)) {
       const manifest = JSON.parse(

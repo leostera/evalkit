@@ -54,6 +54,8 @@ type FinalScoringInput = {
   lastTurn?: TurnView;
   primaryError?: unknown;
   stoppedEarly: boolean;
+  /** No scorer runs for a cancelled trial. */
+  cancelled: boolean;
   reportingFailed: boolean;
   results: ScoreResult[];
   skippedScorers: string[];
@@ -79,6 +81,7 @@ export async function evaluateFinalScorers(
   } = input;
   for (const scorer of definition.scoring) {
     if (
+      input.cancelled ||
       input.reportingFailed ||
       !context ||
       !workspace ||

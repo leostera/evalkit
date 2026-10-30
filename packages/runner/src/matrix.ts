@@ -8,6 +8,14 @@ import type {
 } from '@evalkit/core';
 import { runEval, type RunEvalOptions } from './index.js';
 
+/** Cells run; cancelled cells are neither passed nor failed. */
+export type MatrixSummary = {
+  cells: number;
+  passed: number;
+  failed: number;
+  cancelled: number;
+};
+
 /** Bounded workers pull cells from the iterator; no Cartesian job array is allocated. */
 export function runMatrix(
   matrix: EvalMatrix,
@@ -21,18 +29,23 @@ export function runMatrix(
       result: RunResult,
     ) => void | Promise<void>;
   },
-): Effect.Effect<{ cells: number; passed: number; failed: number }, unknown> {
+): Effect.Effect<MatrixSummary, unknown> {
   return Effect.gen(function* () {
     const concurrency = options.concurrency ?? 4;
     if (!Number.isSafeInteger(concurrency) || concurrency < 1)
       throw new Error('Concurrency must be a positive integer');
     const count = matrix.count(options.selection);
     const iterator = matrix.cells(options.selection);
-    const summary = { cells: 0, passed: 0, failed: 0 };
+    const summary: MatrixSummary = {
+      cells: 0,
+      passed: 0,
+      failed: 0,
+      cancelled: 0,
+    };
     yield* Effect.all(
       Array.from({ length: Math.min(count, concurrency) }, () =>
         Effect.gen(function* () {
-          while (true) {
+          while (!options.signal?.aborted) {
             const next = iterator.next();
             if (next.done) return;
             const cell = next.value;
@@ -49,7 +62,8 @@ export function runMatrix(
               matrix: { id: matrix.id, cellKey: cell.key },
             });
             summary.cells++;
-            if (
+            if (result.status === 'cancelled') summary.cancelled++;
+            else if (
               result.status === 'completed' &&
               (result.aggregateScoring?.passRate === 1 ||
                 result.scoring?.passed)

@@ -5,6 +5,7 @@ type Status =
   | 'passed'
   | 'failed'
   | 'errored'
+  | 'cancelled'
   | 'error'
   | 'skipped'
   | (string & {});

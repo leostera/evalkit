@@ -634,6 +634,16 @@ export type RunCatalog = {
   suites: EvalSuiteMetadata[];
 };
 
+/** One `evalkit run` (or dashboard launch): every run it starts shares the ID. */
+export type RunInvocation = {
+  id: string;
+  /** What was asked for; absent fields mean "not restricted". */
+  selection: { suiteId?: string; evalIds?: string[]; matrixId?: string };
+};
+
+/** The process that owns a running run, so readers can tell an interrupted run from a live one. */
+export type RunProcess = { pid: number; hostname: string };
+
 export type RunMetadata = {
   schemaVersion: 2 | 3 | 4 | 5;
   runId: string;
@@ -646,6 +656,10 @@ export type RunMetadata = {
   startedAt: string;
   /** Present from schema version 4 when the run's commit could be determined. */
   source?: RunSource;
+  /** From schema version 5. */
+  invocation?: RunInvocation;
+  /** From schema version 5. */
+  process?: RunProcess;
 };
 
 export type TrialMetadata = {
@@ -718,6 +732,8 @@ export type RunSummary = {
   trialCount: number;
   passed: number;
   failed: number;
+  /** Trials stopped by cancellation; counted neither as passed nor failed. */
+  cancelled?: number;
   error?: RecordedError;
 };
 
@@ -759,6 +775,7 @@ export type TrialResult = {
 export type AggregateScoring = {
   passed: number;
   failed: number;
+  cancelled?: number;
   passRate: number;
   overall?: number;
 };

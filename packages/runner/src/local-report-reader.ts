@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import os from 'node:os';
 import { join } from 'node:path';
 import * as Schema from 'effect/Schema';
 import {
@@ -8,6 +9,7 @@ import {
   TrialSummarySchema,
   TrialScoringSchema,
   parseTrajectoryJsonl,
+  type RunProcess,
 } from '@evalkit/core';
 
 /** Shared v2/v3 local report boundary for CLI, dashboard, and CI consumers. */
@@ -62,4 +64,20 @@ export async function readTrialEvents(
       'utf8',
     ),
   );
+}
+
+/**
+ * True when a run's owning process is known to be gone: it ran on this host
+ * and its PID no longer exists. Runs from other hosts are never judged.
+ */
+export function ownerIsGone(owner: RunProcess | undefined): boolean {
+  if (!owner || owner.hostname !== os.hostname()) return false;
+  if (owner.pid === process.pid) return false;
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch (error) {
+    // EPERM means the process exists but belongs to someone else.
+    return (error as NodeJS.ErrnoException).code === 'ESRCH';
+  }
 }

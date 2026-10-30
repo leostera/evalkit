@@ -62,8 +62,11 @@ export type RunSummary = {
   matrixId?: string;
   cellKey?: string;
   parameters?: Record<string, unknown>;
-  /** Dashboard status: terminal runs are passed, failed, or errored. */
-  status: 'running' | 'passed' | 'failed' | 'errored';
+  /** Dashboard status: terminal runs are passed, failed, errored, or cancelled. */
+  status: 'running' | 'passed' | 'failed' | 'errored' | 'cancelled';
+  /** Cancelled because its process stopped without finishing it. */
+  interrupted?: true;
+  invocationId?: string;
   startedAt: string;
   completedAt?: string;
   completedTrials: number;

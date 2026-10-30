@@ -34,3 +34,30 @@ export class CheckpointExecutionError extends Data.TaggedError(
   message: string;
   cause: unknown;
 }> {}
+
+/** The run was cancelled (Ctrl+C); the trial stops and is finalized as cancelled. */
+export class CancelledError extends Data.TaggedError('CancelledError')<{
+  message: string;
+}> {}
+
+export function cancelled(): CancelledError {
+  return new CancelledError({ message: 'Cancelled' });
+}
+
+/** Settles like `work`, or rejects with `CancelledError` as soon as `signal` aborts. */
+export async function unlessAborted<T>(
+  work: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) throw cancelled();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(cancelled());
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work(), aborted]);
+  } finally {
+    signal.removeEventListener('abort', onAbort!);
+  }
+}

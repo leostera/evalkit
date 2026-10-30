@@ -14,11 +14,12 @@ import {
   user,
   parseTrajectoryJsonl,
   RunManifestSchema,
+  RunSummarySchema,
   TrialManifestSchema,
   TrialScoringSchema,
   TrialSummarySchema,
 } from '@evalkit/core';
-import { localReportStore, runEval } from './index';
+import { localReportStore, ownerIsGone, runEval } from './index';
 
 const execute = (
   definition: Parameters<typeof runEval>[0],
@@ -660,6 +661,84 @@ describe('runEval', () => {
         .filter((event) => event.source === 'aut')
         .map((event) => event.kind),
     ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
+  });
+
+  test('cancellation stops new trials and finalizes running ones as cancelled', async () => {
+    const root = await reportDirectory();
+    const controller = new AbortController();
+    let started = 0;
+    let closed = 0;
+    const evaluation = defineEval({
+      id: 'eval-cancel',
+      agent: defineAgent({
+        async start() {
+          started++;
+          return {
+            // Never answers on its own: only cancellation ends the turn.
+            send: () => new Promise<void>(() => {}),
+            async close() {
+              closed++;
+            },
+          };
+        },
+      }),
+      policy: { trials: 4 },
+      transcript: [user('hang'), user('never sent')],
+      scoring: [predicate('never runs', () => 1, { supportsPartial: true })],
+    });
+    const seen: string[] = [];
+    const running = execute(evaluation, {
+      report: localReportStore(root),
+      concurrency: 2,
+      signal: controller.signal,
+      invocation: { id: 'inv-1', selection: { evalIds: ['eval-cancel'] } },
+      onEvent: (trial, event) => {
+        seen.push(`${trial.trialIndex}:${event.kind}`);
+        if (event.kind === 'transcript-step-started') controller.abort();
+      },
+    });
+    const result = await running;
+    expect(result.status).toBe('cancelled');
+    expect(started).toBeLessThanOrEqual(2);
+    expect(closed).toBe(started);
+    expect(result.trials?.every((trial) => trial.status === 'cancelled')).toBe(
+      true,
+    );
+    expect(
+      result.trials?.every((trial) => trial.scoring?.results.length === 0),
+    ).toBe(true);
+    expect(seen).toContain('0:trial-started');
+    const summary = Schema.decodeUnknownSync(RunSummarySchema)(
+      JSON.parse(
+        await readFile(path.join(root, result.runId, 'summary.json'), 'utf8'),
+      ),
+    );
+    expect(summary).toMatchObject({
+      status: 'cancelled',
+      passed: 0,
+      failed: 0,
+      cancelled: started,
+    });
+    const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
+      JSON.parse(
+        await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
+      ),
+    );
+    expect(manifest.invocation).toEqual({
+      id: 'inv-1',
+      selection: { evalIds: ['eval-cancel'] },
+    });
+    expect(manifest.process?.pid).toBe(process.pid);
+  });
+
+  test('judges a running run interrupted only when its local owner is gone', () => {
+    const hostname = os.hostname();
+    expect(ownerIsGone(undefined)).toBe(false);
+    expect(ownerIsGone({ pid: process.pid, hostname })).toBe(false);
+    expect(ownerIsGone({ pid: 2 ** 22 + 12345, hostname })).toBe(true);
+    expect(ownerIsGone({ pid: 2 ** 22 + 12345, hostname: 'elsewhere' })).toBe(
+      false,
+    );
   });
 
   test('persists a partial trajectory when the AUT fails', async () => {

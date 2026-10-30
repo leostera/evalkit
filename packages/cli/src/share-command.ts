@@ -23,6 +23,8 @@ export type ShareSelection = {
   archived: number;
   /** Still running: a shared run is immutable, so it must be finished. */
   running: number;
+  /** Cancelled or interrupted: never shared, since it says nothing about the agent. */
+  cancelled: number;
 };
 
 /**
@@ -41,6 +43,7 @@ export function selectRuns(
     dirty: 0,
     archived: 0,
     running: 0,
+    cancelled: 0,
   };
   for (const run of runs) {
     const { source } = run;
@@ -53,6 +56,7 @@ export function selectRuns(
     else if (source.dirty && !options.allowDirty) result.dirty += 1;
     else if (run.archived) result.archived += 1;
     else if (run.status === 'running') result.running += 1;
+    else if (run.status === 'cancelled') result.cancelled += 1;
     else result.selected.push({ ...run, source });
   }
   return result;
@@ -69,6 +73,7 @@ export function selectionSummary(
       ? `${selection.otherCommits} from other commits`
       : '',
     selection.running ? `${selection.running} still running skipped` : '',
+    selection.cancelled ? `${selection.cancelled} cancelled skipped` : '',
     selection.dirty ? `${selection.dirty} dirty skipped` : '',
     selection.untracked ? `${selection.untracked} untracked skipped` : '',
     selection.archived ? `${selection.archived} archived skipped` : '',

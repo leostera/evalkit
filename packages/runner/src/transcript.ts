@@ -14,7 +14,13 @@ import {
 } from '@evalkit/core';
 import { evaluateCheckpoint } from './checkpoint.js';
 import { runBoundary } from './effect-boundary.js';
-import { AutExecutionError, ReportError } from './errors.js';
+import {
+  AutExecutionError,
+  CancelledError,
+  ReportError,
+  cancelled,
+  unlessAborted,
+} from './errors.js';
 import { turnView } from './turn.js';
 import type { TrialWorkspace } from './workspace.js';
 
@@ -35,6 +41,7 @@ type TranscriptExecution = {
   emitAut: (event: AutEvent) => Promise<void>;
   /** Values of every dataset, for scorers. */
   data: JsonObject;
+  signal: AbortSignal;
   progress: TranscriptProgress;
 };
 
@@ -46,6 +53,7 @@ export async function executeTranscript(
   const { now, emitRunner, progress } = input;
   let turn = 0;
   for (const [index, step] of definition.transcript.entries()) {
+    if (input.signal.aborted) throw cancelled();
     await emitRunner({
       kind: 'transcript-step-started',
       step: index,
@@ -57,6 +65,7 @@ export async function executeTranscript(
       const result = await sendUserTurn(
         session,
         step.message.replaceAll('{{randomSeed}}', String(input.randomSeed)),
+        input.signal,
       );
       if (result !== undefined)
         for (const event of turnResultEvents(result, turn, now))
@@ -104,12 +113,16 @@ export async function executeTranscript(
   }
 }
 
-async function sendUserTurn(session: AutSession, message: string) {
+async function sendUserTurn(
+  session: AutSession,
+  message: string,
+  signal: AbortSignal,
+) {
   return runBoundary(
     Effect.tryPromise({
-      try: () => session.send(message),
+      try: () => unlessAborted(() => session.send(message), signal),
       catch: (cause) =>
-        cause instanceof ReportError
+        cause instanceof ReportError || cause instanceof CancelledError
           ? cause
           : new AutExecutionError({
               cause,

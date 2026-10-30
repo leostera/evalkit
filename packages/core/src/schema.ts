@@ -71,6 +71,19 @@ export const RunMetadataSchema = Schema.Struct({
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
   source: Schema.optional(RunSourceSchema),
+  invocation: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      selection: Schema.Struct({
+        suiteId: Schema.optional(Schema.String),
+        evalIds: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+        matrixId: Schema.optional(Schema.String),
+      }),
+    }),
+  ),
+  process: Schema.optional(
+    Schema.Struct({ pid: Schema.Number, hostname: Schema.String }),
+  ),
 });
 
 export const TrialMetadataSchema = Schema.Struct({
@@ -184,6 +197,7 @@ export const RunSummarySchema = Schema.Struct({
   trialCount: Schema.Number,
   passed: Schema.Number,
   failed: Schema.Number,
+  cancelled: Schema.optional(Schema.Number),
   error: Schema.optional(RecordedErrorSchema),
 });
 

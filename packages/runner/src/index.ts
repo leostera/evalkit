@@ -1,11 +1,13 @@
 export {
   AutExecutionError,
+  CancelledError,
   DatasetError,
   ReportError,
   ScoringError,
   CheckpointExecutionError,
 } from './errors.js';
 
+import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
   agentRuntimes,
@@ -30,6 +32,7 @@ import {
   type RunWriter,
   type RunMetadata,
   type RunCatalog,
+  type RunInvocation,
   type RunSource,
   type ScoreResult,
   type TrialScoring,
@@ -45,12 +48,18 @@ import {
 } from './datasets.js';
 import { executeTranscript, type TranscriptProgress } from './transcript.js';
 import { evaluateFinalScorers, scoreSummary } from './final-scoring.js';
-import { AutExecutionError, DatasetError, ReportError } from './errors.js';
+import {
+  AutExecutionError,
+  CancelledError,
+  DatasetError,
+  ReportError,
+  cancelled,
+} from './errors.js';
 import { runBoundary } from './effect-boundary.js';
 
 export { localReportStore } from './local-report-store.js';
 export * from './local-report-reader.js';
-export { runMatrix } from './matrix.js';
+export { runMatrix, type MatrixSummary } from './matrix.js';
 
 export type RunEvalOptions = {
   report: ReportStore;
@@ -77,9 +86,29 @@ export type RunEvalOptions = {
   catalog?: RunCatalog;
   /** Project root; dataset paths resolve against it. Default: the working directory. */
   root?: string;
-  /** Aborting stops new trials from starting and is passed to dataset loaders. */
+  /**
+   * Aborting stops new trials from starting; running trials stop at their next
+   * step and are finalized as cancelled. Also passed to dataset loaders.
+   */
   signal?: AbortSignal;
+  /** The `evalkit run` (or dashboard launch) this run belongs to. */
+  invocation?: RunInvocation;
+  /**
+   * Observes every trajectory event after it is recorded, for live progress.
+   * It must not throw; an error it throws is ignored.
+   */
+  onEvent?: (trial: TrialRef, event: TrajectoryEvent) => void;
   now?: () => Date;
+};
+
+/** Identifies the trial an observed event belongs to. */
+export type TrialRef = {
+  runId: string;
+  trialId: string;
+  trialIndex: number;
+  evalId: string;
+  suiteId?: string;
+  parameters?: JsonObject;
 };
 
 type InternalTrialOptions = RunEvalOptions & {
@@ -146,6 +175,8 @@ function runMetadata(
     evalId: definition.id,
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(options.source ? { source: options.source } : {}),
+    ...(options.invocation ? { invocation: options.invocation } : {}),
+    process: { pid: process.pid, hostname: os.hostname() },
     ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
     parameters: options.parameters,
     matrix: options.matrix,
@@ -200,19 +231,23 @@ async function executeRun(
     runMetadata(definition, options, runId, aggregateStartedAt.toISOString()),
     { catalog: options.catalog },
   );
+  const signal = options.signal;
   const trialEffects = Array.from(
     { length: requestedTrials },
     (_, trialIndex) => {
       const trial = Effect.tryPromise({
-        try: () =>
-          runTrial(definition, {
-            ...options,
-            runId,
-            trialId: createId('trial'),
-            trials: 1,
-            runWriter,
-            trialIndex,
-          }),
+        // Once cancelled, trials that have not started are never created.
+        try: async () =>
+          signal?.aborted
+            ? undefined
+            : runTrial(definition, {
+                ...options,
+                runId,
+                trialId: createId('trial'),
+                trials: 1,
+                runWriter,
+                trialIndex,
+              }),
         catch: (error) => error,
       });
       return options.semaphore
@@ -220,26 +255,46 @@ async function executeRun(
         : trial;
     },
   );
-  const trials = await Effect.runPromise(
-    Effect.all(trialEffects, {
-      concurrency: options.concurrency ?? 32,
-    }),
-  );
-  const failed = trials.filter(
-    (trial) => trial.status !== 'completed' || !trial.scoring?.passed,
-  ).length;
-  const status = trials.some((trial) => trial.status === 'failed')
-    ? 'failed'
-    : 'completed';
+  const trials = (
+    await Effect.runPromise(
+      Effect.all(trialEffects, {
+        concurrency: options.concurrency ?? 32,
+      }),
+    )
+  ).filter((trial): trial is RunResult => trial !== undefined);
+  const counts = trialCounts(trials);
+  const status: RunStatus =
+    counts.cancelled || signal?.aborted
+      ? 'cancelled'
+      : trials.some((trial) => trial.status === 'failed')
+        ? 'failed'
+        : 'completed';
   const endedAt = now();
   await runWriter.finalize({
     status,
     endedAt: endedAt.toISOString(),
     durationMs: endedAt.getTime() - aggregateStartedAt.getTime(),
     trialCount: trials.length,
-    passed: trials.length - failed,
-    failed,
+    passed: counts.passed,
+    failed: counts.failed,
+    ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
   });
+  if (!trials.length)
+    return {
+      runId,
+      runUri: canonicalId('run', runId),
+      trialId: '',
+      trialUri: canonicalId('trial', runId),
+      trialIndex: 0,
+      evalId: authoringId(definition),
+      status,
+      reportLocation: runWriter.location,
+      trialCount: 0,
+      passed: 0,
+      failed: 0,
+      aggregateScoring: { passed: 0, failed: 0, passRate: 0 },
+      trials: [],
+    };
   const overallScores = trials
     .map((trial) => trial.scoring?.overall)
     .filter((score): score is number => score !== undefined);
@@ -249,12 +304,13 @@ async function executeRun(
     evalId: authoringId(definition),
     status,
     trialCount: trials.length,
-    passed: trials.length - failed,
-    failed,
+    passed: counts.passed,
+    failed: counts.failed,
     aggregateScoring: {
-      passed: trials.length - failed,
-      failed,
-      passRate: (trials.length - failed) / trials.length,
+      passed: counts.passed,
+      failed: counts.failed,
+      ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
+      passRate: counts.passed / trials.length,
       ...(overallScores.length
         ? {
             overall:
@@ -343,11 +399,27 @@ async function runTrial(
 
   let writeChain = Promise.resolve();
   let reportingFailed = false;
+  const trialRef: TrialRef = {
+    runId,
+    trialId,
+    trialIndex,
+    evalId: definition.id,
+    ...(options.suiteId ? { suiteId: options.suiteId } : {}),
+    ...(options.parameters ? { parameters: options.parameters } : {}),
+  };
+  const observe = (event: TrajectoryEvent) => {
+    try {
+      options.onEvent?.(trialRef, event);
+    } catch {
+      // Progress display must never affect a trial.
+    }
+  };
   const append = async (event: TrajectoryEvent): Promise<void> => {
     events.push(event);
     writeChain = writeChain.then(() => trialWriter.appendEvent(event));
     try {
       await writeChain;
+      observe(event);
     } catch (cause) {
       reportingFailed = true;
       throw new ReportError({
@@ -375,6 +447,7 @@ async function runTrial(
 
   try {
     await emitRunner({ kind: 'trial-started', timestamp: now().toISOString() });
+    if (signal.aborted) throw cancelled();
     if (datasetsError)
       throw new DatasetError({
         cause: datasetsError,
@@ -451,6 +524,7 @@ async function runTrial(
                 emitRunner,
                 emitAut,
                 data: scoringData,
+                signal,
                 progress,
               }),
             catch: (cause) => cause,
@@ -484,6 +558,7 @@ async function runTrial(
     await tryEmitError(closeError, emitRunner, now);
   }
 
+  const wasCancelled = primaryError instanceof CancelledError;
   const { checkpoints, stoppedEarly, lastTurn } = progress;
   const scoreResults: ScoreResult[] = [];
   const skippedScorers: string[] = [];
@@ -495,6 +570,7 @@ async function runTrial(
       lastTurn,
       primaryError,
       stoppedEarly,
+      cancelled: wasCancelled,
       reportingFailed,
       results: scoreResults,
       skippedScorers,
@@ -541,7 +617,7 @@ async function runTrial(
       primaryError = error;
     }
   }
-  status = primaryError ? 'failed' : 'completed';
+  status = wasCancelled ? 'cancelled' : primaryError ? 'failed' : 'completed';
 
   const error = primaryError ? recordError(primaryError) : undefined;
   const endedAt = now().toISOString();
@@ -554,12 +630,14 @@ async function runTrial(
     ...(error ? { error } : {}),
   });
   if (!options.runWriter) {
+    const counts = trialCounts([{ status, scoring }]);
     await runWriter.finalize({
       status,
       endedAt,
       trialCount: 1,
-      passed: status === 'completed' && scoring.passed ? 1 : 0,
-      failed: status === 'failed' || !scoring.passed ? 1 : 0,
+      passed: counts.passed,
+      failed: counts.failed,
+      ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
       ...(error ? { error } : {}),
     });
   }
@@ -591,4 +669,19 @@ function datasetValues(
     values[dataset.id] = value;
   }
   return values;
+}
+
+/** A cancelled trial is neither passed nor failed. */
+function trialCounts(
+  trials: readonly Pick<RunResult, 'status' | 'scoring'>[],
+): { passed: number; failed: number; cancelled: number } {
+  let passed = 0;
+  let failed = 0;
+  let cancelledTrials = 0;
+  for (const trial of trials) {
+    if (trial.status === 'cancelled') cancelledTrials++;
+    else if (trial.status === 'completed' && trial.scoring?.passed) passed++;
+    else failed++;
+  }
+  return { passed, failed, cancelled: cancelledTrials };
 }
