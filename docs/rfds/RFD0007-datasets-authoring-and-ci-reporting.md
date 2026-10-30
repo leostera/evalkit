@@ -17,7 +17,7 @@ Many evals are a list of inputs run through the same agent and graded by the sam
 - **Scoring helpers:** the final output on the scoring context, pass thresholds for 0–1 scores, and a real "not applicable" result.
 - **JSON at the boundary:** events, metadata and rows accept plain values and are converted once, with errors that name the bad field.
 - **Isolated loading:** one eval file that fails to load no longer breaks every command.
-- **Suites from directories:** `evals/chat/*.eval.ts` is suite `chat`, with no hand-written registry.
+- **`scenarios/` and suites from directories:** eval files live in `scenarios/` instead of `evals/`, so an eval project (often itself called `evals/`) no longer contains `evals/evals/`. `scenarios/support/*.eval.ts` is suite `support`, with no hand-written registry.
 - **CI reporting:** live progress, a final summary, quieter result lines, JUnit output, and clean Ctrl+C cancellation.
 - **`evalkit compare`:** compares a commit's results with a base commit's, for merge request gates and comments.
 
@@ -84,8 +84,9 @@ my-evals/
 ├── datasets/
 │   ├── faq.dataset.ts
 │   └── escalations.jsonl        one JSON row per line
-├── evals/support/answers.eval.ts
-└── judges/
+├── fixtures/
+├── judges/
+└── scenarios/support/answers.eval.ts
 ```
 
 ```ts
@@ -111,7 +112,7 @@ export default defineDataset({
 ```
 
 ```ts
-// evals/support/answers.eval.ts
+// scenarios/support/answers.eval.ts
 import { defineDataset, defineEval, predicate, user } from '@leostera/evalkit';
 import { supportBot } from '../../agents/support-bot.ts';
 import faq from '../../datasets/faq.dataset.ts';
@@ -208,10 +209,12 @@ bun run evalkit run --suite support
 - `--junit <file>` also writes a JUnit XML report (suites as test suites, rows as test cases).
 - Ctrl+C stops starting new trials and finalizes the running ones as **cancelled**. A second Ctrl+C exits immediately.
 
-### Suites without a registry
+### Scenarios and suites without a registry
+
+The eval files of a project live in `scenarios/`. Each file describes a scenario: the conversation with the agent, the datasets it runs over, and how it is scored. Directories below `scenarios/` are suites:
 
 ```text
-evals/
+scenarios/
 ├── support/
 │   ├── answers.eval.ts      → suite "support"
 │   └── handoff.eval.ts      → suite "support"
@@ -307,7 +310,7 @@ flowchart LR
 - **Static datasets.** `rows`, `text` and `file` are sugar for an `onLoad` that returns rows and no `onRun`. `text` is JSON when its first non-blank character is `[`, and JSONL otherwise. `.json` files must contain an array of objects; `.jsonl` files one object per line, with blank lines ignored. Errors name the dataset, the file and the line. Exactly one of `rows`, `text`, `file` and `onLoad` must be given; `defineDataset` throws otherwise.
 - **`onLoad`.** Called the first time a run needs the dataset in this process, never at import. The result is cached by dataset ID for the life of the process: all evals, matrix cells and trials of one `evalkit run` share one load, and `evalkit dev` reuses it across dashboard launches until the project is reloaded. A failed load is not cached, so the next run retries. `--dry-run` loads datasets to report exact row counts.
 - **`onRun`.** Called once per run with the cached value and the run's context, typically to filter, sample or parameterize rows for a matrix cell. Its rows are what the run records.
-- **Where datasets live.** By convention in `./datasets/`, which `evalkit new` scaffolds next to `agents/`, `evals/`, `fixtures/` and `judges/`. Nothing is discovered from that directory: evals import the datasets they use, so a broken dataset only affects the evals that import it.
+- **Where datasets live.** By convention in `./datasets/`, which `evalkit new` scaffolds next to `agents/`, `fixtures/`, `judges/` and `scenarios/`. Nothing is discovered from that directory: evals import the datasets they use, so a broken dataset only affects the evals that import it.
 - **Using datasets.** `defineEval({ datasets: [a, b] })` accepts only `defineDataset(...)` values. An eval's rows are the rows of all its datasets, in order, and the row type is the union of their row types. `transcript`, `scoring` and `fixtures` may be functions of `(row, dataset)`.
 - **Row identity.** A row is identified by `(dataset ID, row ID)`. The row ID is `rowId(row)` when the dataset defines it, else the row's `id` field, else `r-` plus the first 8 hex characters of the SHA-256 of the row's canonical JSON (the same canonicalization as matrix parameters). Hashing keeps an ID stable when other rows are added, removed or reordered; editing a row changes its ID, which is correct, as it is a different test. Duplicate IDs within a dataset fail the run before any trial starts, naming both rows.
 - **Display name.** `name` when present, otherwise the first 80 characters of the first `user` step.
@@ -370,7 +373,7 @@ The exported types stay precise for readers (`TrajectoryEvent` still carries `Js
 Discovery imports each eval file on its own. A file that throws while importing becomes a **load error**:
 
 ```text
-  ✗ evals/billing/refunds.eval.ts failed to load:
+  ✗ scenarios/billing/refunds.eval.ts failed to load:
     API_TOKEN is not set
 ```
 
@@ -382,9 +385,10 @@ Discovery imports each eval file on its own. A file that throws while importing 
 
 A config or explicit registry that throws still stops every command, because EvalKit cannot tell which evals it defines. The error names the file. Datasets help here too: work done in `onLoad` happens at run time, not at import.
 
-### 6. Suites from directories
+### 6. `scenarios/` and suites from directories
 
-With discovery (no `registry` or `evals` in the config), each eval's suite is the path of its file's directory relative to the discovery root, with `/` kept: `evals/billing/eu/refunds.eval.ts` is in suite `billing/eu`. Files directly in the root have no suite. `discovery.suites: false` turns this off. An explicit registry keeps full control and ignores directories.
+- **The directory.** `evalkit new` scaffolds `scenarios/` instead of `evals/`, and the docs, skills and examples use it. Discovery is unchanged: it still finds `*.eval.ts` files anywhere in the project, so existing projects with `evals/` keep working without changes.
+- **Suites.** With discovery (no `registry` or `evals` in the config), each eval's suite is its file's directory relative to the project root, with a leading `scenarios/` (or, for existing projects, `evals/`) segment dropped and `/` kept: `scenarios/billing/eu/refunds.eval.ts` is in suite `billing/eu`. Files directly in `scenarios/` (or the project root) have no suite. `discovery.suites: false` turns this off. An explicit registry keeps full control and ignores directories.
 
 ### 7. Report format version 5
 
@@ -488,14 +492,14 @@ flowchart LR
   p6 --> rel
 ```
 
-The starter gains `datasets/` with one static dataset and an eval that uses it, and an example shows a computed dataset with `onLoad` and `onRun` in a matrix. The acceptance test is porting a dataset-style suite of a few dozen rows: it should need one eval file per suite, one dataset per input list, an agent written with `defineAgent` that returns turn results, and no registry, row-lookup tables, scorer wrappers or JSON casts.
+The starter moves its eval to `scenarios/`, gains `datasets/` with one static dataset and an eval that uses it, and an example shows a computed dataset with `onLoad` and `onRun` in a matrix. The acceptance test is porting a dataset-style suite of a few dozen rows: it should need one eval file per suite, one dataset per input list, an agent written with `defineAgent` that returns turn results, and no registry, row-lookup tables, scorer wrappers or JSON casts.
 
 ## Drawbacks
 
 - A run is no longer "one input". Tools reading reports must look at rows to explain a failure.
 - Hash-based row IDs are opaque in URLs and CLI flags. `name` and `id` fields mitigate this, and the CLI suggests close matches.
 - `onLoad` caching means a long-lived `evalkit dev` can serve stale computed data until the project is reloaded.
-- Directory suites change the suite of existing discovered evals that live in subdirectories. It is a visible change in the dashboard; `discovery.suites: false` restores the old behaviour.
+- Directory suites change the suite of existing discovered evals that live in subdirectories (of `evals/` or elsewhere). It is a visible change in the dashboard; `discovery.suites: false` restores the old behaviour.
 - Supporting two runtimes doubles the CLI test matrix.
 
 ## Alternatives
@@ -510,11 +514,12 @@ The starter gains `datasets/` with one static dataset and an eval that uses it, 
 
 ## Unresolved questions
 
-1. Should `onLoad` results optionally persist across processes (for example `cache: { key, ttl }` stored in `_evalkit-cache/`), so CI and repeated local runs skip expensive loads? Proposed: not in 0.6; per-process caching first.
-2. Should a dataset row be allowed to set its own `policy` (trial count, timeout)? Proposed: no, keep policy per eval.
-3. Should `defineDataset` accept a schema object (zod, valibot) directly instead of a `parse` function? Proposed: `parse` only, since any schema library can provide one.
-4. Should `compare` also accept `--base latest-on-branch=main` to compare against the newest shared commit of a branch rather than the merge base? Proposed: yes, as a later addition.
-5. Is `jiti` acceptable as a dependency for Node support, or should Node support require Node's type stripping only (no path aliases)?
+1. Should the rest of the vocabulary follow `scenarios/`, with `*.scenario.ts` files and `defineScenario`? Proposed: not in 0.6. The folder rename removes the `evals/evals/` clash on its own, and renaming the API would break every existing eval file; revisit with real feedback on the new layout.
+2. Should `onLoad` results optionally persist across processes (for example `cache: { key, ttl }` stored in `_evalkit-cache/`), so CI and repeated local runs skip expensive loads? Proposed: not in 0.6; per-process caching first.
+3. Should a dataset row be allowed to set its own `policy` (trial count, timeout)? Proposed: no, keep policy per eval.
+4. Should `defineDataset` accept a schema object (zod, valibot) directly instead of a `parse` function? Proposed: `parse` only, since any schema library can provide one.
+5. Should `compare` also accept `--base latest-on-branch=main` to compare against the newest shared commit of a branch rather than the merge base? Proposed: yes, as a later addition.
+6. Is `jiti` acceptable as a dependency for Node support, or should Node support require Node's type stripping only (no path aliases)?
 
 ## Future possibilities
 
