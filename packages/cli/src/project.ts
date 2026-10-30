@@ -1,6 +1,6 @@
 import { readdir, stat } from 'node:fs/promises';
 import { resolve, dirname, relative, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { globMatcher, importProjectModule } from './runtime.js';
 import {
   defineEvalMatrix,
   defineSuite,
@@ -65,11 +65,11 @@ async function discover(
 ): Promise<Discovered> {
   const testDir = config.testDir ?? 'scenarios';
   const directory = resolve(root, testDir);
-  const includes = (config.include ?? defaultInclude).map(
-    (pattern) => new Bun.Glob(pattern),
-  );
+  const includes = (config.include ?? defaultInclude).map((pattern) => ({
+    match: globMatcher(pattern),
+  }));
   const excludes = [...defaultExclude, ...(config.exclude ?? [])].map(
-    (pattern) => new Bun.Glob(pattern),
+    (pattern) => ({ match: globMatcher(pattern) }),
   );
   const paths: string[] = [];
   async function walk(dir: string) {
@@ -121,7 +121,7 @@ async function discover(
         throw new Error(
           `Directory ${testDir}/${suiteId} names a suite, so it must be lowercase kebab-case (or set discovery.suites: false)`,
         );
-      const module = await import(pathToFileURL(file).href);
+      const module = (await importProjectModule(file)) as { default?: unknown };
       const exported = await module.default;
       const evals = (Array.isArray(exported) ? exported : [exported]).map(
         (value) => evaluation(value, fromRoot),
@@ -178,7 +178,7 @@ export async function loadProject(
   const file = present[0];
   const root = file ? dirname(file) : resolve(cwd);
   const config: EvalkitConfig = file
-    ? (await import(pathToFileURL(file).href)).default
+    ? ((await importProjectModule(file)) as { default: EvalkitConfig }).default
     : {};
   if (!config || typeof config !== 'object' || Array.isArray(config))
     throw new Error('Config must default-export defineConfig({...})');
@@ -193,7 +193,9 @@ export async function loadProject(
     (await exists(resolve(root, 'src/registry.ts')))
   ) {
     registry = (
-      await import(pathToFileURL(resolve(root, 'src/registry.ts')).href)
+      (await importProjectModule(resolve(root, 'src/registry.ts'))) as {
+        default: EvalRegistry;
+      }
     ).default;
   }
   let loadErrors: LoadError[] = [];

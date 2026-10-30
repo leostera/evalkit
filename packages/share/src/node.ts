@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { createShareApp, type DashboardAssets } from './app.js';
 import { directoryFiles } from './fs-files.js';
-import { sqliteIndex } from './index-bun.js';
+import { sqliteIndex } from './index-sqlite.js';
 
 const TYPES: Record<string, string> = {
   '.js': 'text/javascript',
@@ -33,7 +33,7 @@ export function directoryAssets(root: string): DashboardAssets {
   };
 }
 
-/** A share server on Bun: files and `index.sqlite` live in `dir`. */
+/** A share server on Bun or Node: files and `index.sqlite` live in `dir`. */
 export async function createDirectoryShareApp(options: {
   dir: string;
   dashboardRoot: string;
@@ -41,7 +41,7 @@ export async function createDirectoryShareApp(options: {
   await mkdir(options.dir, { recursive: true });
   return createShareApp({
     files: directoryFiles(join(options.dir, 'files')),
-    index: sqliteIndex(join(options.dir, 'index.sqlite')),
+    index: await sqliteIndex(join(options.dir, 'index.sqlite')),
     assets: directoryAssets(options.dashboardRoot),
   });
 }

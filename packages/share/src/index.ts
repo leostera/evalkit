@@ -21,7 +21,7 @@ export {
   type ShareIndex,
   type Sql,
 } from './index-db.js';
-export { sqliteIndex } from './index-bun.js';
+export { sqliteIndex } from './index-sqlite.js';
 export { createDirectoryShareApp, directoryAssets } from './node.js';
 export { allowedRunPath, repoKey, validRepoKey } from './paths.js';
 export { parseUpload, type SharedRun, type SharedRunStatus } from './upload.js';

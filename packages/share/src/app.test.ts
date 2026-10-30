@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createShareApp, type ShareEvent } from './app.js';
 import { encodeBundle, type BundleFile } from './bundle.js';
 import { directoryFiles } from './fs-files.js';
-import { sqliteIndex } from './index-bun.js';
+import { sqliteIndex } from './index-sqlite.js';
 import { allowedRunPath } from './paths.js';
 
 const roots: string[] = [];
@@ -36,7 +36,7 @@ async function server(options: { failWrites?: boolean } = {}) {
   const app = createShareApp({
     log: (event) => events.push(event),
     files,
-    index: sqliteIndex(join(root, 'index.sqlite')),
+    index: await sqliteIndex(join(root, 'index.sqlite')),
     assets: {
       index: async () => TEMPLATE,
       get: async (path) =>
@@ -294,7 +294,7 @@ test('reindex rebuilds the index from stored run.json files', async () => {
   // A fresh index over the same files, as after losing the Durable Object.
   const app = createShareApp({
     files: directoryFiles(join(root, 'files')),
-    index: sqliteIndex(join(root, 'fresh.sqlite')),
+    index: await sqliteIndex(join(root, 'fresh.sqlite')),
     assets: { index: async () => TEMPLATE, get: async () => null },
   });
   const before = await app.request(`http://share.test/api/v1/repos`);

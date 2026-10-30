@@ -4,7 +4,8 @@
   "type": "module",
   "dependencies": {
     "effect": "^3.22.2",
-    "hono": "^4.11.6"
+    "hono": "^4.11.6",
+    "jiti": "^2.7.0"
   },
   "scripts": {
     "build": "bun run --cwd ../dashboard build && tsdown && bun scripts/copy-dashboard.ts",

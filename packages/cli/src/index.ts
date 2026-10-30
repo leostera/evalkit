@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Effect, Option } from 'effect';
@@ -75,6 +76,12 @@ import {
 } from './terminal.js';
 
 import { VERSION } from './version.js';
+import {
+  assertSupportedRuntime,
+  openInBrowser,
+  serve,
+  type Server,
+} from './runtime.js';
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
@@ -410,14 +417,14 @@ function registerDashboardAssets(app: Hono, dashboardRoot: string): void {
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
     const file = resolve(dashboardRoot, `.${pathname}`);
     if (!file.startsWith(dashboardRoot)) return context.text('Not found', 404);
-    let content = Bun.file(file);
     let servedFile = file;
-    if (!(await content.exists())) {
+    let content = await readFile(file).catch(() => undefined);
+    if (!content) {
       // React Router owns browser routes, so refreshes must receive the SPA
       // entry point instead of being treated as missing static files.
       if (extname(pathname)) return context.text('Not found', 404);
       servedFile = resolve(dashboardRoot, 'index.html');
-      content = Bun.file(servedFile);
+      content = await readFile(servedFile);
     }
     return new Response(content, {
       headers: { 'content-type': fileContentType(servedFile) },
@@ -469,9 +476,9 @@ async function serveDashboard(): Promise<void> {
   );
   registerDashboardAssets(app, dashboardRoot);
   const port = Number(process.env.PORT ?? 4317);
-  let server: ReturnType<typeof Bun.serve>;
+  let server: Server;
   try {
-    server = Bun.serve({ port, fetch: app.fetch });
+    server = await serve(app.fetch, port);
   } catch (error) {
     if ((error as { code?: string }).code === 'EADDRINUSE')
       throw new Error(
@@ -503,19 +510,7 @@ async function serveDashboard(): Promise<void> {
   console.log(
     `\n  ${dim('Runs started from the dashboard are logged below. Press Ctrl+C to stop.')}\n`,
   );
-  if (process.env.EVALKIT_NO_OPEN !== '1') {
-    const opener =
-      process.platform === 'darwin'
-        ? 'open'
-        : process.platform === 'win32'
-          ? 'start'
-          : 'xdg-open';
-    try {
-      Bun.spawn([opener, url], { stdout: 'ignore', stderr: 'ignore' });
-    } catch {
-      // Opening a browser is best-effort; the printed URL remains authoritative.
-    }
-  }
+  if (process.env.EVALKIT_NO_OPEN !== '1') openInBrowser(url);
 }
 
 /* The command tree and its option/argument parsing are owned by @effect/cli. */
@@ -802,9 +797,9 @@ const shareServeCommand = Command.make(
           dir: root,
           dashboardRoot: dashboardAssets(),
         });
-        let server: ReturnType<typeof Bun.serve>;
+        let server: Server;
         try {
-          server = Bun.serve({ port, fetch: app.fetch });
+          server = await serve(app.fetch, port);
         } catch (error) {
           if ((error as { code?: string }).code === 'EADDRINUSE')
             throw new Error(
@@ -1025,7 +1020,7 @@ async function compareCommandAction(options: {
   const comparison = compareRuns(base.runs, headSide);
   const failures = gateFailures(comparison, conditions);
   if (options.markdown)
-    await Bun.write(
+    await writeFile(
       resolve(process.cwd(), options.markdown),
       comparisonMarkdown(comparison, { base: base.label, head: headLabel }),
     );
@@ -1084,6 +1079,7 @@ if (argv[2] === 'help') argv.splice(2, 1, '--help');
 // Preserve the CLI's existing help spelling while letting @effect/cli render it.
 if (argv.at(-2) === '--' && argv.at(-1) === '--help') argv.splice(-2, 1);
 try {
+  assertSupportedRuntime();
   await Effect.runPromise(cli(argv).pipe(Effect.provide(NodeContext.layer)));
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

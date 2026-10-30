@@ -14,6 +14,7 @@ import {
 } from './dashboard-reports.js';
 import { runCatalog, shortSource } from './source.js';
 import { plural } from './terminal.js';
+import { sleep } from './runtime.js';
 
 export type ShareSelection = {
   selected: (LocalRun & { source: RunSource })[];
@@ -207,7 +208,7 @@ export async function uploadBundle(
       lastError = error;
     }
     if (attempt < attempts)
-      await Bun.sleep((options.delayMs ?? 500) * 2 ** (attempt - 1));
+      await sleep((options.delayMs ?? 500) * 2 ** (attempt - 1));
   }
   throw lastError instanceof Error
     ? lastError

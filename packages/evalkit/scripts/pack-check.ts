@@ -13,10 +13,19 @@ import { fileURLToPath } from 'node:url';
 const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'evalkit-package-'));
 
-function run(args: string[], cwd: string): string {
-  const process = Bun.spawnSync(args, { cwd, stdout: 'pipe', stderr: 'pipe' });
-  const output = `${new TextDecoder().decode(process.stdout)}\n${new TextDecoder().decode(process.stderr)}`;
-  if (process.exitCode !== 0)
+function run(
+  args: string[],
+  cwd: string,
+  env: Record<string, string> = {},
+): string {
+  const child = Bun.spawnSync(args, {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, NO_COLOR: '1', ...env },
+  });
+  const output = `${new TextDecoder().decode(child.stdout)}\n${new TextDecoder().decode(child.stderr)}`;
+  if (child.exitCode !== 0)
     throw new Error(`${args.join(' ')} failed:\n${output}`);
   return output;
 }
@@ -68,7 +77,7 @@ async function packAndInspect(): Promise<string> {
 
 async function checkInstalledPackage(archive: string): Promise<string> {
   const projectRoot = join(temporaryRoot, 'consumer');
-  await mkdir(join(projectRoot, 'evals'), { recursive: true });
+  await mkdir(join(projectRoot, 'scenarios'), { recursive: true });
   await writeFile(
     join(projectRoot, 'package.json'),
     JSON.stringify({
@@ -95,7 +104,7 @@ async function checkInstalledPackage(archive: string): Promise<string> {
   // Independent API probe: this deliberately does not import the generated scaffold.
   // It checks the public root and /runner exports even if the starter changes.
   await writeFile(
-    join(projectRoot, 'evals/hello.eval.ts'),
+    join(projectRoot, 'scenarios/hello.eval.ts'),
     `
 import { defineAgent, defineEval, predicate, user } from '@leostera/evalkit';
 import { localReportStore } from '@leostera/evalkit/runner';
@@ -130,7 +139,7 @@ export default defineEval({
     ['bun', 'run', 'evalkit', 'run', 'hello', '--trials', '1', '--local'],
     projectRoot,
   );
-  if (!output.includes('PASS hello'))
+  if (!output.includes('✓ hello') || !output.includes('1 passed'))
     throw new Error(`The installed CLI did not pass:\n${output}`);
   const runs = await readdir(join(projectRoot, '_evalkit-results'));
   if (runs.length !== 1)
@@ -220,9 +229,14 @@ async function checkInPlaceScaffold(archive: string): Promise<void> {
 function checkGeneratedExample(root: string): void {
   run(['bun', 'install'], root);
   run(['bun', 'run', 'check'], root);
-  const output = run(['bun', 'run', 'evalkit', 'run'], root);
-  if ((output.match(/PASS greeting/g) ?? []).length !== 2)
-    throw new Error(`Generated eval did not pass:\n${output}`);
+  for (const runtime of ['bun', 'node']) {
+    // The bin prefers Bun; EVALKIT_RUNTIME=node checks the Node path too.
+    const output = run(['bun', 'run', 'evalkit', 'run'], root, {
+      EVALKIT_RUNTIME: runtime,
+    });
+    if ((output.match(/✓ greeting/g) ?? []).length !== 2)
+      throw new Error(`Generated eval did not pass on ${runtime}:\n${output}`);
+  }
 }
 
 /** The installed CLI must export a self-contained read-only dashboard. */

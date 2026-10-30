@@ -400,7 +400,7 @@ export function createDashboardReportReader(
       throw new Error('Invalid workspace path');
     const info = await stat(file);
     if (!info.isFile()) throw new Error('Workspace path is not a file');
-    return new Response(await Bun.file(file).arrayBuffer(), {
+    return new Response(await readFile(file), {
       headers: { 'content-type': fileContentType(file) },
     });
   }
@@ -436,7 +436,7 @@ async function walkArtifacts(root: string): Promise<ArtifactPath[]> {
         result.push({
           path,
           kind: 'file',
-          size: Bun.file(resolve(directory, entry.name)).size,
+          size: (await stat(resolve(directory, entry.name))).size,
         });
       }
     }

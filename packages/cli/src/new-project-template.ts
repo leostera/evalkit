@@ -110,6 +110,9 @@ bun run evalkit dev                             # inspect local reports and laun
 bun run evalkit build                           # write a read-only, shareable snapshot
 \`\`\`
 
+Coding agents can use the EvalKit skills that ship with the package, in
+\`node_modules/@leostera/evalkit/dist/skills/\` (start with \`evalkit/SKILL.md\`).
+
 EvalKit installs from npm. Reports, trial workspaces, and dashboard snapshots stay local
 and are ignored by Git. A snapshot in \`_evalkit-dashboard/\` contains report messages,
 scores, evidence, and candidate files (never evaluator workspaces): review it before sharing.
