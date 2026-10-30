@@ -84,7 +84,6 @@ my-evals/
 ├── datasets/
 │   ├── faq.dataset.ts
 │   └── escalations.jsonl        one JSON row per line
-├── fixtures/
 ├── judges/
 └── scenarios/support/answers.eval.ts
 ```
@@ -150,6 +149,35 @@ export default defineDataset({
     tickets.filter((ticket) => ticket.language === parameters.language),
 });
 ```
+
+### Datasets and fixtures
+
+They answer different questions, and they combine:
+
+- A **dataset** says _which inputs_: rows of values the eval iterates over (messages, expected answers, labels).
+- A **fixture** says _what is in the workspace_: files copied into each trial's sandbox before the agent starts. `candidate` files are visible to the agent; `evaluator` files (answer keys, golden outputs) are hidden from it and available to scorers.
+
+A row can choose its own fixtures:
+
+```ts
+// datasets/bugs.jsonl:  {"id":"off-by-one","repo":"calculator","prompt":"Fix the failing test"}
+export default defineEval({
+  id: 'fix-bugs',
+  agent: codingAgent,
+  datasets: [defineDataset({ file: 'datasets/bugs.jsonl' })],
+  fixtures: (row) => [
+    directory(`fixtures/repos/${row.repo}`, { dst: 'repo' }),
+    file(`fixtures/patches/${row.id}.diff`, {
+      dst: 'expected.diff',
+      visibility: 'evaluator',
+    }),
+  ],
+  transcript: (row) => [user(row.prompt)],
+  scoring: [testsPass, matchesExpectedPatch],
+});
+```
+
+Use a dataset when only the inputs change between cases, and fixtures when each case needs files on disk or data the agent must not see.
 
 ### An agent
 
