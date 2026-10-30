@@ -97,7 +97,7 @@ export async function buildDashboard(
       await write('runs.json', { runs });
       let trials = 0;
       let files = 0;
-      const trialIds: string[] = [];
+      const runTrials: Array<{ id: string; trials: string[] }> = [];
       for (const [index, run] of runs.entries()) {
         progress(`run ${index + 1}/${runs.length} · ${run.id.slice(0, 8)}`);
         const written = await snapshotRun(
@@ -107,7 +107,7 @@ export async function buildDashboard(
         );
         trials += written.trialIds.length;
         files += written.files;
-        trialIds.push(...written.trialIds);
+        runTrials.push({ id: run.id, trials: written.trialIds });
       }
       return {
         runs: runs.length,
@@ -115,8 +115,7 @@ export async function buildDashboard(
         files,
         skipped: reports.legacyRunIds().length,
         archived: all.length - runs.length,
-        runIds: runs.map((run) => run.id),
-        trialIds,
+        runTrials,
       };
     },
     ({ runs, trials, files, skipped, archived }) =>
@@ -128,10 +127,8 @@ export async function buildDashboard(
     'Route pages',
     async () => {
       const routes = staticRoutes({
-        suites: registry.suites.map(authoringId),
-        evals: registry.catalog().map((entry) => entry.path),
-        runs: snapshot.runIds,
-        trials: snapshot.trialIds,
+        scenarios: registry.evals.map(authoringId),
+        runs: snapshot.runTrials,
       });
       for (const route of routes) {
         const file = resolve(outDir, `${route}.html`);
@@ -150,7 +147,7 @@ export async function buildDashboard(
     },
     (pages) => `${count(pages, 'page')} with clean /path URLs`,
   );
-  const { runIds: _runs, trialIds: _trials, ...summary } = snapshot;
+  const { runTrials: _runs, ...summary } = snapshot;
   return { outDir, ...summary };
 }
 
@@ -161,26 +158,29 @@ export async function buildDashboard(
  * skipped; those pages still open by navigating inside the app.
  */
 export function staticRoutes(ids: {
-  suites: readonly string[];
-  evals: readonly string[];
-  runs: readonly string[];
-  trials: readonly string[];
+  scenarios: readonly string[];
+  runs: ReadonlyArray<{ id: string; trials: readonly string[] }>;
 }): string[] {
   const safe = (id: string) =>
-    id.length > 0 && !/[/\\\0]/.test(id) && id !== '.' && id !== '..';
-  const under = (prefix: string, values: readonly string[]) =>
-    values.filter(safe).map((id) => `${prefix}/${id}`);
+    id.length > 0 && !/[/\\\0#?%]/.test(id) && id !== '.' && id !== '..';
   return [
-    'suites',
+    'scenarios',
+    'runs',
+    'invocations',
     'agents',
     'datasets',
-    'invocations',
-    'runs',
-    ...under('suites', ids.suites),
-    ...under('evals', ids.evals),
-    ...under('runs', ids.runs),
-    ...under('trials', ids.trials),
-    ...under('workspaces', ids.trials),
+    ...ids.scenarios.filter(safe).map((id) => `scenarios/${id}`),
+    ...ids.runs
+      .filter((run) => safe(run.id))
+      .flatMap((run) => [
+        `runs/${run.id}`,
+        ...run.trials
+          .filter(safe)
+          .flatMap((trial) => [
+            `runs/${run.id}/trials/${trial}`,
+            `runs/${run.id}/trials/${trial}/workspace`,
+          ]),
+      ]),
   ];
 }
 

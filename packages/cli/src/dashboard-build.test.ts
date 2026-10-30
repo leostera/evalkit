@@ -99,8 +99,11 @@ test('static snapshots are readable by the dashboard static API and exclude eval
     await readFile(join(paths.outDir, 'runs', `${run!.id}.html`), 'utf8'),
   ).toContain('<base href="../" />');
   expect(
-    await readFile(join(paths.outDir, 'trials', `${trial!.id}.html`), 'utf8'),
-  ).toContain('<base href="../" />');
+    await readFile(
+      join(paths.outDir, 'runs', run!.id, 'trials', `${trial!.id}.html`),
+      'utf8',
+    ),
+  ).toContain('<base href="../../../" />');
   expect(await readFile(join(paths.outDir, 'index.html'), 'utf8')).toContain(
     '<base href="./" />',
   );
@@ -168,24 +171,24 @@ test('static index adds a base, rewrites asset URLs, and rejects unexpected mark
   );
 });
 
-test('static routes cover known pages and skip unsafe IDs', () => {
+test('static routes follow scenario, run, trial and skip unsafe IDs', () => {
   expect(
     staticRoutes({
-      suites: ['basics'],
-      evals: ['basics#hello', 'a/b'],
-      runs: ['r1'],
-      trials: ['t1', '..'],
+      scenarios: ['hello', 'a/b'],
+      runs: [
+        { id: 'r1', trials: ['t1', '..'] },
+        { id: 'r#2', trials: ['t2'] },
+      ],
     }),
   ).toEqual([
-    'suites',
+    'scenarios',
+    'runs',
+    'invocations',
     'agents',
     'datasets',
-    'invocations',
-    'runs',
-    'suites/basics',
-    'evals/basics#hello',
+    'scenarios/hello',
     'runs/r1',
-    'trials/t1',
-    'workspaces/t1',
+    'runs/r1/trials/t1',
+    'runs/r1/trials/t1/workspace',
   ]);
 });

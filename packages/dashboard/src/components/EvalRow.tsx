@@ -3,6 +3,7 @@ import { ListBulletsIcon, PlayIcon } from '@phosphor-icons/react';
 import type { CatalogEval, RunSummary } from '../api.js';
 import { agentKey, agentName } from './agentName.js';
 import { monoClass, tableLinkClass } from './DataTable.js';
+import { runHref, scenarioHref } from './links.js';
 import { runsHref } from './run-facets.js';
 import { StatusBadge } from './StatusBadge.js';
 
@@ -13,8 +14,7 @@ export function EvalRow({
   trials,
   onRun,
   runDisabled = false,
-  onOpen,
-  status,
+  latestRun,
   cellParameters,
 }: {
   id: string;
@@ -23,8 +23,8 @@ export function EvalRow({
   trials?: number;
   onRun?: () => void;
   runDisabled?: boolean;
-  onOpen?: () => void;
-  status?: RunSummary['status'];
+  /** The newest run of this scenario (or matrix cell); its badge opens it. */
+  latestRun?: RunSummary;
   /** The matrix cell's parameters, used to filter the linked runs page. */
   cellParameters?: Record<string, unknown>;
 }) {
@@ -35,10 +35,10 @@ export function EvalRow({
     <Table.Row>
       <Table.Cell>
         <div className="flex flex-col">
-          {onOpen ? (
-            <button type="button" className={tableLinkClass} onClick={onOpen}>
+          {evaluation ? (
+            <Link href={scenarioHref(evaluation.id)} className={tableLinkClass}>
               {name}
-            </button>
+            </Link>
           ) : (
             <span className="font-medium">{name}</span>
           )}
@@ -71,9 +71,9 @@ export function EvalRow({
         {trials ?? evaluation?.trialCount ?? '—'}
       </Table.Cell>
       <Table.Cell>
-        {status ? (
-          <Link href={runsLink} title="Show these runs">
-            <StatusBadge status={status} />
+        {latestRun ? (
+          <Link href={runHref(latestRun.id)} title="Open the latest run">
+            <StatusBadge status={latestRun.status} />
           </Link>
         ) : (
           '—'
@@ -105,7 +105,7 @@ export function EvalRow({
                 onRun?.();
               }}
             >
-              Run eval
+              Run
             </Button>
           ) : null}
         </div>

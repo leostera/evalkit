@@ -1,5 +1,4 @@
-import { Button, Table } from '@cloudflare/kumo';
-import { ArrowRightIcon } from '@phosphor-icons/react';
+import { Table } from '@cloudflare/kumo';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DashboardApi, TrajectoryEvent, TrialSummary } from '../api.js';
 import { ArtifactRow } from './ArtifactRow.js';
@@ -11,16 +10,13 @@ import { EventCard } from './EventCard.js';
 import { StatusBadge } from './StatusBadge.js';
 import type { SelectedTrial } from './types.js';
 
+/** A trial's trajectory, with its scores and evidence beside it. */
 export function TrialDetail({
   api,
   selected,
-  evalName,
-  onWorkspace,
 }: {
   api: DashboardApi;
   selected?: SelectedTrial;
-  evalName?: string;
-  onWorkspace(): void;
 }) {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
   const [loadError, setLoadError] = useState<string>();
@@ -65,55 +61,43 @@ export function TrialDetail({
   }, [api, selected]);
   if (!selected)
     return <Empty message="Select a trial from a run to inspect it." />;
-  const { run, trial } = selected;
+  const { trial } = selected;
+  const datasets = trialDatasets(detail?.manifest);
   return (
-    <section className="trial-inspector grid gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+    <section className="trial-inspector grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+      <section className="trajectory flex min-w-0 flex-col gap-2">
+        {loadError ? (
+          <ErrorBanner
+            title="Unable to load trial details"
+            message={loadError}
+          />
+        ) : null}
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-kumo-strong">Trajectory</h3>
+          <span className="text-xs text-kumo-subtle tabular-nums">
+            {events.length} events
+          </span>
+        </div>
+        {events.map((event, index) => (
+          <EventCard
+            event={event}
+            index={index}
+            key={`${event.timestamp}-${index}`}
+          />
+        ))}
+      </section>
       <aside className="trial-overview flex min-w-0 flex-col gap-4">
         <DetailList
           items={[
-            [
-              'Run',
-              <span key="run" className={monoClass}>
-                {run.id}
-              </span>,
-            ],
-            ['Eval', evalName ?? 'Unnamed eval'],
-            ['Trial', trial.index + 1],
             ['Status', <StatusBadge key="status" status={trial.status} />],
             ['Aggregate score', trial.score ?? '—'],
             [
               'Runtime',
               trial.durationMs === undefined ? '—' : `${trial.durationMs}ms`,
             ],
-            ['Events', events.length],
-            ...trialDatasets(detail?.manifest).map(
-              (dataset) =>
-                [
-                  `Dataset ${dataset.id}`,
-                  <span key={dataset.id} title={dataset.digest}>
-                    {dataset.visibility} · {dataset.source} ·{' '}
-                    <span className={monoClass}>
-                      {dataset.digest.replace('sha256:', '').slice(0, 12)}
-                    </span>
-                  </span>,
-                ] as [string, ReactNode],
-            ),
+            ['Started', new Date(trial.startedAt).toLocaleString()],
           ]}
         />
-        <Button
-          size="sm"
-          variant="secondary"
-          className="open-workspace self-start"
-          onClick={onWorkspace}
-        >
-          Open candidate workspace
-          <ArrowRightIcon aria-hidden className="size-3.5" />
-        </Button>
-        {trial.checkpoints?.length ? (
-          <EvidenceSection title="Checkpoints">
-            <CheckpointTable checkpoints={trial.checkpoints} />
-          </EvidenceSection>
-        ) : null}
         <EvidenceSection title="Final scoring">
           <ScoreTable scores={trial.scores} />
           {trial.skippedScorers?.length ? (
@@ -122,6 +106,29 @@ export function TrialDetail({
             </p>
           ) : null}
         </EvidenceSection>
+        {trial.checkpoints?.length ? (
+          <EvidenceSection title="Checkpoints">
+            <CheckpointTable checkpoints={trial.checkpoints} />
+          </EvidenceSection>
+        ) : null}
+        {datasets.length ? (
+          <EvidenceSection title="Datasets">
+            <DetailList
+              items={datasets.map(
+                (dataset) =>
+                  [
+                    dataset.id,
+                    <span key={dataset.id} title={dataset.digest}>
+                      {dataset.visibility} · {dataset.source} ·{' '}
+                      <span className={monoClass}>
+                        {dataset.digest.replace('sha256:', '').slice(0, 12)}
+                      </span>
+                    </span>,
+                  ] as [string, ReactNode],
+              )}
+            />
+          </EvidenceSection>
+        ) : null}
         {artifacts.length ? (
           <EvidenceSection title="Artifacts">
             <NestedTable wrap>
@@ -151,29 +158,6 @@ export function TrialDetail({
           </details>
         ) : null}
       </aside>
-      <section className="timeline flex min-w-0 flex-col gap-2">
-        {loadError ? (
-          <ErrorBanner
-            title="Unable to load trial details"
-            message={loadError}
-          />
-        ) : null}
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-kumo-strong">
-            Event timeline
-          </h3>
-          <span className="text-xs text-kumo-subtle tabular-nums">
-            {events.length} events
-          </span>
-        </div>
-        {events.map((event, index) => (
-          <EventCard
-            event={event}
-            index={index}
-            key={`${event.timestamp}-${index}`}
-          />
-        ))}
-      </section>
     </section>
   );
 }

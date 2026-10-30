@@ -7,12 +7,16 @@ import type {
   RunSummary,
   SuiteSummary,
 } from '../api.js';
-import { SuiteTable } from './SuiteTable.js';
+import { ScenarioTable } from './ScenarioTable.js';
 
 const sortLabels = (html: string) =>
   [...html.matchAll(/class="table-sort[^"]*">([^<]+)</g)].map(
     (match) => match[1],
   );
+
+/** Per-row run buttons, not the suite's. */
+const runButtons = (html: string) =>
+  (html.match(/>Run<\/(?:button|span)>/g) ?? []).length;
 
 const standalone: CatalogEval = {
   id: 'echo',
@@ -32,28 +36,27 @@ function render(
   selectedSuiteId?: string,
 ): string {
   return renderToStaticMarkup(
-    <SuiteTable
+    <ScenarioTable
       api={{} as DashboardApi}
       suites={suites}
       catalog={catalog}
       runs={runs}
       matrix={matrix}
       selectedSuiteId={selectedSuiteId}
-      onOpenSuite={() => {}}
-      onOpenEval={() => {}}
     />,
   );
 }
 
-test('discovered evals are visible without a suite', () => {
+test('discovered scenarios are visible without a suite', () => {
   const html = render([], [standalone]);
-  expect(html).toContain('Standalone evals');
+  expect(html).toContain('>Scenarios<');
   expect(html).toContain('Echo Worker');
-  expect(html).toContain('Run eval');
+  expect(html).toContain('href="/scenarios/echo"');
+  expect(runButtons(html)).toBe(1);
   expect(html).not.toContain('No suites are loaded');
 });
 
-test('standalone evals remain visible alongside suites without duplicating suite members', () => {
+test('scenarios without a suite remain visible alongside suites without duplicating suite members', () => {
   const html = render(
     [{ id: 'starter', name: 'Starter', evalIds: ['greeting'] }],
     [
@@ -68,12 +71,12 @@ test('standalone evals remain visible alongside suites without duplicating suite
     ],
   );
   expect(html).toContain('Starter');
-  expect(html).toContain('Standalone evals');
+  expect(html).toContain('Scenarios without a suite');
   expect(html).toContain('Echo Worker');
   expect(html).not.toContain('Greeting'); // suite members are only shown when expanded
 });
 
-test('a standalone eval shows the latest run status', () => {
+test('a scenario shows its latest run, linked to the run page', () => {
   const html = render(
     [],
     [standalone],
@@ -98,6 +101,7 @@ test('a standalone eval shows the latest run status', () => {
   );
   expect(html).toContain('data-status="running"');
   expect(html).not.toContain('data-status="passed"');
+  expect(html).toContain('href="/runs/new-run"');
 });
 
 test('matrix cells are rows with a column per axis and no filter selects', () => {
@@ -136,7 +140,7 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
   expect(sortLabels(html)).toContain('mode');
   expect(html).toContain('aria-label="Filter matrix cells"');
   expect(html).not.toContain('<select');
-  expect(html.match(/Run eval/g)).toHaveLength(4);
+  expect(runButtons(html)).toBe(4);
   expect(html).toContain('with-docs');
   expect(html).toContain('without-docs');
   expect(html.match(/<td class="tabular-nums">3<\/td>/g)).toHaveLength(4);
@@ -152,7 +156,7 @@ test('constrained matrices load eligible cells instead of rendering a Cartesian 
     constrained: true,
   });
   expect(html).toContain('Loading cells');
-  expect(html).not.toContain('Run eval');
+  expect(runButtons(html)).toBe(0);
 });
 
 test('suite members also display one row per configured matrix cell', () => {
@@ -165,15 +169,15 @@ test('suite members also display one row per configured matrix cell', () => {
   );
   expect(html).toContain('class="nested ');
   expect(sortLabels(html)).toContain('model');
-  expect(html.match(/Run eval/g)).toHaveLength(2);
+  expect(runButtons(html)).toBe(2);
   expect(html).not.toContain('<select');
 });
 
-test('empty state is shown only when there are no evals and no suites', () => {
-  expect(render([], [])).toContain('No evals or suites are loaded.');
+test('empty state is shown only when there are no scenarios', () => {
+  expect(render([], [])).toContain('No scenarios are loaded.');
 });
 
-test('each eval row links to its agent and to its runs, per matrix cell', () => {
+test('each scenario row links to its agent and to its runs, per matrix cell', () => {
   const matrix = { id: 'benchmark', parameters: { model: ['glm', 'scout'] } };
   const html = render(
     [],

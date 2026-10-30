@@ -29,7 +29,6 @@ export function ConstrainedMatrixTable({
   runs,
   nested = false,
   onRun,
-  onOpenEval,
 }: {
   api: DashboardApi;
   evalIds: string[];
@@ -38,7 +37,6 @@ export function ConstrainedMatrixTable({
   runs: RunSummary[];
   nested?: boolean;
   onRun(path: string, parameters?: Record<string, unknown>): void;
-  onOpenEval(entry: CatalogEval): void;
 }) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -82,13 +80,13 @@ export function ConstrainedMatrixTable({
   const latest = (key: string) =>
     runs
       .filter((run) => run.matrixId === matrix.id && run.cellKey === key)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]?.status;
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   const columns = dimensions.length + fixedCellColumns;
   return (
     <div className="flex flex-col gap-2">
       <SearchField
         label="Filter matrix cells"
-        placeholder="Eval, parameter or agent"
+        placeholder="Scenario, parameter or agent"
         value={query}
         count={`${result?.total ?? 0} of ${result?.planned ?? 0} eligible cells`}
         onChange={(next) => {
@@ -116,7 +114,7 @@ export function ConstrainedMatrixTable({
                   cell.parameters[key] === null ? 'None' : cell.parameters[key],
                 )}
                 trials={matrix.trials}
-                status={latest(cell.key)}
+                latestRun={latest(cell.key)}
                 cellParameters={cell.parameters}
                 onRun={
                   evaluation
@@ -132,7 +130,6 @@ export function ConstrainedMatrixTable({
                         )
                     : undefined
                 }
-                onOpen={evaluation ? () => onOpenEval(evaluation) : undefined}
               />
             );
           })}

@@ -13,26 +13,27 @@ import { ErrorBanner } from './ErrorBanner.js';
 import { MatrixEvalTable } from './MatrixEvalTable.js';
 import { SuiteRow } from './SuiteRow.js';
 
-export function SuiteTable({
+/**
+ * Every scenario, grouped by suite (its directory). A scenario opens its own
+ * page; the latest run badge opens that run.
+ */
+export function ScenarioTable({
   api,
   suites,
   catalog,
   matrix,
   runs = [],
   selectedSuiteId,
-  onOpenSuite,
-  onOpenEval,
 }: {
   api: DashboardApi;
   suites: SuiteSummary[];
   catalog: CatalogEval[];
   matrix?: MatrixSummary | null;
   runs?: RunSummary[];
+  /** Expanded on load, from `?suite=`. */
   selectedSuiteId?: string;
-  onOpenSuite(id: string): void;
-  onOpenEval(entry: CatalogEval): void;
 }) {
-  const [expanded, setExpanded] = useState<string>();
+  const [expanded, setExpanded] = useState(selectedSuiteId);
   const [runError, setRunError] = useState<string>();
   const reportStartFailure = (fallback: string) => (error: unknown) =>
     setRunError(error instanceof Error ? error.message : fallback);
@@ -40,20 +41,20 @@ export function SuiteTable({
     setRunError(undefined);
     void api
       .runEval(path, parameters)
-      .catch(reportStartFailure('Unable to start eval'));
+      .catch(reportStartFailure('Unable to start scenario'));
   };
   const runSuite = (id: string) => {
     setRunError(undefined);
     void api.runSuite(id).catch(reportStartFailure('Unable to start suite'));
   };
-  const expandedSuite = selectedSuiteId ?? expanded;
+  const expandedSuite = expanded;
   const standalone = catalog.filter(
     (entry) =>
       !entry.suiteId &&
       !suites.some((suite) => suite.evalIds.includes(entry.id)),
   );
   if (!suites.length && !standalone.length)
-    return <Empty message="No evals or suites are loaded." />;
+    return <Empty message="No scenarios are loaded." />;
   return (
     <>
       {matrix ? (
@@ -70,7 +71,7 @@ export function SuiteTable({
             <Table.Header variant="compact">
               <Table.Row>
                 <Table.Head>Suite</Table.Head>
-                <Table.Head>Evals</Table.Head>
+                <Table.Head>Scenarios</Table.Head>
                 <Table.Head className="text-right">Actions</Table.Head>
               </Table.Row>
             </Table.Header>
@@ -84,7 +85,6 @@ export function SuiteTable({
                       setExpanded(
                         expandedSuite === suite.id ? undefined : suite.id,
                       );
-                      onOpenSuite(suite.id);
                     }}
                     onRun={
                       matrix === null ? () => runSuite(suite.id) : undefined
@@ -101,7 +101,6 @@ export function SuiteTable({
                           runs={runs}
                           nested
                           onRun={runEval}
-                          onOpenEval={onOpenEval}
                         />
                       </Table.Cell>
                     </Table.Row>
@@ -113,9 +112,12 @@ export function SuiteTable({
         </section>
       ) : null}
       {standalone.length > 0 ? (
-        <section aria-label="Standalone evals" className="flex flex-col gap-2">
+        <section
+          aria-label="Scenarios without a suite"
+          className="flex flex-col gap-2"
+        >
           <h2 className="text-sm font-semibold text-kumo-strong">
-            Standalone evals
+            {suites.length ? 'Scenarios without a suite' : 'Scenarios'}
           </h2>
           <MatrixEvalTable
             api={api}
@@ -124,7 +126,6 @@ export function SuiteTable({
             matrix={matrix}
             runs={runs}
             onRun={runEval}
-            onOpenEval={onOpenEval}
           />
         </section>
       ) : null}

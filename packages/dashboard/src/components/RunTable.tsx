@@ -1,12 +1,7 @@
 import { Button, Table } from '@cloudflare/kumo';
-import { Fragment, useMemo, useState } from 'react';
-import type {
-  CatalogEval,
-  DashboardApi,
-  RunSummary,
-  SuiteSummary,
-  TrialSummary,
-} from '../api.js';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
 import {
   DataTable,
   monoClass,
@@ -19,12 +14,12 @@ import { RunFilters } from './RunFilters.js';
 import { SearchField } from './SearchField.js';
 import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
 import { StatusBadge } from './StatusBadge.js';
-import { TrialTable } from './TrialTable.js';
+import { runHref, scenarioHref } from './links.js';
 import { filterRunFacets, runFacets } from './run-facets.js';
-import { useRunFilters, useRunTrials } from './use-run-table-state.js';
+import { useRunFilters } from './use-run-table-state.js';
 
 const PAGE_SIZE = 50;
-/** Run, status, eval, agent, trials, score, runtime, started, commit, suite. */
+/** Run, status, scenario, agent, trials, score, runtime, started, commit, suite. */
 const FIXED_RUN_COLUMNS = 10;
 
 function display(value: unknown): string {
@@ -78,30 +73,22 @@ export function filterRuns(
   });
 }
 
+/** Every run of every scenario, filterable; each run opens its own page. */
 export function RunTable({
-  api,
   runs,
   suites,
   catalog,
-  onTrial,
-  onOpenRun,
-  selectedRunId,
   search,
   onSearchChange,
 }: {
-  api: DashboardApi;
   runs: RunSummary[];
   suites: SuiteSummary[];
   catalog: CatalogEval[];
-  onTrial(run: RunSummary, trial: TrialSummary): void;
-  onOpenRun(run: RunSummary): void;
-  selectedRunId?: string;
   search?: URLSearchParams;
   onSearchChange?(next: URLSearchParams): void;
 }) {
   const { activeSearch, query, setQuery, setField, toggleFacet, clearFilters } =
     useRunFilters(search, onSearchChange);
-  const { trials, loadTrials } = useRunTrials(api, runs, selectedRunId);
   // Runs of evals removed from the project (`evalkit tidy`) are hidden by default.
   const showArchived = activeSearch.get('archived') === 'show';
   const archivedCount = runs.filter((run) => run.archived).length;
@@ -136,10 +123,6 @@ export function RunTable({
     (currentPage + 1) * PAGE_SIZE,
   );
   const columnCount = FIXED_RUN_COLUMNS + parameterColumns.length;
-  const toggle = (run: RunSummary) => {
-    onOpenRun(run);
-    loadTrials(run.id);
-  };
   const header = (label: string, key: string, sticky?: 'left') => (
     <SortableHeader
       label={label}
@@ -151,7 +134,7 @@ export function RunTable({
   );
   if (!runs.length)
     return (
-      <Empty message="No runs yet. Select an eval or suite to start one." />
+      <Empty message="No runs yet. Open a scenario or suite to start one." />
     );
   return (
     <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start">
@@ -182,7 +165,7 @@ export function RunTable({
         ) : null}
         <SearchField
           label="Filter runs"
-          placeholder="Eval, parameter, agent or status"
+          placeholder="Scenario, parameter, agent or status"
           value={query}
           count={`${sortedRuns.length} of ${listed.length} runs`}
           onChange={setQuery}
@@ -192,7 +175,7 @@ export function RunTable({
             <Table.Row>
               {header('Run', 'run', 'left')}
               {header('Status', 'status')}
-              {header('Eval', 'eval')}
+              {header('Scenario', 'eval')}
               {parameterColumns.map((parameter) => (
                 <SortableHeader
                   key={parameter}
@@ -212,35 +195,15 @@ export function RunTable({
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {visibleRuns.map((run) => {
-              const expanded = selectedRunId === run.id;
-              return (
-                <Fragment key={run.id}>
-                  <RunRow
-                    run={run}
-                    evaluation={evalFor(run)}
-                    suiteName={suiteName(run)}
-                    parameterColumns={parameterColumns}
-                    expanded={expanded}
-                    onToggle={() => toggle(run)}
-                  />
-                  {expanded ? (
-                    <Table.Row>
-                      <Table.Cell
-                        colSpan={columnCount}
-                        className="bg-kumo-elevated"
-                      >
-                        <TrialTable
-                          run={run}
-                          trials={trials[run.id] ?? []}
-                          onTrial={onTrial}
-                        />
-                      </Table.Cell>
-                    </Table.Row>
-                  ) : null}
-                </Fragment>
-              );
-            })}
+            {visibleRuns.map((run) => (
+              <RunRow
+                key={run.id}
+                run={run}
+                evaluation={evalFor(run)}
+                suiteName={suiteName(run)}
+                parameterColumns={parameterColumns}
+              />
+            ))}
             {!sortedRuns.length ? (
               <TableMessage colSpan={columnCount}>
                 <span className="inline-flex items-center gap-2">
@@ -302,28 +265,22 @@ function RunRow({
   evaluation,
   suiteName,
   parameterColumns,
-  expanded,
-  onToggle,
 }: {
   run: RunSummary;
   evaluation?: CatalogEval;
   suiteName?: string;
   parameterColumns: readonly string[];
-  expanded: boolean;
-  onToggle(): void;
 }) {
   return (
-    <Table.Row variant={expanded ? 'selected' : 'default'}>
+    <Table.Row>
       <Table.Cell sticky="left">
-        <button
-          type="button"
+        <Link
+          to={runHref(run.id)}
           className={`${tableLinkClass} ${monoClass}`}
-          aria-expanded={expanded}
           title={run.id}
-          onClick={onToggle}
         >
           {run.id.slice(0, 8)}
-        </button>
+        </Link>
       </Table.Cell>
       <Table.Cell
         title={
@@ -335,11 +292,13 @@ function RunRow({
         <StatusBadge status={run.status} />
       </Table.Cell>
       <Table.Cell className="font-medium">
-        {evaluation?.name ?? run.evalId}
+        <Link to={scenarioHref(run.evalId)} className={tableLinkClass}>
+          {evaluation?.name ?? run.evalId}
+        </Link>
         {run.archived ? (
           <span
             className="ml-2 rounded border border-kumo-line px-1 text-[11px] font-normal text-kumo-subtle"
-            title="This eval is no longer in the project (evalkit tidy)"
+            title="This scenario is no longer in the project (evalkit tidy)"
           >
             archived
           </span>

@@ -24,50 +24,82 @@ type Section = {
   label: string;
   href: string;
   icon: typeof StackIcon;
-  /** Path prefixes that belong to this section. */
-  matches: readonly string[];
+  /** Whether a path belongs to this section. */
+  matches(pathname: string): boolean;
 };
 
-const sections: readonly Section[] = [
-  {
-    label: 'Suites & evals',
-    href: '/suites',
-    icon: StackIcon,
-    matches: ['/suites', '/evals'],
-  },
-  { label: 'Agents', href: '/agents', icon: RobotIcon, matches: ['/agents'] },
-  {
-    label: 'Datasets',
-    href: '/datasets',
-    icon: FolderOpenIcon,
-    matches: ['/datasets'],
-  },
-  {
-    label: 'Invocations',
-    href: '/invocations',
-    icon: ListChecksIcon,
-    matches: ['/invocations'],
-  },
-  {
-    label: 'Runs',
-    href: '/runs',
-    icon: ClockCounterClockwiseIcon,
-    matches: ['/runs', '/trials', '/workspaces'],
-  },
-];
+const under = (prefix: string) => (pathname: string) =>
+  pathname === prefix || pathname.startsWith(`${prefix}/`);
+
+/**
+ * Scenarios lead: a scenario's page lists its runs, a run's page its trials,
+ * and a trial's page its trajectory, so every run and trial page belongs to
+ * Scenarios. Runs and Invocations are the history across scenarios; Agents
+ * and Datasets are what scenarios are built from.
+ */
+const groups: ReadonlyArray<{ label?: string; sections: readonly Section[] }> =
+  [
+    {
+      sections: [
+        {
+          label: 'Scenarios',
+          href: '/scenarios',
+          icon: StackIcon,
+          matches: (pathname) =>
+            pathname === '/' ||
+            under('/scenarios')(pathname) ||
+            pathname.startsWith('/runs/'),
+        },
+      ],
+    },
+    {
+      label: 'History',
+      sections: [
+        {
+          label: 'Runs',
+          href: '/runs',
+          icon: ClockCounterClockwiseIcon,
+          matches: (pathname) => pathname === '/runs',
+        },
+        {
+          label: 'Invocations',
+          href: '/invocations',
+          icon: ListChecksIcon,
+          matches: under('/invocations'),
+        },
+      ],
+    },
+    {
+      label: 'Library',
+      sections: [
+        {
+          label: 'Agents',
+          href: '/agents',
+          icon: RobotIcon,
+          matches: under('/agents'),
+        },
+        {
+          label: 'Datasets',
+          href: '/datasets',
+          icon: FolderOpenIcon,
+          matches: under('/datasets'),
+        },
+      ],
+    },
+  ];
+
+const sections = groups.flatMap((group) => group.sections);
 
 function activeSection(pathname: string): Section {
-  return (
-    sections.find((section) =>
-      section.matches.some((prefix) => pathname.startsWith(prefix)),
-    ) ?? sections[0]!
-  );
+  return sections.find((section) => section.matches(pathname)) ?? sections[0]!;
 }
 
 export function screenTitle(pathname: string): string {
-  if (pathname.startsWith('/trials/')) return 'Trial detail';
-  if (pathname.startsWith('/workspaces/')) return 'Candidate workspace';
-  if (pathname.startsWith('/evals/')) return 'Eval detail';
+  if (/^\/runs\/[^/]+\/trials\/[^/]+\/workspace$/.test(pathname))
+    return 'Candidate workspace';
+  if (/^\/runs\/[^/]+\/trials\//.test(pathname)) return 'Trial';
+  if (pathname.startsWith('/runs/')) return 'Run';
+  if (pathname.startsWith('/scenarios/')) return 'Scenario';
   return activeSection(pathname).label;
 }
 
@@ -87,7 +119,7 @@ export function DashboardShell({
         <Sidebar id="dashboard-navigation">
           <Sidebar.Header className="justify-between">
             <Link
-              to="/suites"
+              to="/scenarios"
               className="truncate text-sm font-semibold text-kumo-strong group-data-[state=collapsed]/sidebar:hidden"
             >
               EvalKit
@@ -96,22 +128,27 @@ export function DashboardShell({
           </Sidebar.Header>
           <Sidebar.Content>
             <nav aria-label="Dashboard">
-              <Sidebar.Group>
-                <Sidebar.Menu>
-                  {sections.map((section) => (
-                    <Sidebar.MenuButton
-                      key={section.href}
-                      href={section.href}
-                      icon={section.icon}
-                      active={section === active}
-                      aria-current={section === active ? 'page' : undefined}
-                      tooltip={section.label}
-                    >
-                      {section.label}
-                    </Sidebar.MenuButton>
-                  ))}
-                </Sidebar.Menu>
-              </Sidebar.Group>
+              {groups.map((group, index) => (
+                <Sidebar.Group key={group.label ?? index}>
+                  {group.label ? (
+                    <Sidebar.GroupLabel>{group.label}</Sidebar.GroupLabel>
+                  ) : null}
+                  <Sidebar.Menu>
+                    {group.sections.map((section) => (
+                      <Sidebar.MenuButton
+                        key={section.href}
+                        href={section.href}
+                        icon={section.icon}
+                        active={section === active}
+                        aria-current={section === active ? 'page' : undefined}
+                        tooltip={section.label}
+                      >
+                        {section.label}
+                      </Sidebar.MenuButton>
+                    ))}
+                  </Sidebar.Menu>
+                </Sidebar.Group>
+              ))}
             </nav>
           </Sidebar.Content>
         </Sidebar>

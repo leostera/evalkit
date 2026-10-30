@@ -113,7 +113,7 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
       value,
     );
 
-  // Suites & evals link each eval to its agent and its runs, under the mount path.
+  // Scenarios link to their own page, their agent, and their runs, under the mount path.
   await page.goto(`${origin}/share/`);
   await text('Read-only snapshot');
   await text('Snapshot greeting');
@@ -121,6 +121,7 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
     links.map((link) => link.getAttribute('href') ?? ''),
   );
   expect(hrefs).toContain('/share/agents?agent=snapshot-agent');
+  expect(hrefs).toContain('/share/scenarios/snapshot-greeting');
   expect(hrefs.some((href) => href.startsWith('/share/runs?eval='))).toBe(true);
 
   // Following the runs link stays on clean URLs and filters to the eval.
@@ -134,6 +135,16 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
     timeout: 10_000,
   });
   expect(new URL(page.url()).pathname).toBe(`/share/runs/${runId}`);
+
+  // Down the hierarchy to a trial, whose page also loads directly.
+  await page.click('button.view-trial');
+  await page.waitForSelector('.trajectory');
+  const trialPath = new URL(page.url()).pathname;
+  expect(trialPath).toMatch(new RegExp(`^/share/runs/${runId}/trials/[^/]+$`));
+  await page.goto(`${origin}${trialPath}`);
+  await page.waitForSelector('.trajectory', { timeout: 10_000 });
+  await page.goto(`${origin}/share/scenarios/snapshot-greeting`);
+  await text('Trials per run');
   expect(failures).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();

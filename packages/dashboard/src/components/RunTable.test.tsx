@@ -1,14 +1,15 @@
 import { expect, test } from 'bun:test';
-import { renderToStaticMarkup } from 'react-dom/server';
-import type {
-  CatalogEval,
-  DashboardApi,
-  RunSummary,
-  SuiteSummary,
-} from '../api.js';
+import type { ReactElement } from 'react';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
 import { searchFacets } from './RunFilters.js';
 import { filterRuns, runParameterColumns, RunTable } from './RunTable.js';
 import { runFacets } from './run-facets.js';
+
+/** Run rows link to run pages, which needs a router. */
+const renderToStaticMarkup = (element: ReactElement) =>
+  renderMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
 const sortLabels = (html: string) =>
   [...html.matchAll(/class="table-sort[^"]*">([^<]+)</g)].map(
@@ -72,22 +73,16 @@ test('runs show a stable union of saved parameter keys, including overrides', ()
   ]);
   expect(runParameterColumns([runs[2]!])).toEqual([]);
   const html = renderToStaticMarkup(
-    <RunTable
-      api={{} as DashboardApi}
-      runs={runs}
-      suites={suites}
-      catalog={catalog}
-      onTrial={() => {}}
-      onOpenRun={() => {}}
-      selectedRunId="run-one"
-    />,
+    <RunTable runs={runs} suites={suites} catalog={catalog} />,
   );
   for (const key of runParameterColumns(runs))
     expect(sortLabels(html)).toContain(key);
   expect(html).toContain('aria-label="Filter runs"');
   expect(html).toContain('{&quot;docs&quot;:true}');
   expect(html).toContain('false');
-  expect(html).toContain('colSpan="14"');
+  // Each run opens its own page, and its scenario opens the scenario page.
+  expect(html).toContain('href="/runs/run-one"');
+  expect(html).toContain('href="/scenarios/greeting"');
 });
 
 test('large run histories render one page without losing the full count', () => {
@@ -97,16 +92,9 @@ test('large run histories render one page without losing the full count', () => 
     startedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
   }));
   const html = renderToStaticMarkup(
-    <RunTable
-      api={{} as DashboardApi}
-      runs={many}
-      suites={suites}
-      catalog={catalog}
-      onTrial={() => {}}
-      onOpenRun={() => {}}
-    />,
+    <RunTable runs={many} suites={suites} catalog={catalog} />,
   );
-  expect(html.match(/aria-expanded="false"/g)).toHaveLength(50);
+  expect(html.match(/href="\/runs\/run-\d+"/g)).toHaveLength(50);
   expect(html).toContain('1–50 of 120');
   expect(html).toContain('50 of 120');
   expect(html).toContain('aria-sort="descending"');
@@ -117,14 +105,11 @@ test('saved parameter facets and URL filters keep historical runs from different
   search.append('p.model', '"scout"');
   const html = renderToStaticMarkup(
     <RunTable
-      api={{} as DashboardApi}
       runs={runs}
       suites={suites}
       catalog={catalog}
       search={search}
       onSearchChange={() => {}}
-      onTrial={() => {}}
-      onOpenRun={() => {}}
     />,
   );
   expect(html).toContain('Filters (1 active)');
@@ -156,14 +141,11 @@ test('filters runs across the complete list by names, status and parameter keys 
 const render = (search: URLSearchParams, list: RunSummary[] = runs) =>
   renderToStaticMarkup(
     <RunTable
-      api={{} as DashboardApi}
       runs={list}
       suites={suites}
       catalog={catalog}
       search={search}
       onSearchChange={() => {}}
-      onTrial={() => {}}
-      onOpenRun={() => {}}
     />,
   );
 

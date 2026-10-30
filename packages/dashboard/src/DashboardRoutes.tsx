@@ -1,8 +1,7 @@
 import {
-  Routes,
+  Navigate,
   Route,
-  useLocation,
-  useNavigate,
+  Routes,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
@@ -12,219 +11,110 @@ import type {
   MatrixSummary,
   RunSummary,
   SuiteSummary,
-  TrialSummary,
 } from './api.js';
 import { AgentTable } from './components/AgentTable.js';
-import { EvalDetail } from './components/EvalDetail.js';
 import { DatasetTable } from './components/DatasetTable.js';
 import { InvocationTable } from './components/InvocationTable.js';
+import { RunPage } from './components/RunPage.js';
 import { RunTable } from './components/RunTable.js';
-import { SuiteTable } from './components/SuiteTable.js';
-import { TrialDetail } from './components/TrialDetail.js';
-import { WorkspaceDetail } from './components/WorkspaceDetail.js';
-import type { SelectedTrial } from './components/types.js';
+import { ScenarioPage } from './components/ScenarioPage.js';
+import { ScenarioTable } from './components/ScenarioTable.js';
+import { TrialPage } from './components/TrialPage.js';
 
-export function DashboardRoutes({
-  api,
-  catalog,
-  suites,
-  matrix,
-  runs,
-  selected,
-  onTrial,
-}: {
+type Data = {
   api: DashboardApi;
   catalog: CatalogEval[];
   suites: SuiteSummary[];
   matrix?: MatrixSummary | null;
   runs: RunSummary[];
-  selected?: SelectedTrial;
-  onTrial(run: RunSummary, trial: TrialSummary): void;
-}) {
-  const navigate = useNavigate();
+};
+
+/**
+ * The URL hierarchy is the domain's: `/scenarios/:id` lists a scenario's
+ * runs, `/runs/:id` a run's trials, `/runs/:id/trials/:id` a trial's
+ * trajectory, and `…/workspace` its candidate files.
+ */
+export function DashboardRoutes(data: Data) {
   return (
     <Routes>
+      <Route path="/" element={<Navigate to="/scenarios" replace />} />
+      <Route path="/scenarios" element={<ScenariosRoute {...data} />} />
+      <Route path="/scenarios/:evalId" element={<ScenarioRoute {...data} />} />
+      <Route path="/runs" element={<RunsRoute {...data} />} />
+      <Route path="/runs/:runId" element={<RunRoute {...data} />} />
       <Route
-        path="/suites"
-        element={
-          <SuiteTable
-            api={api}
-            suites={suites}
-            catalog={catalog}
-            matrix={matrix}
-            runs={runs}
-            onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
-            onOpenEval={(entry) =>
-              navigate(`/evals/${encodeURIComponent(entry.path)}`)
-            }
-          />
-        }
+        path="/runs/:runId/trials/:trialId"
+        element={<TrialRoute {...data} />}
       />
       <Route
-        path="/suites/:suiteId"
-        element={
-          <SuiteRoute
-            api={api}
-            suites={suites}
-            catalog={catalog}
-            matrix={matrix}
-            runs={runs}
-          />
-        }
-      />
-      <Route path="/evals/*" element={<EvalRoute catalog={catalog} />} />
-      <Route path="/agents" element={<AgentRoute catalog={catalog} />} />
-      <Route path="/datasets" element={<DatasetTable catalog={catalog} />} />
-      <Route path="/invocations" element={<InvocationTable runs={runs} />} />
-      <Route
-        path="/runs"
-        element={
-          <RunTableRoute
-            api={api}
-            catalog={catalog}
-            suites={suites}
-            runs={runs}
-            onTrial={onTrial}
-          />
-        }
+        path="/runs/:runId/trials/:trialId/workspace"
+        element={<TrialRoute {...data} workspace />}
       />
       <Route
-        path="/runs/:runUuid"
-        element={
-          <RunTableRoute
-            api={api}
-            catalog={catalog}
-            suites={suites}
-            runs={runs}
-            onTrial={onTrial}
-          />
-        }
+        path="/invocations"
+        element={<InvocationTable runs={data.runs} />}
       />
+      <Route path="/agents" element={<AgentRoute catalog={data.catalog} />} />
       <Route
-        path="/trials/:trialUuid"
-        element={
-          <TrialDetailRoute api={api} catalog={catalog} selected={selected} />
-        }
+        path="/datasets"
+        element={<DatasetTable catalog={data.catalog} />}
       />
-      <Route
-        path="/workspaces/:trialUuid"
-        element={<WorkspaceDetail api={api} selected={selected} />}
-      />
-      <Route
-        path="*"
-        element={
-          <SuiteTable
-            api={api}
-            suites={suites}
-            catalog={catalog}
-            matrix={matrix}
-            runs={runs}
-            onOpenSuite={(id) => navigate(`/suites/${encodeURIComponent(id)}`)}
-            onOpenEval={(entry) =>
-              navigate(`/evals/${encodeURIComponent(entry.path)}`)
-            }
-          />
-        }
-      />
+      <Route path="*" element={<ScenariosRoute {...data} />} />
     </Routes>
   );
 }
 
-function SuiteRoute(props: {
-  api: DashboardApi;
-  suites: SuiteSummary[];
-  catalog: CatalogEval[];
-  matrix?: MatrixSummary | null;
-  runs: RunSummary[];
-}) {
-  const { suiteId } = useParams();
-  const navigate = useNavigate();
+function ScenariosRoute(data: Data) {
+  const [search] = useSearchParams();
+  const suite = search.get('suite') ?? undefined;
+  // Remount per suite so following a suite breadcrumb expands it.
+  return <ScenarioTable key={suite} {...data} selectedSuiteId={suite} />;
+}
+
+function ScenarioRoute(data: Data) {
+  const { evalId = '' } = useParams();
+  return <ScenarioPage {...data} evalId={evalId} />;
+}
+
+function RunsRoute({ catalog, suites, runs }: Data) {
+  const [search, setSearch] = useSearchParams();
   return (
-    <SuiteTable
-      {...props}
-      selectedSuiteId={suiteId}
-      onOpenSuite={() => undefined}
-      onOpenEval={(entry) =>
-        navigate(`/evals/${encodeURIComponent(entry.path)}`)
-      }
+    <RunTable
+      catalog={catalog}
+      suites={suites}
+      runs={runs}
+      search={search}
+      onSearchChange={(next) => setSearch(next, { replace: true })}
     />
   );
 }
+
+function RunRoute(data: Data) {
+  const { runId = '' } = useParams();
+  return <RunPage {...data} runId={runId} />;
+}
+
+function TrialRoute({
+  workspace = false,
+  ...data
+}: Data & { workspace?: boolean }) {
+  const { runId = '', trialId = '' } = useParams();
+  return (
+    <TrialPage
+      {...data}
+      runId={runId}
+      trialId={trialId}
+      workspace={workspace}
+    />
+  );
+}
+
 function AgentRoute({ catalog }: { catalog: CatalogEval[] }) {
   const [search] = useSearchParams();
   return (
     <AgentTable
       catalog={catalog}
       selectedAgent={search.get('agent') ?? undefined}
-    />
-  );
-}
-function EvalRoute({ catalog }: { catalog: CatalogEval[] }) {
-  const location = useLocation();
-  return (
-    <EvalDetail
-      catalog={catalog}
-      path={decodeURIComponent(location.pathname.slice('/evals/'.length))}
-    />
-  );
-}
-function RunTableRoute(props: {
-  api: DashboardApi;
-  catalog: CatalogEval[];
-  suites: SuiteSummary[];
-  runs: RunSummary[];
-  onTrial(run: RunSummary, trial: TrialSummary): void;
-}) {
-  const navigate = useNavigate();
-  const { runUuid } = useParams();
-  const [search, setSearch] = useSearchParams();
-  return (
-    <RunTable
-      {...props}
-      search={search}
-      onSearchChange={(next) => setSearch(next, { replace: true })}
-      selectedRunId={runUuid}
-      onTrial={(run, trial) => {
-        props.onTrial(run, trial);
-        const next = new URLSearchParams(search);
-        next.set('trial', trial.id);
-        next.delete('view');
-        navigate({
-          pathname: `/runs/${encodeURIComponent(run.id)}`,
-          search: next.toString(),
-        });
-      }}
-      onOpenRun={(run) =>
-        navigate({
-          pathname: `/runs/${encodeURIComponent(run.id)}`,
-          search: search.toString(),
-        })
-      }
-    />
-  );
-}
-function TrialDetailRoute({
-  api,
-  catalog,
-  selected,
-}: {
-  api: DashboardApi;
-  catalog: CatalogEval[];
-  selected?: SelectedTrial;
-}) {
-  const navigate = useNavigate();
-  return (
-    <TrialDetail
-      api={api}
-      evalName={
-        catalog.find((entry) => entry.id === selected?.run.evalId)?.name ??
-        selected?.run.evalId
-      }
-      selected={selected}
-      onWorkspace={() =>
-        selected &&
-        navigate(`/workspaces/${encodeURIComponent(selected.trial.id)}`)
-      }
     />
   );
 }

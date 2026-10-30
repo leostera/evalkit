@@ -20,7 +20,7 @@ export function runFacets(runs: readonly RunSummary[]): RunFacet[] {
     ...new Set(runs.flatMap((run) => Object.keys(run.parameters ?? {}))),
   ].sort();
   const facets = [
-    { key: 'eval', label: 'Eval' },
+    { key: 'eval', label: 'Scenario' },
     { key: 'matrix', label: 'Matrix' },
     { key: 'status', label: 'Status' },
     ...keys.map((key) => ({ key: parameterFacet(key), label: key })),

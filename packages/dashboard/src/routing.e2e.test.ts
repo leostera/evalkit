@@ -64,7 +64,7 @@ afterAll(async () => {
 });
 
 describe('dashboard URL routing', () => {
-  test('keeps run context while navigating trial and workspace panels', async () => {
+  test('walks scenario, run, trial and workspace pages and back up', async () => {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
     page.on('request', (request) => {
@@ -167,7 +167,8 @@ describe('dashboard URL routing', () => {
       }
     });
 
-    await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
+    await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle0' });
+    await waitForPath(page, '/scenarios');
     await page.focus('button.navigation-toggle');
     await page.keyboard.press('Enter');
     await page.waitForSelector('#dashboard-navigation[data-state="collapsed"]');
@@ -183,17 +184,55 @@ describe('dashboard URL routing', () => {
     );
     await page.keyboard.press('Enter');
     await page.waitForSelector('#dashboard-navigation[data-state="expanded"]');
-    await page.waitForSelector('tbody tr button');
-    await page.focus('tbody tr button.table-link');
-    await page.keyboard.press('Enter');
-    await waitForPath(page, '/suites/starter');
-    await page.waitForSelector('.nested tbody tr');
-    await page.focus('.nested tbody tr button.table-link');
-    await page.keyboard.press('Enter');
-    await waitForPath(page, '/evals/starter%23greeting');
-    await page.goBack({ waitUntil: 'networkidle0' });
-    await waitForPath(page, '/suites/starter');
 
+    // Scenarios: expand the suite and open its scenario.
+    await page.waitForSelector('tbody tr button.table-link');
+    await page.click('tbody tr button.table-link');
+    await page.waitForSelector('.nested tbody tr a.table-link');
+    await page.click('.nested tbody tr a.table-link');
+    await waitForPath(page, '/scenarios/greeting');
+    await page.waitForSelector('.scenario-definition');
+    const crumbs = () =>
+      page.$$eval('.hierarchy-breadcrumbs', (nodes) =>
+        nodes.map((node) => node.textContent).join(' '),
+      );
+    expect(await crumbs()).toContain('Starter');
+
+    // Scenario: its runs; open one.
+    await page.click('section[aria-label="Runs"] a[href="/runs/run-123"]');
+    await waitForPath(page, '/runs/run-123');
+    await page.waitForSelector('.run-overview');
+    expect(await crumbs()).toContain('Greeting');
+
+    // Run: its trials; open one, then reload the trial page.
+    const trial = '0197f17c-4d89-7f81-9d42-6c497e6f6b22';
+    await page.waitForSelector('button.view-trial');
+    await page.click('button.view-trial');
+    await waitForPath(page, `/runs/run-123/trials/${trial}`);
+    await page.waitForSelector('.trajectory');
+    await page.reload({ waitUntil: 'networkidle0' });
+    await page.waitForSelector('.trajectory');
+    expect(await crumbs()).toContain('Run run-123');
+
+    // Trial: its workspace, then back up through the breadcrumbs.
+    await page.click('.open-workspace');
+    await waitForPath(page, `/runs/run-123/trials/${trial}/workspace`);
+    await page.waitForSelector('.workspace-inspector');
+    await clickVisible(
+      page,
+      `.hierarchy-breadcrumbs a[href="/runs/run-123/trials/${trial}"]`,
+    );
+    await waitForPath(page, `/runs/run-123/trials/${trial}`);
+    await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs/run-123"]');
+    await waitForPath(page, '/runs/run-123');
+    await clickVisible(
+      page,
+      '.hierarchy-breadcrumbs a[href="/scenarios?suite=starter"]',
+    );
+    await waitForPath(page, '/scenarios');
+    await page.waitForSelector('.nested tbody tr a.table-link');
+
+    // Runs history: filters stay in the URL; a run opens its page.
     await page.evaluate(() => {
       const button = [...document.querySelectorAll('nav a')].find(
         (node) => node.textContent === 'Runs',
@@ -208,59 +247,12 @@ describe('dashboard URL routing', () => {
     await page.waitForFunction(
       () => new URLSearchParams(location.search).get('q') === 'greeting',
     );
-    await page.focus('.data-table > table > tbody > tr button.table-link');
-    await page.keyboard.press('Enter');
+    await page.click(
+      '.data-table > table > tbody > tr a[href="/runs/run-123"]',
+    );
     await waitForPath(page, '/runs/run-123');
-    await page.waitForSelector('.nested tbody tr button');
-    await page.click('.nested tbody tr button');
-    await page.waitForFunction(() =>
-      new URLSearchParams(location.search).has('trial'),
-    );
-    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
-    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
-    expect(new URL(page.url()).searchParams.get('trial')).toBe(
-      '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
-    );
-    await page.waitForSelector('.trial-panel[open] .trial-overview');
-    expect(
-      await page.$eval('.trial-breadcrumbs', (node) => node.textContent),
-    ).toContain('Starter');
-    expect(
-      await page.$eval('.trial-breadcrumbs', (node) => node.textContent),
-    ).toContain('Greeting');
-    expect(await page.$('.data-table > table')).not.toBeNull();
-    await page.reload({ waitUntil: 'networkidle0' });
-    await page.waitForSelector('.trial-panel[open] .trial-overview');
-    await page.keyboard.press('Escape');
-    await page.waitForFunction(
-      () => !new URLSearchParams(location.search).has('trial'),
-    );
-    expect(new URL(page.url()).pathname).toBe('/runs/run-123');
-    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
-    await page.click('.nested tbody tr button');
-    await page.waitForSelector('.trial-panel[open]');
     await page.goBack({ waitUntil: 'networkidle0' });
-    expect(new URL(page.url()).searchParams.has('trial')).toBe(false);
-    await page.goForward({ waitUntil: 'networkidle0' });
-    await page.waitForSelector('.trial-panel[open] .trial-overview');
-    await page.click('.trial-panel .open-workspace');
-    await page.waitForFunction(
-      () =>
-        new URLSearchParams(location.search).get('view') === 'workspace' &&
-        document.querySelector('.trial-breadcrumbs [aria-current="page"]')
-          ?.textContent === 'Workspace',
-    );
-    expect(
-      await page.$eval(
-        '.trial-breadcrumbs [aria-current="page"]',
-        (node) => node.textContent,
-      ),
-    ).toBe('Workspace');
-    await clickVisible(page, '.trial-breadcrumbs a[href*="trial="]');
-    await page.waitForFunction(
-      () => !new URLSearchParams(location.search).has('view'),
-    );
-    await page.waitForSelector('.trial-panel[open] .trial-overview');
+    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
   }, 30_000);
 
   test('shows a newly started eval without a page reload', async () => {
@@ -334,42 +326,42 @@ describe('dashboard URL routing', () => {
           void request.continue();
         }
       });
-      await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
+      await page.goto(`${baseUrl}/scenarios`, { waitUntil: 'networkidle0' });
       await page.waitForSelector(
-        'section[aria-label="Standalone evals"] tbody tr',
+        'section[aria-label="Scenarios without a suite"] tbody tr',
       );
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr',
+          'section[aria-label="Scenarios without a suite"] tbody tr',
           (row) => row.textContent,
         ),
       ).toContain('Echo Worker');
       await page.waitForFunction(
         () =>
           document.querySelectorAll(
-            'section[aria-label="Standalone evals"] tbody tr',
+            'section[aria-label="Scenarios without a suite"] tbody tr',
           ).length === 4,
       );
       expect(
-        await page.$$('section[aria-label="Standalone evals"] select'),
+        await page.$$('section[aria-label="Scenarios without a suite"] select'),
       ).toHaveLength(0);
       const runButton =
-        'section[aria-label="Standalone evals"] tbody tr:first-child button:not(.table-link)';
+        'section[aria-label="Scenarios without a suite"] tbody tr:first-child button:not(.table-link)';
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] thead',
+          'section[aria-label="Scenarios without a suite"] thead',
           (head) => head.textContent,
         ),
       ).toContain('model');
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] thead',
+          'section[aria-label="Scenarios without a suite"] thead',
           (head) => head.textContent,
         ),
       ).toContain('mode');
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr:first-child',
+          'section[aria-label="Scenarios without a suite"] tbody tr:first-child',
           (row) => row.textContent,
         ),
       ).toContain('with-docs');
@@ -380,7 +372,7 @@ describe('dashboard URL routing', () => {
         ),
       ).toBe(false);
       await page.click(runButton);
-      expect(new URL(page.url()).pathname).toBe('/suites');
+      expect(new URL(page.url()).pathname).toBe('/scenarios');
       await page.click('nav a[href="/runs"]');
       await page.waitForFunction(
         () =>
@@ -389,18 +381,20 @@ describe('dashboard URL routing', () => {
             ...document.querySelectorAll('.data-table > table > tbody > tr'),
           ].some((row) => row.textContent?.includes('running')),
       );
-      await page.click('nav a[href="/suites"]');
+      await page.click('nav a[href="/scenarios"]');
       await page.waitForFunction(
         () =>
-          location.pathname === '/suites' &&
+          location.pathname === '/scenarios' &&
           document
-            .querySelector('section[aria-label="Standalone evals"] tbody tr')
+            .querySelector(
+              'section[aria-label="Scenarios without a suite"] tbody tr',
+            )
             ?.textContent?.includes('running'),
       );
       await page.click(
-        'section[aria-label="Standalone evals"] tbody tr button.table-link',
+        'section[aria-label="Scenarios without a suite"] tbody tr a.table-link',
       );
-      expect(new URL(page.url()).pathname).toBe('/evals/echo');
+      expect(new URL(page.url()).pathname).toBe('/scenarios/echo');
     } finally {
       await page.close();
     }
@@ -473,11 +467,11 @@ describe('dashboard URL routing', () => {
           body: JSON.stringify(response[pathname]),
         });
       });
-      await page.goto(`${baseUrl}/suites`, { waitUntil: 'networkidle0' });
+      await page.goto(`${baseUrl}/scenarios`, { waitUntil: 'networkidle0' });
       await page.waitForFunction(
         () =>
           document.querySelectorAll(
-            'section[aria-label="Standalone evals"] tbody tr',
+            'section[aria-label="Scenarios without a suite"] tbody tr',
           ).length === 50,
       );
       expect(await page.$eval('.pager', (nav) => nav.textContent)).toContain(
@@ -489,7 +483,7 @@ describe('dashboard URL routing', () => {
       );
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr:first-child',
+          'section[aria-label="Scenarios without a suite"] tbody tr:first-child',
           (row) => row.textContent,
         ),
       ).toContain('model-25');
@@ -501,7 +495,7 @@ describe('dashboard URL routing', () => {
       ).toContain('1 of 102');
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          'section[aria-label="Scenarios without a suite"] tbody tr:first-child td:nth-child(2)',
           (cell) => cell.textContent?.trim(),
         ),
       ).toBe('model-50');
@@ -512,20 +506,20 @@ describe('dashboard URL routing', () => {
       ).toContain('22 of 102');
       expect(await page.$('.pager')).toBeNull();
       await page.click(
-        'section[aria-label="Standalone evals"] th:nth-child(2) button',
+        'section[aria-label="Scenarios without a suite"] th:nth-child(2) button',
       );
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          'section[aria-label="Scenarios without a suite"] tbody tr:first-child td:nth-child(2)',
           (cell) => cell.textContent?.trim(),
         ),
       ).toBe('model-2');
       await page.click(
-        'section[aria-label="Standalone evals"] th:nth-child(2) button',
+        'section[aria-label="Scenarios without a suite"] th:nth-child(2) button',
       );
       expect(
         await page.$eval(
-          'section[aria-label="Standalone evals"] tbody tr:first-child td:nth-child(2)',
+          'section[aria-label="Scenarios without a suite"] tbody tr:first-child td:nth-child(2)',
           (cell) => cell.textContent?.trim(),
         ),
       ).toBe('model-29');
@@ -535,7 +529,7 @@ describe('dashboard URL routing', () => {
           response.request().method() === 'POST',
       );
       await page.click(
-        'section[aria-label="Standalone evals"] tbody tr:first-child button:not(.table-link)',
+        'section[aria-label="Scenarios without a suite"] tbody tr:first-child button:not(.table-link)',
       );
       await posted;
       expect(submissions).toEqual([

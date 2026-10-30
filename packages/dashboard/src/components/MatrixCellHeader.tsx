@@ -41,7 +41,7 @@ export function MatrixCellHeader({
   return (
     <Table.Header variant="compact">
       <Table.Row>
-        {sortable('Eval', 'eval')}
+        {sortable('Scenario', 'eval')}
         {axes.map((axis) => (
           <SortableHeader
             key={axis}

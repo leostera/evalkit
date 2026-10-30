@@ -92,7 +92,6 @@ export function MatrixEvalTable(props: {
   runs: RunSummary[];
   nested?: boolean;
   onRun(path: string, parameters?: Record<string, unknown>): void;
-  onOpenEval(entry: CatalogEval): void;
 }) {
   // Keep small local grids immediate; large plans use the bounded planner API.
   const total = props.matrix
@@ -114,7 +113,6 @@ function CartesianMatrixEvalTable({
   runs,
   nested = false,
   onRun,
-  onOpenEval,
 }: {
   evalIds: string[];
   catalog: CatalogEval[];
@@ -122,7 +120,6 @@ function CartesianMatrixEvalTable({
   runs: RunSummary[];
   nested?: boolean;
   onRun(path: string, parameters?: Record<string, unknown>): void;
-  onOpenEval(entry: CatalogEval): void;
 }) {
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState('');
@@ -142,8 +139,9 @@ function CartesianMatrixEvalTable({
     if (!previous || previous.startedAt <= run.startedAt) latest.set(key, run);
   }
   const evaluationFor = (row: MatrixRow) => catalogById.get(row.id);
-  const statusFor = (row: MatrixRow) =>
-    latest.get(matrix ? cellKey(row.id, axes, row.parameters) : row.id)?.status;
+  const latestFor = (row: MatrixRow) =>
+    latest.get(matrix ? cellKey(row.id, axes, row.parameters) : row.id);
+  const statusFor = (row: MatrixRow) => latestFor(row)?.status;
   const { total } = matrixEvalPage(evalIds, axes, 0, 0);
   // Sorting and searching operate across all cells; only the selected page reaches the DOM.
   const filtered = filterMatrixRows(
@@ -186,10 +184,10 @@ function CartesianMatrixEvalTable({
   return (
     <div className="flex flex-col gap-2">
       <SearchField
-        label="Filter matrix cells"
-        placeholder="Eval, parameter, agent or status"
+        label={matrix ? 'Filter matrix cells' : 'Filter scenarios'}
+        placeholder="Scenario, parameter, agent or status"
         value={query}
-        count={`${sorted.length} of ${total} cells`}
+        count={`${sorted.length} of ${total} ${matrix ? 'cells' : 'scenarios'}`}
         onChange={(next) => {
           setQuery(next);
           setPage(0);
@@ -212,7 +210,7 @@ function CartesianMatrixEvalTable({
                   evaluation={evaluation}
                   parameters={row.values}
                   trials={matrix?.trials}
-                  status={statusFor(row)}
+                  latestRun={latestFor(row)}
                   cellParameters={row.parameters}
                   onRun={
                     evaluation && matrix !== undefined
@@ -224,7 +222,6 @@ function CartesianMatrixEvalTable({
                       : undefined
                   }
                   runDisabled={!!evaluation && matrix === undefined}
-                  onOpen={evaluation ? () => onOpenEval(evaluation) : undefined}
                 />
               );
             })

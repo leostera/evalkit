@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 
 import { DashboardRoutes } from './DashboardRoutes.js';
 import { DashboardShell } from './components/DashboardShell.js';
 import { ErrorBanner } from './components/ErrorBanner.js';
-import type { SelectedTrial } from './components/types.js';
-import { TrialPanel } from './components/TrialPanel.js';
 import { ShareHome } from './components/ShareHome.js';
 import { VersionPicker } from './components/VersionPicker.js';
 import type { ShareContext } from './share.js';
@@ -47,17 +45,11 @@ function Dashboard({
   basename?: string;
 }) {
   const commit = basename?.split('/-/')[1];
-  const location = useLocation();
-  const navigate = useNavigate();
-  const panelTrialId = location.pathname.startsWith('/runs/')
-    ? new URLSearchParams(location.search).get('trial')
-    : null;
   const [catalog, setCatalog] = useState<CatalogEval[]>([]);
   const [suites, setSuites] = useState<SuiteSummary[]>([]);
   const [matrix, setMatrix] = useState<MatrixSummary | null>();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const runsSignature = useRef('');
-  const [selected, setSelected] = useState<SelectedTrial>();
   const [error, setError] = useState<string>();
   const [loadErrors, setLoadErrors] = useState<LoadError[]>([]);
 
@@ -119,48 +111,7 @@ function Dashboard({
       active = false;
       clearInterval(timer);
     };
-  }, [api, location.pathname]);
-
-  useEffect(() => {
-    const match = location.pathname.match(/^\/(?:trials|workspaces)\/([^/]+)/);
-    const trialId =
-      panelTrialId ?? (match ? decodeURIComponent(match[1]!) : undefined);
-    if (!trialId || !runs.length || selected?.trial.id === trialId) return;
-    const runId = location.pathname.match(/^\/runs\/([^/]+)/)?.[1];
-    const candidates = runId
-      ? runs.filter((run) => run.id === decodeURIComponent(runId))
-      : runs;
-    let active = true;
-    void Promise.all(
-      candidates.map(async (run) => ({
-        run,
-        trials: await api.listTrials(run.id),
-      })),
-    )
-      .then((matches) => {
-        if (!active) return;
-        for (const match of matches) {
-          const trial = match.trials.find(
-            (candidate) => candidate.id === trialId,
-          );
-          if (trial) {
-            setSelected({ run: match.run, trial });
-            setError(undefined);
-            return;
-          }
-        }
-        setError(`Trial ${trialId} was not found in this run.`);
-      })
-      .catch((cause: unknown) => {
-        if (active)
-          setError(
-            cause instanceof Error ? cause.message : 'Unable to load trial',
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, location.pathname, panelTrialId, runs, selected]);
+  }, [api]);
 
   return (
     <DashboardShell
@@ -191,7 +142,7 @@ function Dashboard({
       {error ? <ErrorBanner message={error} /> : null}
       {loadErrors.length ? (
         <ErrorBanner
-          title={`${loadErrors.length === 1 ? '1 eval file' : `${loadErrors.length} eval files`} failed to load; their evals are missing below`}
+          title={`${loadErrors.length === 1 ? '1 scenario file' : `${loadErrors.length} scenario files`} failed to load; their scenarios are missing`}
           message={loadErrors
             .map((entry) => `${entry.file}: ${entry.error.message}`)
             .join('\n')}
@@ -203,36 +154,7 @@ function Dashboard({
         suites={suites}
         matrix={matrix}
         runs={runs}
-        selected={selected}
-        onTrial={(run, trial) => setSelected({ run, trial })}
       />
-      {panelTrialId ? (
-        <TrialPanel
-          api={api}
-          catalog={catalog}
-          suites={suites}
-          selected={selected?.trial.id === panelTrialId ? selected : undefined}
-          trialId={panelTrialId}
-          error={error}
-          workspace={
-            new URLSearchParams(location.search).get('view') === 'workspace'
-          }
-          onClose={() => {
-            const next = new URLSearchParams(location.search);
-            next.delete('trial');
-            next.delete('view');
-            navigate(
-              { pathname: location.pathname, search: next.toString() },
-              { replace: true },
-            );
-          }}
-          onWorkspace={() => {
-            const next = new URLSearchParams(location.search);
-            next.set('view', 'workspace');
-            navigate({ pathname: location.pathname, search: next.toString() });
-          }}
-        />
-      ) : null}
     </DashboardShell>
   );
 }

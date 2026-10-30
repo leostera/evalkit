@@ -45,32 +45,40 @@ export function useRunFilters(
   return { activeSearch, query, setQuery, setField, toggleFacet, clearFilters };
 }
 
-/** A run can appear before its first trial is persisted; refresh expanded trials as runs are polled. */
-export function useRunTrials(
-  api: DashboardApi,
-  runs: RunSummary[],
-  selectedRunId?: string,
-) {
-  const [trials, setTrials] = useState<Record<string, TrialSummary[]>>({});
+/**
+ * One run's trials. A run can appear before its first trial is saved, so the
+ * list reloads whenever the polled run summary changes.
+ */
+export function useRunTrials(api: DashboardApi, run: RunSummary | undefined) {
+  const [state, setState] = useState<{
+    runId?: string;
+    trials?: TrialSummary[];
+    error?: string;
+  }>({});
+  const signature = run
+    ? `${run.id}:${run.status}:${run.completedTrials}:${run.completedAt ?? ''}`
+    : '';
   useEffect(() => {
-    if (!selectedRunId || !runs.some((run) => run.id === selectedRunId)) return;
+    if (!run) return;
     let active = true;
-    void api.listTrials(selectedRunId).then((value) => {
-      if (active)
-        setTrials((current) => ({ ...current, [selectedRunId]: value }));
-    });
+    void api
+      .listTrials(run.id)
+      .then((trials) => {
+        if (active) setState({ runId: run.id, trials });
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setState({
+            runId: run.id,
+            error:
+              cause instanceof Error ? cause.message : 'Unable to load trials',
+          });
+      });
     return () => {
       active = false;
     };
-  }, [api, runs, selectedRunId]);
-
-  const loadTrials = (runId: string) => {
-    if (!trials[runId])
-      void api
-        .listTrials(runId)
-        .then((value) =>
-          setTrials((current) => ({ ...current, [runId]: value })),
-        );
-  };
-  return { trials, loadTrials };
+    // The signature captures every run change that can add or finish trials.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, signature]);
+  return state.runId === run?.id ? state : {};
 }
