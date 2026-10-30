@@ -90,7 +90,13 @@ export type AutEvent =
 
 export type RunnerEvent =
   | { kind: 'trial-started'; timestamp: string }
-  | { kind: 'transcript-step-started'; step: number; timestamp: string }
+  | {
+      kind: 'transcript-step-started';
+      step: number;
+      /** The user message sent at this step; absent for checkpoints. */
+      message?: string;
+      timestamp: string;
+    }
   | { kind: 'transcript-step-completed'; step: number; timestamp: string }
   | { kind: 'transcript-step-skipped'; step: number; timestamp: string }
   | {

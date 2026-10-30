@@ -2,6 +2,13 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Added
+
+- **Readable trajectories.** The trial page shows the trajectory as a conversation grouped by turn: the user's message, tool calls paired with their results (arguments and results expand), replies as text, and each checkpoint as one verdict with its duration. Lifecycle events are folded away; **All events** lists every raw event, each expandable to its JSON. Turns show latency and token usage when the agent reports them.
+- The runner records each user step's message on its `transcript-step-started` event (`message`), so trajectories include what the agent was asked.
+
 ## [0.6.0] - 2026-10-30
 
 Scenarios, datasets and CI reporting ([RFD0007](docs/rfds/RFD0007-scenarios-datasets-and-ci-reporting.md)). This release has breaking changes; see [Migrating from 0.5](#migrating-from-05) below.
@@ -138,7 +145,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.6.0]: https://github.com/leostera/evalkit/compare/99008d5...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/91c2c86...main
+[0.6.0]: https://github.com/leostera/evalkit/compare/99008d5...91c2c86
 [0.5.0]: https://github.com/leostera/evalkit/compare/49ad689...99008d5
 [0.4.0]: https://github.com/leostera/evalkit/compare/175bfcd...49ad689
 [0.3.0]: https://github.com/leostera/evalkit/compare/d45b221...175bfcd

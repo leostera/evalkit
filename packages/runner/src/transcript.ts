@@ -54,19 +54,20 @@ export async function executeTranscript(
   let turn = 0;
   for (const [index, step] of definition.transcript.entries()) {
     if (input.signal.aborted) throw cancelled();
+    const message =
+      step.kind === 'user'
+        ? step.message.replaceAll('{{randomSeed}}', String(input.randomSeed))
+        : undefined;
     await emitRunner({
       kind: 'transcript-step-started',
       step: index,
+      ...(message === undefined ? {} : { message }),
       timestamp: now().toISOString(),
     });
-    if (step.kind === 'user') {
+    if (message !== undefined) {
       const cursor = input.events.length;
       turn++;
-      const result = await sendUserTurn(
-        session,
-        step.message.replaceAll('{{randomSeed}}', String(input.randomSeed)),
-        input.signal,
-      );
+      const result = await sendUserTurn(session, message, input.signal);
       if (result !== undefined)
         for (const event of turnResultEvents(result, turn, now))
           await input.emitAut(event);

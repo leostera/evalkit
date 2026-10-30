@@ -71,7 +71,7 @@ Matrix axis values and CLI flags such as `--max-tokens` appear in `context.param
 
 ## Events and the recorded trajectory
 
-Returned results and `onEvent` calls append evidence in order. AUT events get `source: 'aut'`; the runner also records `source: 'runner'` events for trial and step starts/completions, scorer activity, and errors. Scorers receive both in `trajectory.events`, and reports store them as JSON Lines in `trajectory.jsonl`.
+Returned results and `onEvent` calls append evidence in order. AUT events get `source: 'aut'`; the runner also records `source: 'runner'` events for trial and step starts/completions (a user step's start carries the `message` it sent), scorer activity, and errors. Scorers receive both in `trajectory.events`, and reports store them as JSON Lines in `trajectory.jsonl`.
 
 | AUT event `kind`                 | Notable fields                                                              | When to emit                                       |
 | -------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------- |

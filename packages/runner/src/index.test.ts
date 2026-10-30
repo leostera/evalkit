@@ -661,6 +661,15 @@ describe('runEval', () => {
         .filter((event) => event.source === 'aut')
         .map((event) => event.kind),
     ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
+    // The prompt is recorded so the trajectory reads as a conversation.
+    expect(
+      trajectory.filter((event) => event.kind === 'transcript-step-started'),
+    ).toMatchObject([{ step: 0, message: 'Where is order 7?' }, { step: 1 }]);
+    expect(
+      trajectory.find(
+        (event) => event.kind === 'transcript-step-started' && event.step === 1,
+      ),
+    ).not.toHaveProperty('message');
   });
 
   test('cancellation stops new trials and finalizes running ones as cancelled', async () => {

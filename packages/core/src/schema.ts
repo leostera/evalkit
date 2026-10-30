@@ -257,6 +257,7 @@ const runnerEvent = {
     source: Schema.Literal('runner'),
     kind: Schema.Literal('transcript-step-started'),
     step: Schema.Number,
+    message: Schema.optional(Schema.String),
     timestamp: Schema.String,
   }),
   stepCompleted: Schema.Struct({

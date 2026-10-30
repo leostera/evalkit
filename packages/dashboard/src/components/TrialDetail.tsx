@@ -6,8 +6,8 @@ import { monoClass, NestedTable } from './DataTable.js';
 import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
-import { EventCard } from './EventCard.js';
 import { StatusBadge } from './StatusBadge.js';
+import { Trajectory } from './Trajectory.js';
 import type { SelectedTrial } from './types.js';
 
 /** A trial's trajectory, with its scores and evidence beside it. */
@@ -65,27 +65,15 @@ export function TrialDetail({
   const datasets = trialDatasets(detail?.manifest);
   return (
     <section className="trial-inspector grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
-      <section className="trajectory flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-2">
         {loadError ? (
           <ErrorBanner
             title="Unable to load trial details"
             message={loadError}
           />
         ) : null}
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-kumo-strong">Trajectory</h3>
-          <span className="text-xs text-kumo-subtle tabular-nums">
-            {events.length} events
-          </span>
-        </div>
-        {events.map((event, index) => (
-          <EventCard
-            event={event}
-            index={index}
-            key={`${event.timestamp}-${index}`}
-          />
-        ))}
-      </section>
+        <Trajectory events={events} />
+      </div>
       <aside className="trial-overview flex min-w-0 flex-col gap-4">
         <DetailList
           items={[
