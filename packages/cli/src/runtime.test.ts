@@ -1,5 +1,6 @@
+import { globMatcher } from '@evalkit/core/glob';
 import { expect, test } from 'bun:test';
-import { globMatcher } from '@evalkit/core';
+
 import { assertSupportedRuntime, serve, serveFromPort } from './runtime.js';
 
 test('discovery globs match like the default includes and excludes', () => {

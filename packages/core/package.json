@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./canonical-json": "./src/canonical-json.ts"
+    "./canonical-json": "./src/canonical-json.ts",
+    "./glob": "./src/glob.ts"
   },
   "dependencies": {
     "effect": "^3.19.0"

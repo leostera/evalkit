@@ -509,7 +509,6 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
 }
 
 export { defineEvalMatrix, canonicalParameters } from './matrix.js';
-export { globMatcher } from './glob.js';
 export type { EvalMatrix, EvalMatrixCell, MatrixSelection } from './matrix.js';
 import type { EvalMatrix } from './matrix.js';
 

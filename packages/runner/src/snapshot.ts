@@ -2,10 +2,10 @@ import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   DEFAULT_ARTIFACT_EXCLUDE,
-  globMatcher,
   type ArtifactEntry,
   type TrialWriter,
 } from '@evalkit/core';
+import { globMatcher } from '@evalkit/core/glob';
 
 /** A pattern without `/` matches a name at any depth, like `.gitignore`. */
 export function excludeMatcher(

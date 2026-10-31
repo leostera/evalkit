@@ -12,8 +12,8 @@ import {
   type RecordedError,
   type EvalkitConfig,
   type EvalRegistry,
-  globMatcher,
 } from '@evalkit/core';
+import { globMatcher } from '@evalkit/core/glob';
 
 const defaultInclude = ['**/*.eval.ts', '**/*.eval.js'];
 const defaultExclude = ['**/node_modules/**', '**/.git/**', '**/_evalkit-*/**'];
