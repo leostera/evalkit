@@ -206,9 +206,21 @@ export function defineAgent<const T extends AutAdapter>(agent: T): T {
   return markDefinitionSite(agent);
 }
 
+/** What a computed user message may depend on: only what the agent is given too. */
+export type UserMessageInput = {
+  /** The matrix cell's parameters and CLI overrides. */
+  parameters: JsonObject;
+  /** Values of the scenario's candidate datasets, by dataset ID (never evaluator ones). */
+  data: JsonObject;
+  /** The trial's random seed (also in `context.metadata.randomSeed`). */
+  seed: number;
+  trialIndex: number;
+};
+
 export type UserStep = {
   kind: 'user';
-  message: string;
+  /** A fixed message, or one computed for each trial. */
+  message: string | ((input: UserMessageInput) => string);
 };
 
 export type AgentStep = {
@@ -251,7 +263,11 @@ export function expectToolCall(
   return { kind: 'expect-tool-call', name: expected.name, expected };
 }
 
-export function user(message: string): UserStep {
+/**
+ * A user message. Pass a function to compute it for each trial, e.g. from a
+ * matrix axis: `user(({ parameters }) => `Set up OCaml with ${parameters.toolchain}.`)`.
+ */
+export function user(message: UserStep['message']): UserStep {
   return { kind: 'user', message };
 }
 

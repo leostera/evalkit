@@ -322,7 +322,14 @@ function StepBody({
       return (
         <>
           {label('User says')}
-          <span className="whitespace-pre-wrap">{step.message}</span>
+          {step.message === undefined ? (
+            <span className="text-kumo-subtle">
+              Computed for each trial from its parameters and datasets; each
+              trial's trajectory shows the message it was sent.
+            </span>
+          ) : (
+            <span className="whitespace-pre-wrap">{step.message}</span>
+          )}
         </>
       );
     case 'agent':

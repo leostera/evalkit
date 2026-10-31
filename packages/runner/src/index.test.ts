@@ -457,6 +457,75 @@ describe('runEval', () => {
     expect(seen).toEqual(['a', 'b', 'c', 'a', 'b', 'c']);
   });
 
+  test('a computed user message sees parameters and candidate data, never evaluator data', async () => {
+    const root = await reportDirectory();
+    const sent: string[] = [];
+    const evaluation = defineEval({
+      id: 'eval-computed-message',
+      agent: defineAgent({
+        async start() {
+          return {
+            send: async (message: string) => {
+              sent.push(message);
+              return 'ok';
+            },
+          };
+        },
+      }),
+      datasets: [
+        defineDataset({ id: 'phrases', value: { riot: 'Riot (riot.ml)' } }),
+        defineDataset({
+          id: 'answers',
+          visibility: 'evaluator',
+          value: 'secret',
+        }),
+      ],
+      transcript: [
+        user(
+          ({ parameters, data, seed }) =>
+            `Use ${(data.phrases as Record<string, string>)[String(parameters.toolchain)]}` +
+            ` (seed ${typeof seed}, answers ${String(data.answers)})`,
+        ),
+      ],
+      scoring: [],
+    });
+    const result = await execute(evaluation, {
+      report: localReportStore(root),
+      parameters: { toolchain: 'riot' },
+    });
+    expect(result.status).toBe('completed');
+    expect(sent).toEqual([
+      'Use Riot (riot.ml) (seed number, answers undefined)',
+    ]);
+    const trajectory = parseTrajectoryJsonl(
+      await readFile(
+        path.join(
+          result.reportLocation,
+          'trials',
+          result.trialId,
+          'trajectory.jsonl',
+        ),
+        'utf8',
+      ),
+    );
+    expect(
+      trajectory.find((event) => event.kind === 'transcript-step-started'),
+    ).toMatchObject({ message: sent[0] });
+
+    const empty = await execute(
+      defineEval({
+        ...evaluation,
+        id: 'eval-empty-message',
+        transcript: [user(() => ' ')],
+      }),
+      { report: localReportStore(root) },
+    );
+    expect(empty.status).toBe('failed');
+    expect(empty.error?.message).toContain(
+      'The user message at step 1 must compute a non-empty string',
+    );
+  });
+
   test('retries a failed dataset load and fails only the trial', async () => {
     const root = await reportDirectory();
     let attempts = 0;

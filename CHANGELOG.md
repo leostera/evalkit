@@ -4,7 +4,13 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Prompts computed per trial.** `user()` takes a function of `{ parameters, data, seed, trialIndex }`, so one scenario can vary its prompt by matrix axis or candidate dataset: `user(({ parameters }) => `Set up OCaml with ${parameters.toolchain}.`)`. `data` holds only candidate datasets. The trajectory records the message each trial was sent.
+
 ### Changed
+
+- **Breaking:** the `{{randomSeed}}` placeholder in user messages is removed; use `user(({ seed }) => `... ${seed} ...`)`.
 
 - `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.
 - **A clearer command line.** Every command and flag has a description in `--help`, with examples; common flags have short forms (`-c`, `-e`, `-s`, `-m`, `-n`, `-j`, `-v`, `-p`, `-o`, `-b`, `-d`); `--opt=value` works; a mistyped command suggests the right one (`Did you mean run?`); and `evalkit help <command>` works.

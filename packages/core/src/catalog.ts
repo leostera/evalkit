@@ -66,7 +66,8 @@ export type EvalCatalogScorer = {
 };
 
 export type EvalCatalogStep =
-  | { kind: 'user'; message: string }
+  /** `message` is absent when it is computed for each trial. */
+  | { kind: 'user'; message?: string }
   | { kind: 'agent'; expectation: JsonValue }
   | { kind: 'expect-tool-call'; name: string; arguments?: JsonValue }
   /** A predicate or judge checked at this point of the conversation. */
@@ -194,7 +195,9 @@ function catalogScorer(rule: ScoringRule, at: At): EvalCatalogScorer {
 function catalogStep(step: TranscriptStep, at: At): EvalCatalogStep {
   switch (step.kind) {
     case 'user':
-      return { kind: 'user', message: step.message };
+      return typeof step.message === 'string'
+        ? { kind: 'user', message: step.message }
+        : { kind: 'user' };
     case 'agent':
       return { kind: 'agent', expectation: step.expectation };
     case 'expect-tool-call':

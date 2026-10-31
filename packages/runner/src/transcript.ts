@@ -11,6 +11,7 @@ import {
   type RunnerEvent,
   type TrajectoryEvent,
   type TurnView,
+  type UserStep,
 } from '@evalkit/core';
 import { evaluateCheckpoint } from './checkpoint.js';
 import { runBoundary } from './effect-boundary.js';
@@ -55,9 +56,7 @@ export async function executeTranscript(
   for (const [index, step] of definition.transcript.entries()) {
     if (input.signal.aborted) throw cancelled();
     const message =
-      step.kind === 'user'
-        ? step.message.replaceAll('{{randomSeed}}', String(input.randomSeed))
-        : undefined;
+      step.kind === 'user' ? userMessage(step, index, input) : undefined;
     await emitRunner({
       kind: 'transcript-step-started',
       step: index,
@@ -112,6 +111,26 @@ export async function executeTranscript(
       timestamp: now().toISOString(),
     });
   }
+}
+
+/** A computed message sees the parameters and candidate data the agent also sees. */
+function userMessage(
+  step: UserStep,
+  index: number,
+  { context, randomSeed }: TranscriptExecution,
+): string {
+  if (typeof step.message === 'string') return step.message;
+  const message = step.message({
+    parameters: context.parameters ?? {},
+    data: context.data,
+    seed: randomSeed,
+    trialIndex: context.trialIndex,
+  });
+  if (typeof message !== 'string' || !message.trim())
+    throw new Error(
+      `The user message at step ${index + 1} must compute a non-empty string`,
+    );
+  return message;
 }
 
 async function sendUserTurn(

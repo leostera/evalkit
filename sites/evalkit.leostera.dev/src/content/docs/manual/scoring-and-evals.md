@@ -44,7 +44,19 @@ export const greetingEval = defineEval({
 export default greetingEval;
 ```
 
-For each trial, EvalKit creates a workspace and new session, interprets the authored transcript in order, then closes the session **before** running final scorers. `user(...)` sends a message; inline `predicate(...)`, `judge(...)`, and `expectToolCall(...)` evaluate after the just-completed turn and before the next user message. `{{randomSeed}}` in a user message is replaced by that trial's numeric seed. `metadata` on the eval is included in the trial context, along with the seed. `policy.trials` requests independent trials (default one); `--trials` and config `execution.trials` can override it. `policy.timeoutMs` exists in the type but **does not enforce a deadline**. If you import the eval into an explicit suite, register it through that suite only; otherwise its default export is enough for discovery.
+For each trial, EvalKit creates a workspace and new session, interprets the authored transcript in order, then closes the session **before** running final scorers. `user(...)` sends a message; inline `predicate(...)`, `judge(...)`, and `expectToolCall(...)` evaluate after the just-completed turn and before the next user message.
+
+A user message can be computed for each trial from what the agent is also given: pass `user()` a function of `{ parameters, data, seed, trialIndex }`. `parameters` is the matrix cell's values, `data` the scenario's candidate datasets (never evaluator ones) and `seed` the trial's random seed. This keeps one scenario for every cell of a matrix, with the prompt varying only where it should:
+
+```ts
+// evalkit.config.ts: matrix: { id: 'toolchains', parameters: { toolchain: ['opam', 'dune', 'riot'] } }
+user(
+  ({ parameters }) =>
+    `Set up OCaml with ${parameters.toolchain} and create a hello world application.`,
+);
+```
+
+The trajectory records the message each trial was actually sent; the scenario page shows that the message is computed. `metadata` on the eval is included in the trial context, along with the seed. `policy.trials` requests independent trials (default one); `--trials` and config `execution.trials` can override it. `policy.timeoutMs` exists in the type but **does not enforce a deadline**. If you import the eval into an explicit suite, register it through that suite only; otherwise its default export is enough for discovery.
 
 ### Intermediate checkpoints
 

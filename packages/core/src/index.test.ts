@@ -340,7 +340,7 @@ describe('library catalog', () => {
     const evaluation = defineEval({
       id: 'greets',
       agent: greeter,
-      transcript: [user('hi'), says],
+      transcript: [user('hi'), says, user(({ seed }) => `again ${seed}`)],
       scoring: [says],
       policy: { trials: 3, failfast: true },
     });
@@ -361,6 +361,8 @@ describe('library catalog', () => {
         kind: 'checkpoint',
         scorer: expect.objectContaining({ name: 'says hi' }),
       },
+      // A computed message has no fixed text to show.
+      { kind: 'user' },
     ]);
     expect(entry?.policy).toEqual({ trials: 3, failfast: true });
     // Without a root, no paths at all: never absolute ones.
