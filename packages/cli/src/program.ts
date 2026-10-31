@@ -119,12 +119,12 @@ export function createProgram(actions: Actions): Command {
     .option('-m, --matrix <id>', 'run this matrix')
     .option(
       '--model <value>',
-      'select values of the model axis; repeatable, or comma-separated',
+      '--select model=<value> for each comma-separated value',
       collect,
     )
     .option(
       '--mode <value>',
-      'select values of the mode axis; repeatable, or comma-separated',
+      '--select mode=<value> for each comma-separated value',
       collect,
     )
     .option(
