@@ -60,6 +60,7 @@ type FinalScoringInput = {
   results: ScoreResult[];
   skippedScorers: string[];
   data: JsonObject;
+  checkpoints: readonly CheckpointResult[];
   now: () => Date;
   emitRunner: (event: RunnerEvent) => Promise<void>;
 };
@@ -109,6 +110,7 @@ export async function evaluateFinalScorers(
             ...(lastTurn ? { turn: lastTurn } : {}),
             ...turnOutput(lastTurn),
             data: input.data,
+            checkpoints: input.checkpoints,
           },
           definition.judge,
           'scoring',

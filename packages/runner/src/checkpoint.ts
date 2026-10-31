@@ -37,6 +37,7 @@ export function evaluateCheckpoint(
     turn: TurnView;
     output?: JsonValue;
     data: JsonObject;
+    checkpoints: readonly CheckpointResult[];
   },
   now: () => Date,
   judgeAgent?: AutAdapter,

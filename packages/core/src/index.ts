@@ -336,6 +336,12 @@ export type ScoringContext = {
   output?: JsonValue;
   /** Values of all the scenario's datasets (candidate and evaluator), by dataset ID. */
   data: JsonObject;
+  /**
+   * Results of the transcript's checkpoints so far, in order: all of them for
+   * final scorers. A checkpoint's `evidence` can carry what it observed (for
+   * example, in a container that is gone by final scoring).
+   */
+  checkpoints: readonly CheckpointResult[];
 };
 
 export type PredicateScorer = {

@@ -576,6 +576,7 @@ async function runTrial(
       results: scoreResults,
       skippedScorers,
       data: scoringData,
+      checkpoints,
       now,
       emitRunner,
     });

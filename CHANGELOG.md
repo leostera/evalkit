@@ -7,6 +7,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 ### Added
 
 - **Prompts computed per trial.** `user()` takes a function of `{ parameters, data, seed, trialIndex }`, so one scenario can vary its prompt by matrix axis or candidate dataset: `user(({ parameters }) => `Set up OCaml with ${parameters.toolchain}.`)`. `data` holds only candidate datasets. The trajectory records the message each trial was sent.
+- **Scorers see checkpoint results.** The scoring context has `checkpoints`: the results so far for inline checkpoints, all of them for final scorers. A checkpoint can inspect live state before the session closes and pass what it saw to final scorers in `evidence`.
 
 ### Changed
 

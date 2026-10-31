@@ -184,6 +184,7 @@ async function runCheckpoint(
         turn: progress.lastTurn,
         ...turnOutput(progress.lastTurn),
         data: input.data,
+        checkpoints: [...progress.checkpoints],
       },
       now,
       definition.judge,

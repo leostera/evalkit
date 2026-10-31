@@ -60,7 +60,9 @@ The trajectory records the message each trial was actually sent; the scenario pa
 
 ### Intermediate checkpoints
 
-Use `predicate(name, callback)` between user steps for deterministic assertions against the live workspace or the just-completed turn. It receives `{ context, trajectory, artifacts, turn? }`; `turn` is always present at an inline checkpoint, but is optional in the shared callback type because final scoring can run without a user turn. Its `lastAssistantText`, `assistantMessages`, `toolCalls`, and `events` describe the turn as recorded, including a reply or tool calls returned from `send()`. In final scoring, `turn` refers to the last completed user turn (if any), while `trajectory` contains the whole trial. Multiple inline rules after one user step inspect the same turn. An inline rule before the first user step is invalid.
+Use `predicate(name, callback)` between user steps for deterministic assertions against the live workspace or the just-completed turn. It receives `{ context, output, data, trajectory, artifacts, checkpoints, turn? }`; `turn` is always present at an inline checkpoint, but is optional in the shared callback type because final scoring can run without a user turn. Its `lastAssistantText`, `assistantMessages`, `toolCalls`, and `events` describe the turn as recorded, including a reply or tool calls returned from `send()`. In final scoring, `turn` refers to the last completed user turn (if any), while `trajectory` contains the whole trial. Multiple inline rules after one user step inspect the same turn. An inline rule before the first user step is invalid.
+
+`checkpoints` holds the results of the checkpoints so far, with their `value`, `status`, `explanation` and `evidence`; final scorers see all of them. Final scoring runs after the session closes, so a checkpoint is the place to inspect live state (a container, a server) and put what it saw in `evidence` for final scorers to read, instead of sharing it through module-level variables.
 
 ```ts
 import { readFile } from 'node:fs/promises';

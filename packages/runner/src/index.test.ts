@@ -526,6 +526,44 @@ describe('runEval', () => {
     );
   });
 
+  test('final scorers and later checkpoints see earlier checkpoint results', async () => {
+    const root = await reportDirectory();
+    let seenByCheckpoint: unknown;
+    const verified = predicate('verified', () => ({
+      value: 1,
+      evidence: { stdout: 'Hello, World!' },
+    }));
+    const evaluation = defineEval({
+      id: 'eval-checkpoint-evidence',
+      agent: defineAgent({
+        async start() {
+          return { send: async () => 'done' };
+        },
+      }),
+      transcript: [
+        user('go'),
+        verified,
+        predicate('second', ({ checkpoints }) => {
+          seenByCheckpoint = checkpoints.map((check) => check.name);
+          return true;
+        }),
+      ],
+      scoring: [
+        predicate('prints hello', ({ checkpoints }) =>
+          JSON.stringify(checkpoints[0]?.evidence).includes('Hello'),
+        ),
+      ],
+    });
+    const result = await execute(evaluation, {
+      report: localReportStore(root),
+    });
+    expect(seenByCheckpoint).toEqual(['verified']);
+    expect(result.scoring?.results[0]).toMatchObject({
+      name: 'prints hello',
+      passed: true,
+    });
+  });
+
   test('retries a failed dataset load and fails only the trial', async () => {
     const root = await reportDirectory();
     let attempts = 0;
