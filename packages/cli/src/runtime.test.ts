@@ -1,5 +1,10 @@
 import { expect, test } from 'bun:test';
-import { assertSupportedRuntime, globMatcher } from './runtime.js';
+import {
+  assertSupportedRuntime,
+  globMatcher,
+  serve,
+  serveFromPort,
+} from './runtime.js';
 
 test('discovery globs match like the default includes and excludes', () => {
   const evals = globMatcher('**/*.eval.ts');
@@ -21,4 +26,24 @@ test('Node older than 22.18 is refused with a clear message', () => {
   }
   expect(() => assertSupportedRuntime('22.17.0')).toThrow('Node 22.18');
   expect(() => assertSupportedRuntime('22.18.0')).not.toThrow();
+});
+
+test('serveFromPort moves past ports that are taken', async () => {
+  const ok = () => new Response('ok');
+  const taken = await serve(ok, 0);
+  try {
+    const next = await serveFromPort(ok, taken.port);
+    try {
+      expect(next.port).toBeGreaterThan(taken.port);
+      const response = await fetch(`http://localhost:${next.port}/`);
+      expect(await response.text()).toBe('ok');
+    } finally {
+      await next.stop();
+    }
+    await expect(serveFromPort(ok, taken.port, 1)).rejects.toThrow(
+      `Ports ${taken.port}–${taken.port} are all in use`,
+    );
+  } finally {
+    await taken.stop();
+  }
 });

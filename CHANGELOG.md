@@ -2,6 +2,12 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Changed
+
+- `evalkit dev` uses the next free port when 4317 is taken, and prints the one it chose, so several projects can run at once. An explicit `PORT` is still required exactly, and an invalid one is rejected.
+
 ## [0.6.1] - 2026-10-30
 
 Readable trajectories on the trial page.
@@ -147,7 +153,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.6.1]: https://github.com/leostera/evalkit/compare/91c2c86...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/1ca784e...main
+[0.6.1]: https://github.com/leostera/evalkit/compare/91c2c86...1ca784e
 [0.6.0]: https://github.com/leostera/evalkit/compare/99008d5...91c2c86
 [0.5.0]: https://github.com/leostera/evalkit/compare/49ad689...99008d5
 [0.4.0]: https://github.com/leostera/evalkit/compare/175bfcd...49ad689

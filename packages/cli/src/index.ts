@@ -89,6 +89,7 @@ import {
   assertSupportedRuntime,
   openInBrowser,
   serve,
+  serveFromPort,
   type Server,
 } from './runtime.js';
 
@@ -501,6 +502,34 @@ async function useProject(configPath: string | undefined): Promise<void> {
   );
 }
 
+const DEFAULT_DASHBOARD_PORT = 4317;
+
+/**
+ * An explicit PORT is honoured exactly; without one, `dev` takes the first
+ * free port from 4317 so several projects can run side by side.
+ */
+async function serveDashboardPort(
+  fetch: Parameters<typeof serve>[0],
+  requested: string | undefined,
+): Promise<Server> {
+  if (requested === undefined || requested === '')
+    return serveFromPort(fetch, DEFAULT_DASHBOARD_PORT);
+  const port = Number(requested);
+  if (!Number.isInteger(port) || port < 0 || port > 65535)
+    throw new Error(
+      `PORT must be a port number, got ${JSON.stringify(requested)}`,
+    );
+  try {
+    return await serve(fetch, port);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'EADDRINUSE')
+      throw new Error(
+        `Port ${port} is already in use. Stop the other server, choose another PORT, or unset PORT to use the next free port.`,
+      );
+    throw error;
+  }
+}
+
 async function serveDashboard(): Promise<void> {
   const registry = await loadRegistry();
   const dashboardRoot = dashboardAssets();
@@ -520,17 +549,7 @@ async function serveDashboard(): Promise<void> {
     createDashboardReportReader(reportRoot, registry),
   );
   registerDashboardAssets(app, dashboardRoot);
-  const port = Number(process.env.PORT ?? 4317);
-  let server: Server;
-  try {
-    server = await serve(app.fetch, port);
-  } catch (error) {
-    if ((error as { code?: string }).code === 'EADDRINUSE')
-      throw new Error(
-        `Port ${port} is already in use. Stop the other server or choose another port: PORT=4318 evalkit dev`,
-      );
-    throw error;
-  }
+  const server = await serveDashboardPort(app.fetch, process.env.PORT);
   const url = `http://localhost:${server.port}`;
   const reader = createDashboardReportReader(reportRoot, registry);
   const runs = (await reader.listRuns()).length;

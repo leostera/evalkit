@@ -59,6 +59,30 @@ export async function serve(fetch: Fetch, port: number): Promise<Server> {
   };
 }
 
+const isPortInUse = (error: unknown) =>
+  (error as { code?: string } | undefined)?.code === 'EADDRINUSE';
+
+/**
+ * Serves on `first`, or the next free port after it, trying `attempts` ports.
+ * Other errors are not retried.
+ */
+export async function serveFromPort(
+  fetch: Fetch,
+  first: number,
+  attempts = 20,
+): Promise<Server> {
+  for (let port = first; port < first + attempts; port++) {
+    try {
+      return await serve(fetch, port);
+    } catch (error) {
+      if (!isPortInUse(error)) throw error;
+    }
+  }
+  throw new Error(
+    `Ports ${first}–${first + attempts - 1} are all in use. Choose one: PORT=<port> evalkit dev`,
+  );
+}
+
 type BunServe = {
   serve(options: { port: number; fetch: Fetch }): {
     port: number;
