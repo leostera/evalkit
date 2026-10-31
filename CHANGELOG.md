@@ -6,6 +6,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ### Added
 
+- **API reference** on the website: every export with its signature, kept complete by a test. The results guide now says plainly where scores live (`scoring.json`, not the manifests).
 - **Compare by parameter.** A scenario page pivots its runs by matrix parameters: one down, optionally one across, showing the pass rate, mean score or any metric. Works in shared snapshots too.
 - **Prompts computed per trial.** `user()` takes a function of `{ parameters, data, seed, trialIndex }`, so one scenario can vary its prompt by matrix axis or candidate dataset: `user(({ parameters }) => `Set up OCaml with ${parameters.toolchain}.`)`. `data` holds only candidate datasets. The trajectory records the message each trial was sent.
 - **Metrics.** `metric(name, run, { unit, better })` in a scenario's `metrics` records a number for every trial (tokens, retries, mistakes, web searches) without affecting pass or fail. EvalKit also records **agent time**, **tokens** (when the agent reports usage) and **tool calls** for every trial. Metrics are saved in `scoring.json`, shown on trial pages, averaged on run pages, and get a column each on the scoreboard.

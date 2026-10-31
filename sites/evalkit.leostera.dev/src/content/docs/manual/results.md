@@ -9,15 +9,17 @@ Eval definitions can live in Git, but run output is **local evidence**, not auto
 
 ```text
 _evalkit-results/<run-uuid>/
-├── manifest.json                 # run identity, parameters, source, process, status
-├── summary.json                  # run status (may be cancelled) and passed/failed trial counts
+├── manifest.json                 # what ran: identity, parameters, source, process, status
+├── summary.json                  # how it ended: status (may be cancelled), passed/failed trial counts
 └── trials/<trial-uuid>/
-    ├── manifest.json             # trial identity, zero-based trialIndex, dataset digests
+    ├── manifest.json             # what ran: trial identity, zero-based trialIndex, dataset digests
     ├── trajectory.jsonl          # AUT + runner events, one JSON object per line
-    ├── scoring.json              # score results, metrics, overall, passed
-    ├── summary.json              # execution status, scoring, error, artifacts
+    ├── scoring.json              # the scores: scorer results, checkpoints, metrics, overall, passed
+    ├── summary.json              # how it ended: execution status, scoring (again), error, artifacts
     └── artifacts/candidate/...   # end-of-trial candidate file snapshot, if any
 ```
+
+**Looking for scores?** They are in each trial's `scoring.json`, repeated in its `summary.json`; the run's `summary.json` counts passed and failed trials. Manifests describe what ran and its status, never scores. From code, use `readTrialScoring` and the other readers in the [API reference](/docs/reference/api/#running-and-reading-results-leosteraevalkitrunner).
 
 A newly written run/trial manifest has `schemaVersion: 5`, human-authored `evalId` (and optional `suiteId`), generated UUID-based `runUri`/`trialUri`, optional agent identity (`aut`), optional effective `parameters` and `matrix: { id, cellKey }`, and `startedAt`. Directory names are the UUIDs; an eval ID is **not** a directory name. Version 5 adds `process: { pid, hostname }` to the run manifest, the process that owns the run, and `datasets` to each trial manifest: every dataset the trial used, with its visibility, `static` or `computed` source, and a content digest. Manifests start with `status: "running"` and are updated when finalized. Run and trial summaries are written at finalization. A run with no summary whose owning process is no longer alive on this host is read as **cancelled (interrupted)**; runs owned by another host stay running. `cancelled` is its own status and never counts as a failure. The CLI and dashboard read versions 2 to 5 without rewriting them. Older v1 authored-resource-URI manifests are not migrated or listed by the current dashboard, though they remain on disk.
 

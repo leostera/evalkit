@@ -41,6 +41,11 @@ main h1 {
 .sl-markdown-content :not(pre) > code {
   overflow-wrap: anywhere;
 }
+/* A table's first column names things; keep each name whole. */
+.sl-markdown-content td:first-child > code {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
 .sl-markdown-content a {
   text-underline-offset: 0.2em;
 }

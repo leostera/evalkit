@@ -9,10 +9,11 @@
 - [Project structure and discovery](https://evalkit.leostera.dev/docs/manual/project-structure/): `scenarios/`, directory suites, IDs, config, load errors, and explicit registries.
 - [Agents under test](https://evalkit.leostera.dev/docs/manual/agents/): The adapter contract: returning turn results or streaming events.
 - [Datasets](https://evalkit.leostera.dev/docs/manual/datasets/): Files and values for scenarios, computed and cached inputs, and candidate versus evaluator visibility.
-- [Scorers and evals](https://evalkit.leostera.dev/docs/manual/scoring-and-evals/): Predicates, judges, `output`, `passAt`, and `skip`.
+- [Scorers and evals](https://evalkit.leostera.dev/docs/manual/scoring-and-evals/): Predicates, judges, metrics, `output`, `passAt`, `skip`, and checkpoint results.
 - [CLI and matrices](https://evalkit.leostera.dev/docs/manual/cli-and-matrices/): Selection, sweeps, CI reporting with JUnit, `evalkit compare`, the dashboard, and sharing.
 - [Results and reports](https://evalkit.leostera.dev/docs/manual/results/): Local manifests, scoring, artifacts, and running from code.
 - [Troubleshooting](https://evalkit.leostera.dev/docs/manual/troubleshooting/): Common issues and current limitations.
+- [API reference](https://evalkit.leostera.dev/docs/reference/api/): Every export of `@leostera/evalkit` and `@leostera/evalkit/runner`, with signatures, and where scores live on disk.
 - [Migration guide from 0.5](https://github.com/leostera/evalkit/blob/main/CHANGELOG.md#migrating-from-05): `evals/` to `scenarios/`, fixtures to datasets.
 - [Repository](https://github.com/leostera/evalkit): Source code, contracts, tests, and examples.
 - [EvalKit package](https://www.npmjs.com/package/@leostera/evalkit): The repository root builds `@leostera/evalkit` with the authoring API, CLI, dashboard, and agent skills (`dist/skills/`).

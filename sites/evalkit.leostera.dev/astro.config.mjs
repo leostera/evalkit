@@ -56,6 +56,10 @@ export default defineConfig({
             { label: 'Troubleshooting', link: '/docs/manual/troubleshooting/' },
           ],
         },
+        {
+          label: 'Reference',
+          items: [{ label: 'API', link: '/docs/reference/api/' }],
+        },
       ],
     }),
   ],
