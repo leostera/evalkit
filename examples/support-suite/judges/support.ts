@@ -1,4 +1,4 @@
-import { predicate, skip } from '@evalkit/core';
+import { metric, predicate, skip } from '@evalkit/core';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -58,4 +58,11 @@ export const escalates = predicate(
         : '';
     return Boolean(handoff) && text(output).includes(handoff);
   },
+);
+
+/** Measured, never pass/fail: shorter answers that still pass are better. */
+export const replyLength = metric(
+  'reply length',
+  ({ output }) => (typeof output === 'string' ? output.length : undefined),
+  { unit: 'chars', better: 'lower' },
 );

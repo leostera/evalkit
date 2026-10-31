@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import type {
   CheckpointResult,
+  MetricResult,
   EvalRegistry,
   JsonObject,
   RunSource,
@@ -42,6 +43,8 @@ export type LocalRun = {
   scorers?: RunScorer[];
   /** Content digests of the datasets the run's trials used (schema version 5+). */
   datasets?: RunDatasetDigests[];
+  /** Each metric's mean over the run's trials. */
+  metrics?: RunMetric[];
 };
 
 export type RunScorer = {
@@ -55,6 +58,46 @@ export type RunScorer = {
 };
 
 export type RunDatasetDigests = { id: string; digests: string[] };
+
+/** One metric's mean over a run's trials. */
+export type RunMetric = {
+  name: string;
+  unit?: string;
+  better?: 'lower' | 'higher';
+  builtIn?: true;
+  /** Absent when no trial measured a value. */
+  mean?: number;
+  /** Trials with a value. */
+  count: number;
+};
+
+function runMetrics(
+  trials: readonly (
+    { scoring?: { metrics?: readonly MetricResult[] } } | undefined
+  )[],
+): RunMetric[] {
+  const byName = new Map<string, RunMetric & { sum: number }>();
+  for (const trial of trials)
+    for (const result of trial?.scoring?.metrics ?? []) {
+      const entry = byName.get(result.name) ?? {
+        name: result.name,
+        ...(result.unit ? { unit: result.unit } : {}),
+        ...(result.better ? { better: result.better } : {}),
+        ...(result.builtIn ? { builtIn: true as const } : {}),
+        count: 0,
+        sum: 0,
+      };
+      if (result.value !== undefined) {
+        entry.count += 1;
+        entry.sum += result.value;
+      }
+      byName.set(result.name, entry);
+    }
+  return [...byName.values()].map(({ sum, ...metric }) => ({
+    ...metric,
+    ...(metric.count ? { mean: sum / metric.count } : {}),
+  }));
+}
 
 function runScorers(
   trials: readonly (
@@ -131,6 +174,7 @@ export type LocalTrial = {
   completedAt?: string;
   durationMs?: number;
   scores: LocalScore[];
+  metrics?: MetricResult[];
   checkpoints: CheckpointResult[];
   skippedScorers?: string[];
 };
@@ -265,6 +309,7 @@ export function createDashboardReportReader(
       trial?.scoring?.overall === undefined ? [] : [trial.scoring.overall],
     );
     const scorers = runScorers(trials);
+    const metrics = runMetrics(trials);
     const datasets = runDatasets(trialManifests);
     const archived = await ifPresent(() =>
       stat(resolve(root, id, ARCHIVE_MARKER)),
@@ -313,6 +358,7 @@ export function createDashboardReportReader(
           }
         : {}),
       ...(scorers.length ? { scorers } : {}),
+      ...(metrics.length ? { metrics } : {}),
       ...(datasets.length ? { datasets } : {}),
     };
   }
@@ -346,6 +392,9 @@ export function createDashboardReportReader(
             ? {}
             : { score: summary.scoring.overall }),
           scores: summary?.scoring?.results ?? [],
+          ...(summary?.scoring?.metrics
+            ? { metrics: summary.scoring.metrics }
+            : {}),
           checkpoints: summary?.scoring?.checkpoints ?? [],
           ...(summary?.scoring?.skippedScorers
             ? { skippedScorers: summary.scoring.skippedScorers }

@@ -159,6 +159,37 @@ A skipped result is recorded with its reason and no value. It neither passes nor
 
 `explanation` is human-readable. `evidence` may be any plain value; it is converted to JSON once, and a value that cannot be (a function, `bigint`, a cycle) fails the scorer with the path of the bad field. Final rules execute **in definition order** after session close. A thrown error or an invalid score is saved as a scorer error with `passed: false` and no numeric value; another scorer can still run. The trial's `scoring.overall` is the unweighted mean of **valid numeric** scorer values and is omitted when there are none. `scoring.passed` requires all scorers to pass and no scorer errors; it is not inferred from `overall`. An empty scorer list produces no overall value and is vacuously `passed: true`—add a real predicate if you want a meaningful gate.
 
+### Metrics
+
+Scores decide pass or fail; **metrics** measure. A metric is a number recorded for every trial, such as tokens, retries, mistakes or web searches, and it never affects whether the trial passes. List them in `metrics`:
+
+```ts
+import { defineEval, metric, user } from '@leostera/evalkit';
+
+const webSearches = metric(
+  'web searches',
+  ({ trajectory }) =>
+    trajectory.events.filter(
+      (event) => event.kind === 'tool-call' && event.name === 'web_search',
+    ).length,
+  { better: 'lower' },
+);
+
+export default defineEval({
+  id: 'zero-to-ocaml',
+  agent,
+  transcript: [user('Set up OCaml and create a hello world application.')],
+  scoring: [helloWorld],
+  metrics: [webSearches],
+});
+```
+
+A metric receives the same context as a final scorer and runs after the scorers. Return `undefined` when there is nothing to measure; a thrown error is recorded on that metric and the others still run. `unit` labels the value (`ms` formats as a duration) and `better: 'lower' | 'higher'` says which direction is an improvement.
+
+EvalKit also records three metrics for every trial: **agent time** (first event to the last one before final scoring), **tokens** (summed from `turn-completed` usage, only when the agent reports it) and **tool calls**. Scenario metrics may not reuse these names.
+
+Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set.
+
 ### Partial execution and errors
 
 If dataset setup or the adapter fails, execution status becomes `failed`. By default, scorers are skipped after a primary execution error. `predicate(name, fn, { supportsPartial: true })` can inspect a partial trajectory **if the trial context and workspace were created**; this does not make the failed execution pass. A session close error is also recorded. A scoring failure, on the other hand, can leave execution `status: "completed"` with `scoring.passed: false`. Use run-level pass/fail counts or the CLI exit status for a CI gate rather than execution status alone; see [Results and reports](/docs/manual/results/#understanding-status-and-scores).

@@ -14,7 +14,13 @@ import { DataTable, monoClass, tableLinkClass } from './DataTable.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { runHref, scenarioHref } from './links.js';
-import { ParameterChips, formatScore, relativeTime } from './run-columns.js';
+import {
+  ParameterChips,
+  formatMetric,
+  formatScore,
+  relativeTime,
+} from './run-columns.js';
+import { SortableHeader, useSort, type SortState } from './SortableTable.js';
 import { SearchField } from './SearchField.js';
 import {
   outcomeFill,
@@ -39,7 +45,55 @@ export type ScoreboardRow = {
   outcome: Outcome;
   /** Passed over finished runs in the history; undefined when none finished. */
   passRate?: number;
+  /** Mean score over the history's scored runs. */
+  meanScore?: number;
+  /** Each metric's mean over the history, weighted by trials measured. */
+  metrics: Record<string, number>;
 };
+
+/** A metric column: its unit and which direction is better, from the runs. */
+export type MetricColumn = {
+  name: string;
+  unit?: string;
+  better?: 'lower' | 'higher';
+};
+
+const BUILT_IN_ORDER = ['agent time', 'tokens', 'tool calls'];
+
+/** Built-in metrics first, then the scenarios' own, by name. */
+export function metricColumns(runs: readonly RunSummary[]): MetricColumn[] {
+  const columns = new Map<string, MetricColumn>();
+  for (const run of runs)
+    for (const metric of run.metrics ?? [])
+      if (metric.mean !== undefined && !columns.has(metric.name))
+        columns.set(metric.name, {
+          name: metric.name,
+          ...(metric.unit ? { unit: metric.unit } : {}),
+          ...(metric.better ? { better: metric.better } : {}),
+        });
+  const rank = (name: string) => {
+    const index = BUILT_IN_ORDER.indexOf(name);
+    return index === -1 ? BUILT_IN_ORDER.length : index;
+  };
+  return [...columns.values()].sort(
+    (a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name),
+  );
+}
+
+function historyMetrics(runs: readonly RunSummary[]): Record<string, number> {
+  const sums = new Map<string, { sum: number; count: number }>();
+  for (const run of runs)
+    for (const metric of run.metrics ?? []) {
+      if (metric.mean === undefined || !metric.count) continue;
+      const entry = sums.get(metric.name) ?? { sum: 0, count: 0 };
+      entry.sum += metric.mean * metric.count;
+      entry.count += metric.count;
+      sums.set(metric.name, entry);
+    }
+  return Object.fromEntries(
+    [...sums].map(([name, { sum, count }]) => [name, sum / count]),
+  );
+}
 
 /**
  * One row per scenario, or per scenario and parameters when it ran in a
@@ -68,6 +122,7 @@ export function scoreboardRows(
     const finished = newest.filter((run) =>
       ['passed', 'failed', 'errored'].includes(run.status),
     );
+    const scored = finished.filter((run) => run.score !== undefined);
     return {
       key,
       evalId: latest.evalId,
@@ -76,6 +131,13 @@ export function scoreboardRows(
       parameters: latest.parameters ?? {},
       runs: newest,
       outcome: latest.status,
+      metrics: historyMetrics(finished),
+      ...(scored.length
+        ? {
+            meanScore:
+              scored.reduce((sum, run) => sum + run.score!, 0) / scored.length,
+          }
+        : {}),
       ...(finished.length
         ? {
             passRate:
@@ -95,6 +157,7 @@ export function scoreboardRows(
         parameters: {},
         runs: [],
         outcome: 'not-run',
+        metrics: {},
       });
   return rows;
 }
@@ -117,10 +180,15 @@ export function Scoreboard({
 }) {
   const [query, setQuery] = useState('');
   const [worstFirst, setWorstFirst] = useState(true);
+  const { sort, toggleSort } = useSort({ key: '', direction: 'asc' });
   const [runError, setRunError] = useState<string>();
   const rows = useMemo(
     () => scoreboardRows(catalog, suites, runs),
     [catalog, suites, runs],
+  );
+  const columns = useMemo(
+    () => metricColumns(runs.filter((run) => !run.archived)),
+    [runs],
   );
   if (!rows.length)
     return <Empty message="No scenarios yet. Add one in scenarios/." />;
@@ -142,6 +210,7 @@ export function Scoreboard({
     })
     .sort(
       (a, b) =>
+        bySortColumn(a, b, sort) ||
         (worstFirst
           ? outcomeSeverity[a.outcome] - outcomeSeverity[b.outcome]
           : 0) ||
@@ -155,6 +224,15 @@ export function Scoreboard({
     const suite = row.suiteId ?? '';
     groups.set(suite, [...(groups.get(suite) ?? []), row]);
   }
+  const ranges = columnRanges(shown, columns);
+  const header = (label: string, key: string) => (
+    <SortableHeader
+      label={label}
+      sortKey={key}
+      sort={sort}
+      onSort={toggleSort}
+    />
+  );
   const suiteName = (id: string) =>
     suites.find((suite) => suite.id === id)?.name ?? id;
   const start = (row: ScoreboardRow) => {
@@ -197,9 +275,15 @@ export function Scoreboard({
           <Table.Row>
             <Table.Head>Scenario</Table.Head>
             <Table.Head>Latest</Table.Head>
-            <Table.Head>Score</Table.Head>
+            {header('Score', 'score')}
+            {header('Mean score', 'meanScore')}
             <Table.Head>Last {HISTORY} runs</Table.Head>
-            <Table.Head>Pass rate</Table.Head>
+            {header('Pass rate', 'passRate')}
+            {columns.map((column) => (
+              <Fragment key={column.name}>
+                {header(`Mean ${column.name}`, `metric:${column.name}`)}
+              </Fragment>
+            ))}
             <Table.Head className="text-right">
               {api.readOnly ? null : 'Run'}
             </Table.Head>
@@ -210,7 +294,7 @@ export function Scoreboard({
             <Fragment key={suite}>
               {groups.size > 1 || suite ? (
                 <Table.Row className="bg-kumo-elevated">
-                  <Table.Cell colSpan={6}>
+                  <Table.Cell colSpan={7 + columns.length}>
                     <span className="flex items-center gap-3">
                       <span className="text-xs font-semibold text-kumo-strong">
                         {suite ? suiteName(suite) : 'No suite'}
@@ -224,6 +308,8 @@ export function Scoreboard({
                 <ScoreboardLine
                   key={row.key}
                   row={row}
+                  columns={columns}
+                  ranges={ranges}
                   onRun={
                     api.readOnly || !row.scenario ? undefined : () => start(row)
                   }
@@ -239,9 +325,13 @@ export function Scoreboard({
 
 function ScoreboardLine({
   row,
+  columns,
+  ranges,
   onRun,
 }: {
   row: ScoreboardRow;
+  columns: readonly MetricColumn[];
+  ranges: ReadonlyMap<string, { min: number; max: number }>;
   onRun?: () => void;
 }) {
   const latest = row.runs[0];
@@ -288,6 +378,18 @@ function ScoreboardLine({
         </span>
       </Table.Cell>
       <Table.Cell>
+        {row.meanScore === undefined ? (
+          <span className="text-kumo-subtle">—</span>
+        ) : (
+          <span
+            className={`inline-block min-w-10 rounded px-1.5 py-0.5 text-center tabular-nums ${rateTint(row.meanScore)}`}
+            title={`Mean over the last ${HISTORY} runs`}
+          >
+            {formatScore(row.meanScore)}
+          </span>
+        )}
+      </Table.Cell>
+      <Table.Cell>
         <History runs={row.runs} />
       </Table.Cell>
       <Table.Cell>
@@ -301,6 +403,23 @@ function ScoreboardLine({
           </span>
         )}
       </Table.Cell>
+      {columns.map((column) => {
+        const value = row.metrics[column.name];
+        return (
+          <Table.Cell key={column.name} className="text-right">
+            {value === undefined ? (
+              <span className="text-kumo-subtle">—</span>
+            ) : (
+              <span
+                className={`inline-block rounded px-1.5 py-0.5 tabular-nums ${metricTint(value, column, ranges.get(column.name))}`}
+                title={`Mean ${column.name} over the last ${HISTORY} runs`}
+              >
+                {formatMetric(value, column.unit)}
+              </span>
+            )}
+          </Table.Cell>
+        );
+      })}
       <Table.Cell className="text-right">
         {onRun ? (
           <Button
@@ -316,6 +435,57 @@ function ScoreboardLine({
       </Table.Cell>
     </Table.Row>
   );
+}
+
+function sortValue(row: ScoreboardRow, key: string): number | undefined {
+  if (key === 'score') return row.runs[0]?.score;
+  if (key === 'meanScore') return row.meanScore;
+  if (key === 'passRate') return row.passRate;
+  if (key.startsWith('metric:')) return row.metrics[key.slice(7)];
+  return undefined;
+}
+
+/** Rows without a value sort last in either direction. */
+function bySortColumn(
+  a: ScoreboardRow,
+  b: ScoreboardRow,
+  sort: SortState,
+): number {
+  if (!sort.key) return 0;
+  const left = sortValue(a, sort.key);
+  const right = sortValue(b, sort.key);
+  if (left === undefined || right === undefined)
+    return left === right ? 0 : left === undefined ? 1 : -1;
+  return sort.direction === 'asc' ? left - right : right - left;
+}
+
+function columnRanges(
+  rows: readonly ScoreboardRow[],
+  columns: readonly MetricColumn[],
+): Map<string, { min: number; max: number }> {
+  const ranges = new Map<string, { min: number; max: number }>();
+  for (const column of columns) {
+    const values = rows
+      .map((row) => row.metrics[column.name])
+      .filter((value): value is number => value !== undefined);
+    if (values.length)
+      ranges.set(column.name, {
+        min: Math.min(...values),
+        max: Math.max(...values),
+      });
+  }
+  return ranges;
+}
+
+/** Green for the best of the shown rows, red for the worst; uncoloured when no direction is better. */
+export function metricTint(
+  value: number,
+  column: MetricColumn,
+  range: { min: number; max: number } | undefined,
+): string {
+  if (!column.better || !range || range.max === range.min) return '';
+  const position = (value - range.min) / (range.max - range.min);
+  return rateTint(column.better === 'lower' ? 1 - position : position);
 }
 
 /** One square per run, oldest on the left; each opens its run. */

@@ -4,7 +4,9 @@ import type {
   EvalCatalogEntry,
   EvalCatalogScorer,
   EvalCatalogStep,
+  MetricResult,
 } from '@evalkit/core';
+export type { MetricResult };
 export type EvalSummary = {
   id: string;
   name?: string;
@@ -78,6 +80,16 @@ export type SuiteSummary = {
   evalIds: string[];
 };
 
+export type RunMetric = {
+  name: string;
+  /** `ms` is a duration; other units print after the number. */
+  unit?: string;
+  better?: 'lower' | 'higher';
+  builtIn?: true;
+  mean?: number;
+  count: number;
+};
+
 export type RunSummary = {
   id: string;
   evalId: string;
@@ -96,6 +108,8 @@ export type RunSummary = {
   requestedTrials: number;
   score?: number;
   durationMs?: number;
+  /** Each metric's mean over the run's trials (agent time, tokens, tool calls, and the scenario's own). */
+  metrics?: RunMetric[];
   /** The eval is no longer in the project (`evalkit tidy`); hidden by default. */
   archived?: boolean;
   /** Repository and commit the run's eval code came from. */
@@ -155,6 +169,7 @@ export type TrialSummary = {
     /** The scorer returned skip(); `explanation` is the reason. */
     skipped?: true;
   }>;
+  metrics?: MetricResult[];
   checkpoints?: CheckpointResult[];
   skippedScorers?: string[];
 };

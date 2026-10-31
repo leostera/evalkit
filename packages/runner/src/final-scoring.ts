@@ -5,7 +5,9 @@ import {
   type CheckpointResult,
   type EvalDefinition,
   type JsonObject,
+  type MetricResult,
   type RunnerEvent,
+  type ScoringContext,
   type ScoreResult,
   type TrajectoryEvent,
   type TrialScoring,
@@ -21,6 +23,7 @@ export function scoreSummary(
   results: ScoreResult[],
   checkpoints: CheckpointResult[],
   skippedScorers: string[],
+  metrics: MetricResult[] = [],
 ): TrialScoring {
   const valid = results.filter(
     (result) => result.value !== undefined && !result.skipped,
@@ -28,6 +31,7 @@ export function scoreSummary(
   const hasError = results.some((result) => result.error !== undefined);
   return {
     results,
+    ...(metrics.length ? { metrics } : {}),
     ...(checkpoints.length ? { checkpoints } : {}),
     ...(skippedScorers.length ? { skippedScorers } : {}),
     ...(valid.length === 0
@@ -65,6 +69,26 @@ type FinalScoringInput = {
   emitRunner: (event: RunnerEvent) => Promise<void>;
 };
 
+/** What final scorers and metrics receive. */
+export function scoringContext(input: {
+  context: AutContext;
+  workspace: TrialWorkspace;
+  events: TrajectoryEvent[];
+  lastTurn?: TurnView;
+  data: JsonObject;
+  checkpoints: readonly CheckpointResult[];
+}): ScoringContext {
+  return {
+    context: input.context,
+    artifacts: input.workspace.artifacts,
+    trajectory: { events: input.events },
+    ...(input.lastTurn ? { turn: input.lastTurn } : {}),
+    ...turnOutput(input.lastTurn),
+    data: input.data,
+    checkpoints: input.checkpoints,
+  };
+}
+
 /** Append completed scores to the supplied arrays, even when a later scorer or report write fails. */
 export async function evaluateFinalScorers(
   definition: EvalDefinition,
@@ -73,8 +97,6 @@ export async function evaluateFinalScorers(
   const {
     context,
     workspace,
-    events,
-    lastTurn,
     results,
     skippedScorers,
     now,
@@ -103,15 +125,7 @@ export async function evaluateFinalScorers(
       const score = await runBoundary(
         evaluateRule(
           scorer,
-          {
-            context,
-            artifacts: workspace.artifacts,
-            trajectory: { events },
-            ...(lastTurn ? { turn: lastTurn } : {}),
-            ...turnOutput(lastTurn),
-            data: input.data,
-            checkpoints: input.checkpoints,
-          },
+          scoringContext({ ...input, context, workspace }),
           definition.judge,
           'scoring',
         ).pipe(

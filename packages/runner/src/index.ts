@@ -33,6 +33,7 @@ import {
   type RunMetadata,
   type RunCatalog,
   type RunSource,
+  type MetricResult,
   type ScoreResult,
   type TrialScoring,
   type Uuid,
@@ -46,7 +47,12 @@ import {
   type PreparedDataset,
 } from './datasets.js';
 import { executeTranscript, type TranscriptProgress } from './transcript.js';
-import { evaluateFinalScorers, scoreSummary } from './final-scoring.js';
+import {
+  evaluateFinalScorers,
+  scoreSummary,
+  scoringContext,
+} from './final-scoring.js';
+import { builtInMetrics, evaluateMetrics } from './metrics.js';
 import {
   AutExecutionError,
   CancelledError,
@@ -563,6 +569,7 @@ async function runTrial(
   const { checkpoints, stoppedEarly, lastTurn } = progress;
   const scoreResults: ScoreResult[] = [];
   const skippedScorers: string[] = [];
+  const metrics: MetricResult[] = [];
   try {
     await evaluateFinalScorers(definition, {
       context,
@@ -581,7 +588,22 @@ async function runTrial(
       emitRunner,
     });
 
-    scoring = scoreSummary(scoreResults, checkpoints, skippedScorers);
+    metrics.push(...builtInMetrics(events));
+    if (context && workspace && !wasCancelled)
+      metrics.push(
+        ...(await evaluateMetrics(
+          definition,
+          scoringContext({
+            context,
+            workspace,
+            events,
+            lastTurn,
+            data: scoringData,
+            checkpoints,
+          }),
+        )),
+      );
+    scoring = scoreSummary(scoreResults, checkpoints, skippedScorers, metrics);
     await trialWriter.writeScores(scoring);
 
     if (workspace) {
@@ -608,7 +630,7 @@ async function runTrial(
     }
   }
 
-  scoring ??= scoreSummary(scoreResults, checkpoints, skippedScorers);
+  scoring ??= scoreSummary(scoreResults, checkpoints, skippedScorers, metrics);
   if (!primaryError) {
     try {
       await emitRunner({

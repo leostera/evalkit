@@ -6,6 +6,7 @@ import { monoClass, NestedTable } from './DataTable.js';
 import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
+import { formatDuration, formatMetric } from './run-columns.js';
 import { StatusBadge } from './StatusBadge.js';
 import { Trajectory } from './Trajectory.js';
 import type { SelectedTrial } from './types.js';
@@ -81,7 +82,9 @@ export function TrialDetail({
             ['Aggregate score', trial.score ?? '—'],
             [
               'Runtime',
-              trial.durationMs === undefined ? '—' : `${trial.durationMs}ms`,
+              trial.durationMs === undefined
+                ? '—'
+                : formatDuration(trial.durationMs)!,
             ],
             ['Started', new Date(trial.startedAt).toLocaleString()],
           ]}
@@ -94,6 +97,29 @@ export function TrialDetail({
             </p>
           ) : null}
         </EvidenceSection>
+        {trial.metrics?.length ? (
+          <EvidenceSection title="Metrics">
+            <DetailList
+              items={trial.metrics.map(
+                (metric) =>
+                  [
+                    metric.name,
+                    metric.error ? (
+                      <span key={metric.name} className="text-kumo-danger">
+                        {metric.error.message}
+                      </span>
+                    ) : (
+                      <span key={metric.name} className="tabular-nums">
+                        {metric.value === undefined
+                          ? '—'
+                          : formatMetric(metric.value, metric.unit)}
+                      </span>
+                    ),
+                  ] as [string, ReactNode],
+              )}
+            />
+          </EvidenceSection>
+        ) : null}
         {trial.checkpoints?.length ? (
           <EvidenceSection title="Checkpoints">
             <CheckpointTable checkpoints={trial.checkpoints} />

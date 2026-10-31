@@ -9,6 +9,7 @@ import {
   defineDataset,
   defineEval,
   expectToolCall,
+  metric,
   predicate,
   skip,
   user,
@@ -562,6 +563,57 @@ describe('runEval', () => {
       name: 'prints hello',
       passed: true,
     });
+  });
+
+  test('scenario metrics are recorded beside scores and never decide pass or fail', async () => {
+    const root = await reportDirectory();
+    const evaluation = defineEval({
+      id: 'eval-metrics',
+      agent: defineAgent({
+        async start() {
+          return {
+            send: async () => ({
+              reply: 'done',
+              toolCalls: [{ name: 'web_search', arguments: { q: 'opam' } }],
+            }),
+          };
+        },
+      }),
+      transcript: [user('go')],
+      scoring: [predicate('ok', () => true)],
+      metrics: [
+        metric(
+          'web searches',
+          ({ trajectory }) =>
+            trajectory.events.filter(
+              (event) =>
+                event.kind === 'tool-call' && event.name === 'web_search',
+            ).length,
+          { better: 'lower' },
+        ),
+        metric('nothing to measure', () => undefined),
+        metric('broken', () => {
+          throw new Error('no data');
+        }),
+      ],
+    });
+    const result = await execute(evaluation, {
+      report: localReportStore(root),
+    });
+    expect(result.scoring?.passed).toBe(true);
+    expect(result.scoring?.metrics).toEqual([
+      expect.objectContaining({ name: 'agent time', builtIn: true }),
+      { name: 'tool calls', value: 1, builtIn: true },
+      { name: 'web searches', value: 1, better: 'lower' },
+      { name: 'nothing to measure' },
+      expect.objectContaining({
+        name: 'broken',
+        error: expect.objectContaining({ message: 'no data' }),
+      }),
+    ]);
+    expect(() =>
+      defineEval({ ...evaluation, metrics: [metric('tokens', () => 1)] }),
+    ).toThrow('more than one metric named tokens');
   });
 
   test('retries a failed dataset load and fails only the trial', async () => {

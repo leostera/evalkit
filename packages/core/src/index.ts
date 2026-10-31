@@ -385,6 +385,44 @@ export function predicate(
   return markDefinitionSite({ kind: 'predicate', name, run, ...options });
 }
 
+/**
+ * A number measured for every trial, such as tokens, retries or web searches.
+ * Metrics never decide pass or fail; they are averaged per run and shown on
+ * the scoreboard. Return undefined when there is nothing to measure.
+ */
+export type Metric = {
+  kind: 'metric';
+  name: string;
+  /** Shown next to values: `ms` formats as a duration, others as numbers. */
+  unit?: string;
+  /** Which direction is an improvement, for comparisons. */
+  better?: 'lower' | 'higher';
+  run(
+    context: ScoringContext,
+  ): number | undefined | Promise<number | undefined>;
+};
+
+export function metric(
+  name: string,
+  run: Metric['run'],
+  options: Pick<Metric, 'unit' | 'better'> = {},
+): Metric {
+  if (!name.trim()) throw new Error('Metric name must not be empty');
+  return markDefinitionSite({ kind: 'metric', name, run, ...options });
+}
+
+/** A metric's value for one trial. */
+export type MetricResult = {
+  name: string;
+  /** Absent when the metric measured nothing or failed. */
+  value?: number;
+  unit?: string;
+  better?: 'lower' | 'higher';
+  /** Measured by EvalKit itself (agent time, tokens, tool calls). */
+  builtIn?: true;
+  error?: RecordedError;
+};
+
 export function judge(
   name: string,
   options: Pick<JudgeRule, 'rubric' | 'supportsPartial'>,
@@ -412,6 +450,8 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   datasets?: readonly Dataset[];
   transcript: TranscriptStep[];
   scoring: ScoringRule[];
+  /** Numbers to measure for every trial; they never affect pass or fail. */
+  metrics?: readonly Metric[];
   policy?: EvalPolicy;
   /** Any JSON-convertible object; converted when the eval is defined. */
   metadata?: Record<string, unknown>;
@@ -436,6 +476,18 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
         `Eval ${definition.id} uses dataset ${dataset.id} more than once`,
       );
     datasetIds.add(dataset.id);
+  }
+  const metricNames = new Set(BUILT_IN_METRICS);
+  for (const [index, entry] of (definition.metrics ?? []).entries()) {
+    if (entry?.kind !== 'metric')
+      throw new Error(
+        `Eval ${definition.id} metrics[${index}] is not a metric; create it with metric(...)`,
+      );
+    if (metricNames.has(entry.name))
+      throw new Error(
+        `Eval ${definition.id} has more than one metric named ${entry.name} (built-in: ${BUILT_IN_METRICS.join(', ')})`,
+      );
+    metricNames.add(entry.name);
   }
   let hasUser = false;
   for (const step of definition.transcript) {
@@ -680,8 +732,16 @@ export type CheckpointResult = {
   matchedToolCall?: { eventIndex: number; id: string };
 };
 
+/** Metrics EvalKit records for every trial; scenario metrics may not reuse these names. */
+export const BUILT_IN_METRICS: readonly string[] = [
+  'agent time',
+  'tokens',
+  'tool calls',
+];
+
 export type TrialScoring = {
   results: ScoreResult[];
+  metrics?: MetricResult[];
   checkpoints?: CheckpointResult[];
   skippedScorers?: string[];
   overall?: number;

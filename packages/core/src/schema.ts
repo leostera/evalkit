@@ -157,8 +157,17 @@ export const CheckpointResultSchema = Schema.Struct({
     Schema.Struct({ eventIndex: Schema.Number, id: Schema.String }),
   ),
 });
+export const MetricResultSchema = Schema.Struct({
+  name: Schema.String,
+  value: Schema.optional(Schema.Number),
+  unit: Schema.optional(Schema.String),
+  better: Schema.optional(Schema.Literal('lower', 'higher')),
+  builtIn: Schema.optional(Schema.Literal(true)),
+  error: Schema.optional(RecordedErrorSchema),
+});
 export const TrialScoringSchema = Schema.Struct({
   results: Schema.mutable(Schema.Array(ScoreResultSchema)),
+  metrics: Schema.optional(Schema.mutable(Schema.Array(MetricResultSchema))),
   checkpoints: Schema.optional(
     Schema.mutable(Schema.Array(CheckpointResultSchema)),
   ),

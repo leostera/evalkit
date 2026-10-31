@@ -4,6 +4,7 @@ import { monoClass, tableLinkClass } from './DataTable.js';
 import { scenarioHref } from './links.js';
 import { Link } from 'react-router-dom';
 import { DetailList } from './DetailList.js';
+import { formatDuration, formatMetric } from './run-columns.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
@@ -85,8 +86,21 @@ export function RunPage({
             ['Started', new Date(run.startedAt).toLocaleString()],
             [
               'Runtime',
-              run.durationMs === undefined ? '—' : `${run.durationMs}ms`,
+              run.durationMs === undefined
+                ? '—'
+                : formatDuration(run.durationMs)!,
             ],
+            ...(run.metrics ?? [])
+              .filter((metric) => metric.mean !== undefined)
+              .map(
+                (metric) =>
+                  [
+                    metric.count > 1 ? `Mean ${metric.name}` : metric.name,
+                    <span key={metric.name} className="tabular-nums">
+                      {formatMetric(metric.mean!, metric.unit)}
+                    </span>,
+                  ] as const,
+              ),
             ['Commit', <CommitLabel key="commit" source={run.source} />],
           ]}
         />

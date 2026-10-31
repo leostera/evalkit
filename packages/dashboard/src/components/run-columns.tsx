@@ -141,9 +141,24 @@ export function formatScore(score: number | undefined): string {
 
 export function formatDuration(ms: number | undefined): string | undefined {
   if (ms === undefined) return undefined;
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+/** `ms` reads as a duration, large counts compactly (`399k`), the rest as numbers. */
+export function formatMetric(value: number, unit?: string): string {
+  if (unit === 'ms') return formatDuration(value)!;
+  const number =
+    Math.abs(value) >= 10_000
+      ? new Intl.NumberFormat('en', {
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        }).format(value)
+      : Number.isInteger(value)
+        ? value.toLocaleString('en')
+        : value.toFixed(value < 10 ? 2 : 1);
+  return unit && unit !== 'tokens' ? `${number} ${unit}` : number;
 }
 
 /** The score, with how many trials it is over underneath. */

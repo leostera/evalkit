@@ -25,7 +25,8 @@ test('scenarios stay short, concrete and free of registries and JSON casts', asy
   expect(files.length).toBeGreaterThanOrEqual(20);
   for (const file of files) {
     const source = await readFile(file, 'utf8');
-    expect(source.trimEnd().split('\n').length).toBeLessThan(20);
+    // Short enough to read at a glance, imports and metrics included.
+    expect(source.trimEnd().split('\n').length).toBeLessThan(25);
     expect(source).not.toContain('JSON.parse');
     expect(source).not.toContain('as JsonValue');
     expect(source).not.toContain('registerEvals');
