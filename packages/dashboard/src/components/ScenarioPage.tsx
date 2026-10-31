@@ -1,3 +1,4 @@
+import { ComparePivot } from './ComparePivot.js';
 import { Button, LayerCard, Table } from '@cloudflare/kumo';
 import { PlayIcon } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
@@ -134,6 +135,7 @@ export function ScenarioPage({
           />
         </section>
       ) : null}
+      <ComparePivot runs={scenarioRuns} order={matrix?.parameters} />
       <section aria-label="Runs" className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-kumo-strong">
           Runs{' '}

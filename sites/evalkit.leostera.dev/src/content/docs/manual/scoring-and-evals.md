@@ -188,7 +188,7 @@ A metric receives the same context as a final scorer and runs after the scorers.
 
 EvalKit also records three metrics for every trial: **agent time** (first event to the last one before final scoring), **tokens** (summed from `turn-completed` usage, only when the agent reports it) and **tool calls**. Scenario metrics may not reuse these names.
 
-Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set.
+Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set. A scenario's **Compare** table can show any metric by matrix parameter.
 
 ### Partial execution and errors
 
