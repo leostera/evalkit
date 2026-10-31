@@ -1,16 +1,38 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ArtifactEntry, TrialWriter } from '@evalkit/core';
+import {
+  DEFAULT_ARTIFACT_EXCLUDE,
+  globMatcher,
+  type ArtifactEntry,
+  type TrialWriter,
+} from '@evalkit/core';
+
+/** A pattern without `/` matches a name at any depth, like `.gitignore`. */
+export function excludeMatcher(
+  patterns: readonly string[],
+): (relativePath: string) => boolean {
+  const matchers = patterns.map((pattern) => {
+    const trimmed = pattern.replace(/^\.\//, '').replace(/\/$/, '');
+    const match = globMatcher(trimmed);
+    return trimmed.includes('/')
+      ? match
+      : (relativePath: string) => match(path.posix.basename(relativePath));
+  });
+  return (relativePath) => matchers.some((match) => match(relativePath));
+}
 
 /**
- * Copies every regular file in the candidate workspace into the trial report.
- * Symbolic links are rejected so snapshots cannot follow paths outside the trial.
+ * Copies the candidate workspace's regular files into the trial report,
+ * leaving out excluded paths. Symbolic links and special files are skipped,
+ * never followed, so a snapshot cannot read outside the trial.
  */
 export async function snapshotCandidateWorkspace(
   candidateRoot: string,
   writer: TrialWriter,
+  exclude: readonly string[] = DEFAULT_ARTIFACT_EXCLUDE,
 ): Promise<ArtifactEntry[]> {
   const artifacts: ArtifactEntry[] = [];
+  const excluded = excludeMatcher(exclude);
 
   async function visit(
     directory: string,
@@ -22,13 +44,9 @@ export async function snapshotCandidateWorkspace(
     for (const entry of entries) {
       const absolutePath = path.join(directory, entry.name);
       const relativePath = path.join(relativeDirectory, entry.name);
+      if (excluded(relativePath.split(path.sep).join('/'))) continue;
       const stat = await lstat(absolutePath);
-
-      if (stat.isSymbolicLink()) {
-        throw new Error(
-          `Candidate workspace contains a symbolic link: ${relativePath}`,
-        );
-      }
+      if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
         artifacts.push({
           path: path.join('candidate', relativePath),
@@ -37,11 +55,7 @@ export async function snapshotCandidateWorkspace(
         await visit(absolutePath, relativePath);
         continue;
       }
-      if (!stat.isFile()) {
-        throw new Error(
-          `Candidate workspace contains an unsupported entry: ${relativePath}`,
-        );
-      }
+      if (!stat.isFile()) continue;
 
       const data = await readFile(absolutePath);
       const artifactPath = path.join('candidate', relativePath);

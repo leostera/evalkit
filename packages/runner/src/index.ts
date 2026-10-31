@@ -33,6 +33,7 @@ import {
   type RunMetadata,
   type RunCatalog,
   type RunSource,
+  type KeepSandboxes,
   type MetricResult,
   type ScoreResult,
   type TrialScoring,
@@ -90,6 +91,10 @@ export type RunEvalOptions = {
   semaphore?: Effect.Semaphore;
   /** Base directory for persistent local trial workspaces. Omit for an ephemeral OS temp workspace. */
   workspaceRoot?: string;
+  /** With `workspaceRoot`: which trial workspaces to keep afterwards. Default `'failed'`. */
+  keepWorkspaces?: KeepSandboxes;
+  /** Candidate paths left out of the artifact snapshot. Default `DEFAULT_ARTIFACT_EXCLUDE`. */
+  artifactExclude?: readonly string[];
   /** Repository and commit the eval code came from, recorded in the manifest. */
   source?: RunSource;
   /** The project's evals and suites at run time, saved beside the manifest. */
@@ -476,7 +481,10 @@ async function runTrial(
         }),
         (created) =>
           Effect.tryPromise({
-            try: () => created.cleanup(),
+            try: () =>
+              created.cleanup(
+                keepWorkspace(options.keepWorkspaces, scoring?.passed === true),
+              ),
             catch: (cause) =>
               new DatasetError({
                 cause,
@@ -611,6 +619,7 @@ async function runTrial(
         artifacts = await snapshotCandidateWorkspace(
           workspace.artifacts.candidate.root,
           trialWriter,
+          options.artifactExclude,
         );
       } catch (captureError) {
         if (!primaryError) primaryError = captureError;
@@ -709,4 +718,12 @@ function trialCounts(
     else failed++;
   }
   return { passed, failed, cancelled: cancelledTrials };
+}
+
+/** Persistent workspaces of trials that did not pass are kept for debugging by default. */
+function keepWorkspace(
+  policy: KeepSandboxes = 'failed',
+  passed: boolean,
+): boolean {
+  return policy === 'all' || (policy === 'failed' && !passed);
 }

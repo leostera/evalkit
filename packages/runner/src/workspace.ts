@@ -10,7 +10,8 @@ import {
 
 export type TrialWorkspace = {
   artifacts: ArtifactView;
-  cleanup(): Promise<void>;
+  /** Removes the workspace; a persistent one survives when `keep` is true. */
+  cleanup(keep?: boolean): Promise<void>;
 };
 
 function trialDirectoryName(trialId: string): string {
@@ -53,10 +54,11 @@ export async function createTrialWorkspace(
     }
     return {
       artifacts,
-      // Persistent local workspaces are intentionally retained for debugging.
-      cleanup: persistent
-        ? async () => {}
-        : () => rm(root, { recursive: true, force: true }),
+      // Persistent local workspaces may be kept for debugging; temporary ones never are.
+      cleanup: async (keep = false) => {
+        if (persistent && keep) return;
+        await rm(root, { recursive: true, force: true });
+      },
     };
   } catch (error) {
     await rm(root, { recursive: true, force: true });

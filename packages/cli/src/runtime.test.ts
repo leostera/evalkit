@@ -1,10 +1,6 @@
 import { expect, test } from 'bun:test';
-import {
-  assertSupportedRuntime,
-  globMatcher,
-  serve,
-  serveFromPort,
-} from './runtime.js';
+import { globMatcher } from '@evalkit/core';
+import { assertSupportedRuntime, serve, serveFromPort } from './runtime.js';
 
 test('discovery globs match like the default includes and excludes', () => {
   const evals = globMatcher('**/*.eval.ts');

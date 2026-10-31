@@ -11,8 +11,10 @@ import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);
 export {
+  DEFAULT_ARTIFACT_EXCLUDE,
   defineConfig,
   type EvalkitConfig,
+  type KeepSandboxes,
   type ShareConfig,
   type ShareHeaders,
 } from './config.js';
@@ -507,6 +509,7 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
 }
 
 export { defineEvalMatrix, canonicalParameters } from './matrix.js';
+export { globMatcher } from './glob.js';
 export type { EvalMatrix, EvalMatrixCell, MatrixSelection } from './matrix.js';
 import type { EvalMatrix } from './matrix.js';
 

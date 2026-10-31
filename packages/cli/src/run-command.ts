@@ -322,6 +322,8 @@ export async function runProjectCommand(
           catalog: runCatalog(registry, project.root),
           report: localReportStore(reportDir),
           workspaceRoot: sandboxDir,
+          keepWorkspaces: project.config.keepSandboxes,
+          artifactExclude: project.config.artifacts?.exclude,
           signal: controller.signal,
           onEvent: (trial, event) => reporter.onEvent(trial, event),
           onResult: (cell, result) => {

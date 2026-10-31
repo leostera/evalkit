@@ -13,6 +13,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ### Changed
 
+- **Smaller results.** Candidate snapshots leave out dependencies, build output and VCS metadata (`.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`); set `artifacts.exclude` to change the list. Sandboxes in `_evalkit-sandbox/` are kept only for trials that did not pass; set `keepSandboxes: 'all' | 'none'` to change that.
 - **Breaking:** the `{{randomSeed}}` placeholder in user messages is removed; use `user(({ seed }) => `... ${seed} ...`)`.
 
 - `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.
@@ -21,6 +22,8 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A symbolic link or special file in the candidate workspace no longer fails the trial's snapshot; it is skipped, never followed.
+- `evalkit dev` honours `sandboxDir` for runs started from the dashboard.
 - `evalkit new` accepts any directory, such as `./ocaml.ai` or a nested path; the package name is made npm-safe (`ocaml-ai`).
 - `run --dry-run` lists the scenarios a matrix will run instead of `"evals": []`.
 - An empty scenario file reports `scenarios/x.eval.ts is empty` instead of a missing default export.

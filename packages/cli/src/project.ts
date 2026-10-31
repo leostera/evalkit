@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, dirname, relative, sep } from 'node:path';
-import { globMatcher, importProjectModule } from './runtime.js';
+import { importProjectModule } from './runtime.js';
 import {
   defineEvalMatrix,
   defineSuite,
@@ -12,6 +12,7 @@ import {
   type RecordedError,
   type EvalkitConfig,
   type EvalRegistry,
+  globMatcher,
 } from '@evalkit/core';
 
 const defaultInclude = ['**/*.eval.ts', '**/*.eval.js'];

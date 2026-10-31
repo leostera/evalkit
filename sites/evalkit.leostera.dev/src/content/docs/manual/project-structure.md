@@ -79,7 +79,7 @@ The generated project already has one `evalkit.config.ts` with a `styles` matrix
 
 ```ts
 // evalkit.config.ts
-import { defineConfig } from '@leostera/evalkit';
+import { DEFAULT_ARTIFACT_EXCLUDE, defineConfig } from '@leostera/evalkit';
 
 export default defineConfig({
   testDir: 'scenarios',
@@ -90,18 +90,23 @@ export default defineConfig({
   execution: { concurrency: 4, trials: 2, maxCells: 100 },
   reportDir: '_evalkit-results',
   sandboxDir: '_evalkit-sandbox',
+  keepSandboxes: 'failed',
+  // Replaces the default; spread DEFAULT_ARTIFACT_EXCLUDE to extend it.
+  artifacts: { exclude: [...DEFAULT_ARTIFACT_EXCLUDE, 'dist', '*.log'] },
 });
 ```
 
-| Setting                         | Effect                                                                                                                                                         |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `testDir`, `include`, `exclude` | Change the directory (default `scenarios`) and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive. |
-| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                     |
-| `registry`                      | Supply an explicit `registerEvals(...)` registry. Takes precedence over `evals` and discovery.                                                                 |
-| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/).      |
-| `discovery.suites`              | `false` stops directories from forming suites. Default `true`.                                                                                                 |
-| `execution`                     | Defaults for cell concurrency (4), trial override (otherwise each eval's policy), and maximum cells (100). Values must be positive integers.                   |
-| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                     |
+| Setting                         | Effect                                                                                                                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testDir`, `include`, `exclude` | Change the directory (default `scenarios`) and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive.                                                                  |
+| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                                                                                      |
+| `registry`                      | Supply an explicit `registerEvals(...)` registry. Takes precedence over `evals` and discovery.                                                                                                                                  |
+| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/).                                                                       |
+| `discovery.suites`              | `false` stops directories from forming suites. Default `true`.                                                                                                                                                                  |
+| `execution`                     | Defaults for cell concurrency (4), trial override (otherwise each eval's policy), and maximum cells (100). Values must be positive integers.                                                                                    |
+| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                                                                                      |
+| `keepSandboxes`                 | Which trial workspaces stay in `sandboxDir` after a run: `'failed'` (default, trials that did not pass), `'all'` or `'none'`.                                                                                                   |
+| `artifacts.exclude`             | Candidate paths left out of each trial's saved snapshot. A pattern without `/` matches that name at any depth. Default `DEFAULT_ARTIFACT_EXCLUDE`: `.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`. |
 
 Without a config, a default export from `src/registry.ts` is accepted as a legacy explicit registry. Once a config exists, that implicit registry is **not** loaded: set `registry` in the config to use it. `registry` > `evals` > discovery is the selection order. Prefer discovery for ordinary projects; use a registry only when you need full control over suites or explicitly registered matrices.
 

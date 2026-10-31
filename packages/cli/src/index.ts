@@ -93,7 +93,7 @@ import {
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
-const sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
+let sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
 let project: Awaited<ReturnType<typeof loadProject>> | undefined;
 
 async function loadRegistry(): Promise<EvalRegistry> {
@@ -130,6 +130,8 @@ async function runEvals(options: {
               runEval(evaluation!, {
                 report: localReportStore(reportRoot),
                 workspaceRoot: sandboxRoot,
+                keepWorkspaces: project?.config?.keepSandboxes,
+                artifactExclude: project?.config?.artifacts?.exclude,
                 suiteId: options.suiteId,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
@@ -264,6 +266,8 @@ function registerMatrixRoutes(
                 ...(suiteId ? { suiteId } : {}),
                 report: localReportStore(reportRoot),
                 workspaceRoot: sandboxRoot,
+                keepWorkspaces: project?.config?.keepSandboxes,
+                artifactExclude: project?.config?.artifacts?.exclude,
                 ...provenance,
                 onResult: (cell, result) =>
                   runLog.cell(cell, result, performance.now() - started),
@@ -497,6 +501,10 @@ async function useProject(configPath: string | undefined): Promise<void> {
   reportRoot = resolve(
     projectRoot,
     project.config.reportDir ?? '_evalkit-results',
+  );
+  sandboxRoot = resolve(
+    projectRoot,
+    project.config.sandboxDir ?? '_evalkit-sandbox',
   );
 }
 

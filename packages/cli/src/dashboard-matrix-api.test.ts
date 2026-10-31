@@ -56,7 +56,12 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
       }
       await Bun.sleep(50);
     }
-    expect(ready).toBe(true);
+    if (!ready) {
+      child.kill();
+      throw new Error(
+        `dev did not start: ${await new Response(child.stderr).text()}`,
+      );
+    }
     expect(await (await fetch(`${url}/v1/matrix`)).json()).toEqual({
       matrix: {
         id: 'benchmark',

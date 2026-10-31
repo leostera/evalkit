@@ -94,14 +94,8 @@ export async function evaluateFinalScorers(
   definition: EvalDefinition,
   input: FinalScoringInput,
 ): Promise<void> {
-  const {
-    context,
-    workspace,
-    results,
-    skippedScorers,
-    now,
-    emitRunner,
-  } = input;
+  const { context, workspace, results, skippedScorers, now, emitRunner } =
+    input;
   for (const scorer of definition.scoring) {
     if (
       input.cancelled ||
