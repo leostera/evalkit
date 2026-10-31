@@ -2,7 +2,15 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
-## [Unreleased]
+## [0.7.0] - 2026-10-31
+
+Metrics, computed prompts, comparing runs by parameter, smaller results, and a clearer command line. This release has breaking changes; see [Migrating from 0.6](#migrating-from-06).
+
+### Migrating from 0.6
+
+1. **Environment variables are flags.** Replace `PORT=n evalkit dev` with `evalkit dev -p n`, `EVALKIT_NO_OPEN=1` with `--no-open`, `EVALKIT_LOG_LEVEL=info` with `--log-level info`, and `EVALKIT_SHARE_URL=…` with `share --server …` / `compare --server …` (or `share.url` in the config).
+2. **`{{randomSeed}}`** in a user message becomes a function: `user(({ seed }) => `Pick number ${seed}.`)`.
+3. **Snapshots and sandboxes.** Trial snapshots no longer include `node_modules`, `.git`, build output and the like, and `_evalkit-sandbox/` keeps only trials that did not pass. If a scorer or your tooling read those, set `artifacts.exclude` or `keepSandboxes: 'all'`.
 
 ### Added
 
@@ -16,11 +24,10 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 ### Changed
 
 - **Smaller results.** Candidate snapshots leave out dependencies, build output and VCS metadata (`.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`); set `artifacts.exclude` to change the list. Sandboxes in `_evalkit-sandbox/` are kept only for trials that did not pass; set `keepSandboxes: 'all' | 'none'` to change that. `evalkit tidy` removes the sandboxes this setting would not keep, freeing space used by earlier versions.
-- **Breaking:** the `{{randomSeed}}` placeholder in user messages is removed; use `user(({ seed }) => `... ${seed} ...`)`.
-
 - `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.
 - **A clearer command line.** Every command and flag has a description in `--help`, with examples; common flags have short forms (`-c`, `-e`, `-s`, `-m`, `-n`, `-j`, `-v`, `-p`, `-o`, `-b`, `-d`); `--opt=value` works; a mistyped command suggests the right one (`Did you mean run?`); and `evalkit help <command>` works.
 - **Breaking:** settings that were environment variables are flags: `dev --port <n>` (`-p`, used exactly) replaces `PORT`, `dev --no-open` replaces `EVALKIT_NO_OPEN=1`, `--log-level <level>` on `run`, `dev` and `build` replaces `EVALKIT_LOG_LEVEL`, and `share --server <url>` / `compare --server <url>` replace `EVALKIT_SHARE_URL`. `EVALKIT_SOURCE_*` (commit provenance outside GitHub and GitLab CI) and `EVALKIT_RUNTIME` stay environment variables.
+- **Breaking:** the `{{randomSeed}}` placeholder in user messages is removed; use `user(({ seed }) => `... ${seed} ...`)`.
 
 ### Fixed
 
@@ -175,7 +182,7 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[Unreleased]: https://github.com/leostera/evalkit/compare/1ca784e...main
+[0.7.0]: https://github.com/leostera/evalkit/compare/1ca784e...main
 [0.6.1]: https://github.com/leostera/evalkit/compare/91c2c86...1ca784e
 [0.6.0]: https://github.com/leostera/evalkit/compare/99008d5...91c2c86
 [0.5.0]: https://github.com/leostera/evalkit/compare/49ad689...99008d5

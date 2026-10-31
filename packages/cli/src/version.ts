@@ -1,2 +1,2 @@
 /** The CLI version; kept in sync with package.json when releasing. */
-export const VERSION = '0.6.1';
+export const VERSION = '0.7.0';
