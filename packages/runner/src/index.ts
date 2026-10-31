@@ -11,6 +11,7 @@ import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
   agentRuntimes,
+  DEFAULT_ARTIFACT_EXCLUDE,
   normalizeAutEvent,
   recordError,
   resourceUri,
@@ -93,7 +94,10 @@ export type RunEvalOptions = {
   workspaceRoot?: string;
   /** With `workspaceRoot`: which trial workspaces to keep afterwards. Default `'failed'`. */
   keepWorkspaces?: KeepSandboxes;
-  /** Candidate paths left out of the artifact snapshot. Default `DEFAULT_ARTIFACT_EXCLUDE`. */
+  /**
+   * Candidate paths left out of the artifact snapshot, before the scenario's
+   * own `workspace.ignore`. Default `DEFAULT_ARTIFACT_EXCLUDE`.
+   */
   artifactExclude?: readonly string[];
   /** Repository and commit the eval code came from, recorded in the manifest. */
   source?: RunSource;
@@ -387,6 +391,10 @@ async function runTrial(
   }
   const candidateData = datasetValues(prepared, 'candidate');
   const scoringData = datasetValues(prepared, 'all');
+  const workspaceIgnore = [
+    ...(options.artifactExclude ?? DEFAULT_ARTIFACT_EXCLUDE),
+    ...(definition.workspace?.ignore ?? []),
+  ];
   const events: TrajectoryEvent[] = [];
   const runWriter =
     options.runWriter ??
@@ -406,6 +414,7 @@ async function runTrial(
     parameters: options.parameters,
     matrix: options.matrix,
     startedAt,
+    workspaceIgnore,
     ...(prepared.length ? { datasets: trialDatasets(prepared) } : {}),
   });
 
@@ -619,7 +628,7 @@ async function runTrial(
         artifacts = await snapshotCandidateWorkspace(
           workspace.artifacts.candidate.root,
           trialWriter,
-          options.artifactExclude,
+          workspaceIgnore,
         );
       } catch (captureError) {
         if (!primaryError) primaryError = captureError;

@@ -17,7 +17,7 @@ import {
   type TrialWriter,
 } from '@evalkit/core';
 import { Effect } from 'effect';
-import { excludeMatcher, snapshotCandidateWorkspace } from './snapshot.js';
+import { ignoreRules, snapshotCandidateWorkspace } from './snapshot.js';
 import { localReportStore, runEval } from './index.js';
 
 const roots: string[] = [];
@@ -32,14 +32,33 @@ async function directory(): Promise<string> {
   return root;
 }
 
-test('exclude patterns: bare names match at any depth, paths match from the root', () => {
-  const excluded = excludeMatcher(['_build', 'docs/drafts', '*.log']);
-  expect(excluded('_build')).toBe(true);
-  expect(excluded('hello/_build')).toBe(true);
-  expect(excluded('hello/build.ml')).toBe(false);
-  expect(excluded('docs/drafts')).toBe(true);
-  expect(excluded('other/docs/drafts')).toBe(false);
-  expect(excluded('logs/run.log')).toBe(true);
+test('ignore patterns: bare names match at any depth, paths match from the root', () => {
+  const rules = ignoreRules(['_build', 'docs/drafts', '*.log']);
+  expect(rules.ignored('_build')).toBe(true);
+  expect(rules.ignored('hello/_build')).toBe(true);
+  expect(rules.ignored('hello/build.ml')).toBe(false);
+  expect(rules.ignored('docs/drafts')).toBe(true);
+  expect(rules.ignored('other/docs/drafts')).toBe(false);
+  expect(rules.ignored('logs/run.log')).toBe(true);
+});
+
+test('ignore patterns: later patterns win, and ! re-includes below an ignored directory', () => {
+  const rules = ignoreRules([
+    '_build',
+    '!_build/doc/**',
+    '_build/doc/**/*.tmp',
+  ]);
+  expect(rules.ignored('_build')).toBe(true);
+  expect(rules.ignored('_build/default/main.exe', true)).toBe(true);
+  expect(rules.ignored('_build/doc/index.html', true)).toBe(false);
+  expect(rules.ignored('_build/doc/x.tmp', true)).toBe(true);
+  expect(rules.mayReinclude('_build')).toBe(true);
+  expect(rules.mayReinclude('_build/doc')).toBe(true);
+  expect(rules.mayReinclude('_build/default')).toBe(false);
+  expect(rules.mayReinclude('node_modules')).toBe(false);
+  // A path inherits its directory's state unless a pattern says otherwise.
+  expect(rules.ignored('src/main.ml', false)).toBe(false);
+  expect(ignoreRules(['!keep']).mayReinclude('anything')).toBe(true);
 });
 
 test('snapshots skip excluded paths and symbolic links instead of failing', async () => {
@@ -60,6 +79,118 @@ test('snapshots skip excluded paths and symbolic links instead of failing', asyn
     'candidate/hello',
     'candidate/hello/main.ml',
   ]);
+});
+
+test('snapshots walk an ignored directory only to keep re-included files', async () => {
+  const root = await directory();
+  await mkdir(join(root, 'app/_build/doc/geometry'), { recursive: true });
+  await mkdir(join(root, 'app/_build/default'), { recursive: true });
+  await mkdir(join(root, 'node_modules/dep'), { recursive: true });
+  await writeFile(join(root, 'app/main.ml'), 'let () = ()');
+  await writeFile(
+    join(root, 'app/_build/doc/geometry/index.html'),
+    '<h1>docs</h1>',
+  );
+  await writeFile(join(root, 'app/_build/default/main.exe'), 'binary');
+  await writeFile(join(root, 'node_modules/dep/index.js'), '');
+  const written: string[] = [];
+  const writer = {
+    writeArtifact: async (path: string) => {
+      written.push(path);
+    },
+  } as unknown as TrialWriter;
+  const artifacts = await snapshotCandidateWorkspace(root, writer, [
+    '_build',
+    'node_modules',
+    '!app/_build/doc/**',
+  ]);
+  expect(written).toEqual([
+    'candidate/app/_build/doc/geometry/index.html',
+    'candidate/app/main.ml',
+  ]);
+  expect(artifacts.map((entry) => entry.path)).toEqual([
+    'candidate/app',
+    'candidate/app/_build',
+    'candidate/app/_build/doc',
+    'candidate/app/_build/doc/geometry',
+    'candidate/app/_build/doc/geometry/index.html',
+    'candidate/app/main.ml',
+  ]);
+});
+
+test("a scenario's workspace.ignore comes after the project's and is recorded in the manifest", async () => {
+  const root = await directory();
+  const evaluation = defineEval({
+    id: 'docs',
+    agent: defineAgent({
+      async start({ context }) {
+        return {
+          send: async () => {
+            const docs = join(context.workspace.root, '_build/doc');
+            await mkdir(docs, { recursive: true });
+            await writeFile(join(docs, 'index.html'), 'docs');
+            await writeFile(
+              join(context.workspace.root, '_build/main.exe'),
+              'bin',
+            );
+            await writeFile(join(context.workspace.root, 'notes.tmp'), 'tmp');
+            return 'ok';
+          },
+        };
+      },
+    }),
+    transcript: [user('go')],
+    scoring: [predicate('verdict', () => true)],
+    workspace: { ignore: ['!_build/doc/**', '*.tmp'] },
+  });
+  const result = await Effect.runPromise(
+    runEval(evaluation, {
+      report: localReportStore(join(root, 'results')),
+      workspaceRoot: join(root, 'sandbox'),
+      artifactExclude: ['_build'],
+    }),
+  );
+  const trialDir = join(
+    root,
+    'results',
+    result.runId,
+    'trials',
+    result.trialId,
+  );
+  const manifest = JSON.parse(
+    await Bun.file(join(trialDir, 'manifest.json')).text(),
+  );
+  expect(manifest.workspaceIgnore).toEqual([
+    '_build',
+    '!_build/doc/**',
+    '*.tmp',
+  ]);
+  expect(
+    await readdir(join(trialDir, 'artifacts/candidate'), { recursive: true }),
+  ).toEqual(
+    expect.arrayContaining(['_build', '_build/doc', '_build/doc/index.html']),
+  );
+  const saved = await readdir(join(trialDir, 'artifacts/candidate'), {
+    recursive: true,
+  });
+  expect(saved).not.toContain('_build/main.exe');
+  expect(saved).not.toContain('notes.tmp');
+});
+
+test('workspace.ignore patterns must be non-empty globs', () => {
+  expect(() =>
+    defineEval({
+      id: 'bad',
+      agent: defineAgent({
+        async start() {
+          return { send: async () => 'ok' };
+        },
+      }),
+      transcript: [user('go')],
+      scoring: [],
+      workspace: { ignore: ['!'] },
+    }),
+  ).toThrow('workspace.ignore[0] must be a non-empty glob');
 });
 
 test('persistent workspaces are kept only for trials that did not pass, by default', async () => {

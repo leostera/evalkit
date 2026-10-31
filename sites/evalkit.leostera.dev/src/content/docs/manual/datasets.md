@@ -106,6 +106,18 @@ Each trial's manifest records, per dataset, its visibility, whether it is static
 
 ## Reports and sharing
 
-At trial end, EvalKit copies **regular files** from the candidate workspace to `trials/<trial-id>/artifacts/candidate/`. That snapshot is taken after the agent ran, not of the dataset as declared. Symbolic links and unsupported entries in the candidate tree fail the snapshot rather than being followed. Evaluator files are never copied, but their contents can still leak if your adapter emits them in events or writes them into the candidate workspace.
+At trial end, EvalKit copies **regular files** from the candidate workspace to `trials/<trial-id>/artifacts/candidate/`, leaving out the project's `artifacts.exclude` (dependencies, build output and VCS metadata by default). That snapshot is taken after the agent ran, not of the dataset as declared. Symbolic links and unsupported entries in the candidate tree fail the snapshot rather than being followed. What counts as noise depends on the scenario, so a scenario can add its own patterns with `workspace.ignore`. They are read like `.gitignore`: a pattern without `/` matches that name at any depth, later patterns win, and `!pattern` keeps a path. They come after the project's list, so a scenario whose evidence is build output can keep just that, even inside an ignored directory:
+
+```ts
+defineEval({
+  id: 'build-docs',
+  // …
+  workspace: { ignore: ['!app/_build/doc/**', '*.log'] },
+});
+```
+
+An ignored directory is only walked when a `!` pattern could keep something in it, so `node_modules` stays unread. The trial manifest records the effective list as `workspaceIgnore`.
+
+Evaluator files are never copied, but their contents can still leak if your adapter emits them in events or writes them into the candidate workspace.
 
 The dashboard's dataset pages show how each dataset is defined, the shape of its value (never the value itself), and a file explorer for static datasets' files. `evalkit build` lists every static dataset's files but copies only candidate datasets' contents. Reports may contain prompts, answers, and user data; [review retention and sharing](/docs/manual/results/#privacy-and-retention) before archiving them.

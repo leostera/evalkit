@@ -23,6 +23,7 @@ export type EvalkitConfig = {
      * Paths to leave out, as globs relative to the candidate workspace; a
      * pattern without `/` matches that name at any depth. Replaces the default,
      * `DEFAULT_ARTIFACT_EXCLUDE` (dependencies, build output, VCS metadata).
+     * A scenario's `workspace.ignore` patterns come after these.
      */
     exclude?: readonly string[];
   };

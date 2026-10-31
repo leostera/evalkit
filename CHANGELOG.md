@@ -2,6 +2,12 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Added
+
+- **Per-scenario snapshot ignores.** `defineEval({ workspace: { ignore: [...] } })` adds gitignore-style patterns after the project's `artifacts.exclude`, so each scenario decides what in its workspace is noise. Later patterns win, and `!pattern` keeps a path even inside an ignored directory: `['!_build/doc/**']` saves generated docs and drops the rest of `_build`. Ignored directories are walked only when a `!` pattern could keep something in them. Each trial manifest records the effective list as `workspaceIgnore`.
+
 ## [0.7.0] - 2026-10-31
 
 Metrics, computed prompts, comparing runs by parameter, smaller results, and a clearer command line. This release has breaking changes; see [Migrating from 0.6](#migrating-from-06).

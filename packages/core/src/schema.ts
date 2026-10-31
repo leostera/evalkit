@@ -86,6 +86,8 @@ export const TrialMetadataSchema = Schema.Struct({
   matrix: Schema.optional(MatrixCellSchema),
   aut: Schema.optional(AutIdentitySchema),
   startedAt: Schema.String,
+  /** The effective snapshot ignore patterns: the project's, then the scenario's. */
+  workspaceIgnore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   datasets: Schema.optional(
     Schema.mutable(
       Schema.Array(

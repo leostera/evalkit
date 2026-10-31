@@ -457,6 +457,20 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   policy?: EvalPolicy;
   /** Any JSON-convertible object; converted when the eval is defined. */
   metadata?: Record<string, unknown>;
+  workspace?: EvalWorkspace;
+};
+
+/** How EvalKit treats this scenario's candidate workspace. */
+export type EvalWorkspace = {
+  /**
+   * Paths to leave out of the trial's snapshot, read like `.gitignore`: globs
+   * relative to the workspace, where a pattern without `/` matches that name
+   * at any depth and later patterns win. They come after the project's
+   * `artifacts.exclude` (default `DEFAULT_ARTIFACT_EXCLUDE`), so `!pattern`
+   * can keep a path the project leaves out, even inside an ignored directory:
+   * `['!_build/doc/**']` keeps generated docs while dropping the rest of `_build`.
+   */
+  ignore?: readonly string[];
 };
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
@@ -467,6 +481,11 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
     );
   if (definition.metadata !== undefined)
     toJsonObject(definition.metadata, `${definition.id}.metadata`);
+  for (const [index, pattern] of (definition.workspace?.ignore ?? []).entries())
+    if (typeof pattern !== 'string' || pattern.replace(/^!/, '').trim() === '')
+      throw new Error(
+        `Eval ${definition.id} workspace.ignore[${index}] must be a non-empty glob, got ${JSON.stringify(pattern)}`,
+      );
   const datasetIds = new Set<string>();
   for (const [index, dataset] of (definition.datasets ?? []).entries()) {
     if (!isDataset(dataset))
@@ -707,6 +726,8 @@ export type TrialMetadata = {
   matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
+  /** The effective snapshot ignore patterns: the project's `artifacts.exclude`, then the scenario's `workspace.ignore`. */
+  workspaceIgnore?: string[];
   /** From schema version 5: the datasets this trial used, with content digests. */
   datasets?: TrialDataset[];
 };

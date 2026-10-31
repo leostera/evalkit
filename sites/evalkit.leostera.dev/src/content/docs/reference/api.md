@@ -18,18 +18,19 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 `EvalDefinition` fields:
 
-| Field        | Meaning                                                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                   |
-| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                     |
-| `agent`      | `AutAdapter`: the agent under test.                                                                                      |
-| `judge`      | `AutAdapter?`: A separate agent for `judge()` rules; required when there are any, and never the same as `agent`.         |
-| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                    |
-| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check. |
-| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                   |
-| `metrics`    | `Metric[]?`: numbers recorded per trial with `metric()`. They never affect pass or fail.                                 |
-| `policy`     | `EvalPolicy?`: `{ trials?, timeoutMs?, failfast? }`. `failfast` stops later steps after a failed checkpoint.             |
-| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                 |
+| Field        | Meaning                                                                                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                     |
+| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                       |
+| `agent`      | `AutAdapter`: the agent under test.                                                                                                                        |
+| `judge`      | `AutAdapter?`: A separate agent for `judge()` rules; required when there are any, and never the same as `agent`.                                           |
+| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                      |
+| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                   |
+| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                     |
+| `metrics`    | `Metric[]?`: numbers recorded per trial with `metric()`. They never affect pass or fail.                                                                   |
+| `policy`     | `EvalPolicy?`: `{ trials?, timeoutMs?, failfast? }`. `failfast` stops later steps after a failed checkpoint.                                               |
+| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                                                   |
+| `workspace`  | `EvalWorkspace?`: `{ ignore? }`. Gitignore-style globs left out of the trial's snapshot, after the project's `artifacts.exclude`; `!pattern` keeps a path. |
 
 ## Scoring
 
