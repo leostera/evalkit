@@ -28,7 +28,7 @@ bun run evalkit run --suite billing
 | `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` for a named matrix and `--suite <id>` for a suite. These selectors are mutually exclusive.                                |
 | `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                                |
 | `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                                    |
-| `tidy`              | Mark runs of evals that are no longer in the project as archived. See [Archiving removed evals](#archiving-removed-evals).                                                                                               |
+| `tidy`              | Mark runs of evals that are no longer in the project as archived, and remove sandboxes `keepSandboxes` would not keep. See [Archiving removed evals](#archiving-removed-evals).                                          |
 | `compare`           | Compare this commit's results with a base commit's. See [Comparing against a base](#comparing-against-a-base).                                                                                                           |
 | `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                        |
 
@@ -247,3 +247,5 @@ To try it without Cloudflare, `bun run evalkit share serve` runs the same server
 ## Archiving removed evals
 
 `bun run evalkit tidy` compares saved runs with the evals the project defines today (standalone, in suites, or only in matrices). Runs of evals that no longer exist are marked **archived** by writing `archived.json` into the run directory; nothing is deleted. Archived runs are hidden in `evalkit dev` (turn on **Show archived** in the runs filters) and left out of `evalkit build`. Running `tidy` again after an eval returns restores its runs; delete `archived.json` to restore a single run by hand.
+
+`tidy` also removes trial workspaces from `sandboxDir` that the project's `keepSandboxes` setting would not have kept: those of passed trials by default, or of every finished trial with `'none'`. This frees sandboxes kept by earlier versions, which kept them all. Unfinished trials and folders without a report are left alone; reports are never deleted.

@@ -228,7 +228,9 @@ export function createProgram(actions: Actions): Command {
 
   program
     .command('tidy')
-    .description('archive runs of scenarios that are no longer in the project')
+    .description(
+      'archive runs of scenarios no longer in the project, and remove sandboxes keepSandboxes would not keep',
+    )
     .addOption(configOption())
     .action((options: { config?: string }) => actions.tidy(options));
 

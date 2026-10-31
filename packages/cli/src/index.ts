@@ -27,7 +27,7 @@ import {
   printLoadErrors,
   runProjectCommand,
 } from './run-command.js';
-import { tidyReports } from './tidy.js';
+import { tidyReports, tidySandboxes } from './tidy.js';
 import {
   detectSource,
   projectInfo,
@@ -707,6 +707,21 @@ async function tidyAction(options: { config?: string }): Promise<void> {
     (value) =>
       `${plural(value.current + value.archived.length + value.stillArchived, 'run')} checked`,
   );
+  const sandboxes = await step(
+    'Sandboxes',
+    () =>
+      tidySandboxes({
+        registry: project!.registry,
+        reportRoot,
+        sandboxRoot,
+        keep: project!.config.keepSandboxes,
+      }),
+    (value) => {
+      const keep = project!.config.keepSandboxes ?? 'failed';
+      if (keep === 'all') return "all kept (keepSandboxes: 'all')";
+      return `${plural(value.removed, 'workspace')} of ${keep === 'none' ? 'finished' : 'passed'} trials removed`;
+    },
+  );
   const byEval = (entries: { evalId: string }[]) =>
     [
       ...entries
@@ -730,13 +745,13 @@ async function tidyAction(options: { config?: string }): Promise<void> {
     console.log(
       `  ${cyan('◆')} Restored ${plural(result.restored.length, 'run')} whose eval is back:\n${byEval(result.restored)}`,
     );
-  if (!result.archived.length && !result.restored.length)
+  if (!result.archived.length && !result.restored.length && !sandboxes.removed)
     console.log(`  ${cyan('✓')} Nothing new to tidy.`);
   const totalArchived = result.archived.length + result.stillArchived;
   if (totalArchived)
     console.log(
       `\n  ${dim(`Archived runs (${totalArchived}) are hidden in \`evalkit dev\` (filter "Show archived")`)}\n` +
-        `  ${dim('and left out of `evalkit build`. Nothing was deleted.')}`,
+        `  ${dim('and left out of `evalkit build`. No reports were deleted.')}`,
     );
   console.log('');
 }

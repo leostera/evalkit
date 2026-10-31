@@ -6,13 +6,14 @@ import { Effect } from 'effect';
 import {
   defineEval,
   defineEvalMatrix,
+  predicate,
   registerEvals,
   user,
   type EvalDefinition,
 } from '@evalkit/core';
-import { localReportStore, runEval } from '@evalkit/runner';
+import { localReportStore, runEval, trialWorkspacePath } from '@evalkit/runner';
 import { createDashboardReportReader } from './dashboard-reports.js';
-import { projectEvalIds, tidyReports } from './tidy.js';
+import { projectEvalIds, tidyReports, tidySandboxes } from './tidy.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -85,4 +86,49 @@ test('tidy archives runs of removed evals, is idempotent, and restores returning
   expect(restored.restored.map((entry) => entry.evalId)).toEqual(['gone']);
   // Archiving only ever adds or removes the marker; reports stay intact.
   await stat(join(reportRoot, restored.restored[0]!.runId, 'manifest.json'));
+});
+
+test('tidy removes sandboxes of passed trials and keeps failed ones', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'evalkit-tidy-sandbox-'));
+  roots.push(root);
+  const reportRoot = join(root, '_evalkit-results');
+  const sandboxRoot = join(root, '_evalkit-sandbox');
+  const scenario = (id: string, passes: boolean) =>
+    defineEval({
+      ...make(id),
+      scoring: [predicate('verdict', () => passes)],
+    });
+  // Kept by the runner, as runs before keepSandboxes did.
+  const run = (evaluation: EvalDefinition) =>
+    Effect.runPromise(
+      runEval(evaluation, {
+        report: localReportStore(reportRoot),
+        workspaceRoot: sandboxRoot,
+        keepWorkspaces: 'all',
+      }),
+    );
+  const passed = await run(scenario('passes', true));
+  const failed = await run(scenario('fails', false));
+  const registry = registerEvals([
+    scenario('passes', true),
+    scenario('fails', false),
+  ]);
+  const exists = (trialId: string) =>
+    stat(trialWorkspacePath(sandboxRoot, trialId)).then(
+      () => true,
+      () => false,
+    );
+
+  expect(
+    await tidySandboxes({ registry, reportRoot, sandboxRoot, keep: 'all' }),
+  ).toEqual({ removed: 0 });
+  expect(await tidySandboxes({ registry, reportRoot, sandboxRoot })).toEqual({
+    removed: 1,
+  });
+  expect(await exists(passed.trialId)).toBe(false);
+  expect(await exists(failed.trialId)).toBe(true);
+  expect(
+    await tidySandboxes({ registry, reportRoot, sandboxRoot, keep: 'none' }),
+  ).toEqual({ removed: 1 });
+  expect(await exists(failed.trialId)).toBe(false);
 });

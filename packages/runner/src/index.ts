@@ -727,3 +727,5 @@ function keepWorkspace(
 ): boolean {
   return policy === 'all' || (policy === 'failed' && !passed);
 }
+
+export { trialWorkspacePath } from './workspace.js';

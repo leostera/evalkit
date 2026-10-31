@@ -14,7 +14,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ### Changed
 
-- **Smaller results.** Candidate snapshots leave out dependencies, build output and VCS metadata (`.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`); set `artifacts.exclude` to change the list. Sandboxes in `_evalkit-sandbox/` are kept only for trials that did not pass; set `keepSandboxes: 'all' | 'none'` to change that.
+- **Smaller results.** Candidate snapshots leave out dependencies, build output and VCS metadata (`.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`); set `artifacts.exclude` to change the list. Sandboxes in `_evalkit-sandbox/` are kept only for trials that did not pass; set `keepSandboxes: 'all' | 'none'` to change that. `evalkit tidy` removes the sandboxes this setting would not keep, freeing space used by earlier versions.
 - **Breaking:** the `{{randomSeed}}` placeholder in user messages is removed; use `user(({ seed }) => `... ${seed} ...`)`.
 
 - `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.

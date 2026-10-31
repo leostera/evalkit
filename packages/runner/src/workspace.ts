@@ -14,8 +14,12 @@ export type TrialWorkspace = {
   cleanup(keep?: boolean): Promise<void>;
 };
 
-function trialDirectoryName(trialId: string): string {
-  return trialId.replace(/[^a-zA-Z0-9._-]/g, '_');
+/** Where a trial's persistent workspace lives below `root`. */
+export function trialWorkspacePath(root: string, trialId: string): string {
+  return path.join(
+    path.resolve(root),
+    trialId.replace(/[^a-zA-Z0-9._-]/g, '_'),
+  );
 }
 
 /**
@@ -29,7 +33,7 @@ export async function createTrialWorkspace(
   persistentRoot?: string,
 ): Promise<TrialWorkspace> {
   const root = persistentRoot
-    ? path.join(path.resolve(persistentRoot), trialDirectoryName(trialId))
+    ? trialWorkspacePath(persistentRoot, trialId)
     : await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
   const persistent = persistentRoot !== undefined;
   const artifacts: ArtifactView = {
