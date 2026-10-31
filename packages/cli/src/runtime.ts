@@ -79,7 +79,7 @@ export async function serveFromPort(
     }
   }
   throw new Error(
-    `Ports ${first}–${first + attempts - 1} are all in use. Choose one: PORT=<port> evalkit dev`,
+    `Ports ${first}–${first + attempts - 1} are all in use. Choose one with --port.`,
   );
 }
 

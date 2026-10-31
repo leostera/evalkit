@@ -502,35 +502,36 @@ async function useProject(configPath: string | undefined): Promise<void> {
   );
 }
 
-const DEFAULT_DASHBOARD_PORT = 4317;
-
 /**
- * An explicit PORT is honoured exactly; without one, `dev` takes the first
- * free port from 4317 so several projects can run side by side.
+ * `--port` is honoured exactly; without it the server takes the first free
+ * port from `from`, so several projects can run side by side.
  */
-async function serveDashboardPort(
+async function listen(
   fetch: Parameters<typeof serve>[0],
-  requested: string | undefined,
+  port: number | undefined,
+  from: number,
 ): Promise<Server> {
-  if (requested === undefined || requested === '')
-    return serveFromPort(fetch, DEFAULT_DASHBOARD_PORT);
-  const port = Number(requested);
+  if (port === undefined) return serveFromPort(fetch, from);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
-    throw new Error(
-      `PORT must be a port number, got ${JSON.stringify(requested)}`,
-    );
+    throw new Error(`--port must be a port number, got ${port}`);
   try {
     return await serve(fetch, port);
   } catch (error) {
     if ((error as { code?: string }).code === 'EADDRINUSE')
       throw new Error(
-        `Port ${port} is already in use. Stop the other server, choose another PORT, or unset PORT to use the next free port.`,
+        `Port ${port} is already in use. Stop the other server, pick another --port, or leave it out to use the next free port.`,
       );
     throw error;
   }
 }
 
-async function serveDashboard(): Promise<void> {
+async function serveDashboard({
+  port,
+  open,
+}: {
+  port?: number;
+  open: boolean;
+}): Promise<void> {
   const registry = await loadRegistry();
   const dashboardRoot = dashboardAssets();
   const app = new Hono();
@@ -549,7 +550,7 @@ async function serveDashboard(): Promise<void> {
     createDashboardReportReader(reportRoot, registry),
   );
   registerDashboardAssets(app, dashboardRoot);
-  const server = await serveDashboardPort(app.fetch, process.env.PORT);
+  const server = await listen(app.fetch, port, 4317);
   const url = `http://localhost:${server.port}`;
   const reader = createDashboardReportReader(reportRoot, registry);
   const runs = (await reader.listRuns()).length;
@@ -574,7 +575,7 @@ async function serveDashboard(): Promise<void> {
   console.log(
     `\n  ${dim('Runs started from the dashboard are logged below. Press Ctrl+C to stop.')}\n`,
   );
-  if (process.env.EVALKIT_NO_OPEN !== '1') openInBrowser(url);
+  if (open) openInBrowser(url);
 }
 
 /* The command tree and its option/argument parsing are owned by @effect/cli. */
@@ -681,14 +682,33 @@ const newCommand = Command.make(
       catch: (error) => error,
     }),
 );
-const devCommand = Command.make('dev', { config }, ({ config }) =>
-  Effect.tryPromise({
-    try: async () => {
-      await useProject(Option.getOrUndefined(config));
-      await serveDashboard();
-    },
-    catch: (error) => error,
-  }),
+const port = Options.integer('port').pipe(
+  Options.withAlias('p'),
+  Options.withDescription(
+    'Serve on exactly this port. Without it, the first free port from the default is used.',
+  ),
+  Options.optional,
+);
+const devCommand = Command.make(
+  'dev',
+  {
+    config,
+    port,
+    noOpen: Options.boolean('no-open').pipe(
+      Options.withDescription('Do not open the dashboard in a browser.'),
+    ),
+  },
+  ({ config, port, noOpen }) =>
+    Effect.tryPromise({
+      try: async () => {
+        await useProject(Option.getOrUndefined(config));
+        await serveDashboard({
+          port: Option.getOrUndefined(port),
+          open: !noOpen,
+        });
+      },
+      catch: (error) => error,
+    }),
 );
 const buildCommand = Command.make(
   'build',
@@ -859,7 +879,7 @@ const shareServeCommand = Command.make(
   'serve',
   {
     dir: Options.text('dir').pipe(Options.withDefault('_evalkit-share')),
-    port: Options.integer('port').pipe(Options.withDefault(4318)),
+    port,
   },
   ({ dir, port }) =>
     Effect.tryPromise({
@@ -869,16 +889,11 @@ const shareServeCommand = Command.make(
           dir: root,
           dashboardRoot: dashboardAssets(),
         });
-        let server: Server;
-        try {
-          server = await serve(app.fetch, port);
-        } catch (error) {
-          if ((error as { code?: string }).code === 'EADDRINUSE')
-            throw new Error(
-              `Port ${port} is already in use. Choose another: evalkit share serve --port 4319`,
-            );
-          throw error;
-        }
+        const server = await listen(
+          app.fetch,
+          Option.getOrUndefined(port),
+          4318,
+        );
         banner('share serve', VERSION);
         console.log(
           `  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(`http://localhost:${server.port}`)}`,

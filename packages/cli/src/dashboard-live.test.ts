@@ -22,10 +22,12 @@ test('dashboard API lists a run and trial before their summaries exist', async (
       process.execPath,
       fileURLToPath(new URL('./index.ts', import.meta.url)),
       'dev',
+      '--port',
+      String(port),
+      '--no-open',
     ],
     {
       cwd: root,
-      env: { ...process.env, PORT: String(port), EVALKIT_NO_OPEN: '1' },
       stdout: 'ignore',
       stderr: 'pipe',
     },

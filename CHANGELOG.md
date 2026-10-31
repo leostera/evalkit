@@ -6,7 +6,8 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ### Changed
 
-- `evalkit dev` uses the next free port when 4317 is taken, and prints the one it chose, so several projects can run at once. An explicit `PORT` is still required exactly, and an invalid one is rejected.
+- `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.
+- **Breaking:** `evalkit dev` takes flags instead of environment variables: `--port <n>` (`-p`) replaces `PORT` and is used exactly, and `--no-open` replaces `EVALKIT_NO_OPEN=1`. `share serve` also accepts `-p`.
 
 ## [0.6.1] - 2026-10-30
 
