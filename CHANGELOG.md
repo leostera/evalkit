@@ -7,7 +7,8 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 ### Changed
 
 - `evalkit dev` and `evalkit share serve` use the next free port when their default (4317, 4318) is taken, and print the one they chose, so several projects can run at once.
-- **Breaking:** `evalkit dev` takes flags instead of environment variables: `--port <n>` (`-p`) replaces `PORT` and is used exactly, and `--no-open` replaces `EVALKIT_NO_OPEN=1`. `share serve` also accepts `-p`.
+- **A clearer command line.** Every command and flag has a description in `--help`, with examples; common flags have short forms (`-c`, `-e`, `-s`, `-m`, `-n`, `-j`, `-v`, `-p`, `-o`, `-b`, `-d`); `--opt=value` works; a mistyped command suggests the right one (`Did you mean run?`); and `evalkit help <command>` works.
+- **Breaking:** settings that were environment variables are flags: `dev --port <n>` (`-p`, used exactly) replaces `PORT`, `dev --no-open` replaces `EVALKIT_NO_OPEN=1`, `--log-level <level>` on `run`, `dev` and `build` replaces `EVALKIT_LOG_LEVEL`, and `share --server <url>` / `compare --server <url>` replace `EVALKIT_SHARE_URL`. `EVALKIT_SOURCE_*` (commit provenance outside GitHub and GitLab CI) and `EVALKIT_RUNTIME` stay environment variables.
 
 ## [0.6.1] - 2026-10-30
 

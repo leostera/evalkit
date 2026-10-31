@@ -25,7 +25,7 @@ export type EvalkitConfig = {
 export type ShareHeaders = Record<string, string>;
 
 export type ShareConfig = {
-  /** Where `evalkit share` uploads results. `EVALKIT_SHARE_URL` overrides it. */
+  /** Where `evalkit share` uploads results. `--server <url>` overrides it. */
   url: string;
   /**
    * Extra headers for every request to the share server, e.g. credentials for

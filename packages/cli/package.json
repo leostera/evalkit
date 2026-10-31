@@ -10,9 +10,8 @@
     "evalkit": "./src/index.ts"
   },
   "dependencies": {
-    "@effect/cli": "^0.77.2",
-    "@effect/platform-node": "^0.108.2",
     "@evalkit/share": "workspace:*",
+    "commander": "^15.0.0",
     "effect": "^3.22.2",
     "hono": "^4.11.6",
     "jiti": "^2.7.0"

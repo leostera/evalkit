@@ -1,5 +1,4 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { parseArgs } from 'node:util';
 import { dirname, resolve } from 'node:path';
 import { Effect } from 'effect';
 import {
@@ -31,38 +30,7 @@ import {
 import { junitReport } from './junit.js';
 import { VERSION } from './version.js';
 
-export function parseRunArgs(args: string[]) {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    strict: true,
-    options: {
-      config: { type: 'string' },
-      eval: { type: 'string', multiple: true },
-      suite: { type: 'string' },
-      matrix: { type: 'string' },
-      model: { type: 'string', multiple: true },
-      mode: { type: 'string', multiple: true },
-      select: { type: 'string', multiple: true },
-      param: { type: 'string', multiple: true },
-      'max-tokens': { type: 'string' },
-      'chat-timeout-ms': { type: 'string' },
-      'turn-budget': { type: 'string' },
-      concurrency: { type: 'string' },
-      trials: { type: 'string' },
-      json: { type: 'boolean' },
-      'dry-run': { type: 'boolean' },
-      all: { type: 'boolean' },
-      local: { type: 'boolean' },
-      junit: { type: 'string' },
-      verbose: { type: 'boolean' },
-      'skip-broken': { type: 'boolean' },
-    },
-  });
-  return normalizeRunOptions(values, positionals);
-}
-
-/** Domain validation shared by the Effect CLI and programmatic argument parsing. */
+/** Validates `run` flags into a selection, parameter overrides and limits. */
 export function normalizeRunOptions(
   values: {
     config?: string;
@@ -169,10 +137,11 @@ export function printLoadErrors(
   if (loadErrors.length) print('');
 }
 
+export type RunInput = ReturnType<typeof normalizeRunOptions>;
+
 export async function runProjectCommand(
-  args: string[],
-  cwd = process.cwd(),
-  parsed = parseRunArgs(args),
+  cwd: string,
+  parsed: RunInput,
 ): Promise<void> {
   const { values, positionals, parameters } = parsed;
   const started = performance.now();

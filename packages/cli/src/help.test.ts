@@ -32,8 +32,8 @@ test('help for every CLI command works without a config, project discovery, or s
       ]);
       expect(status).toBe(0);
       expect(err).toBe('');
-      expect(out).toContain('EvalKit');
-      expect(out).toContain('USAGE');
+      expect(out).toContain('Usage: evalkit');
+      expect(out).not.toContain('(default: [])');
     }
     const invalid = Bun.spawn(['bun', cli, 'run', '--not-an-option'], {
       cwd,
@@ -42,7 +42,12 @@ test('help for every CLI command works without a config, project discovery, or s
     });
     expect(await invalid.exited).toBe(1);
     expect(await new Response(invalid.stderr).text()).toContain(
-      'Unknown option',
+      "unknown option '--not-an-option'",
+    );
+    const typo = Bun.spawn(['bun', cli, 'rn'], { cwd, stderr: 'pipe' });
+    expect(await typo.exited).toBe(1);
+    expect(await new Response(typo.stderr).text()).toContain(
+      'Did you mean run?',
     );
     expect(await readdir(cwd)).toEqual([]);
   } finally {

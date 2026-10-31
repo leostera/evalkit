@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { loadProject } from './project.js';
-import { parseRunArgs } from './run-command.js';
+import { normalizeRunOptions } from './run-command.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -173,28 +173,25 @@ test('CLI plans only eligible cells for configured and suite matrices', async ()
   expect(await readdir(root)).not.toContain('_evalkit-results');
 });
 
-test('parser handles values before positionals and rejects unknown or invalid flags', () => {
-  const parsed = parseRunArgs([
-    '--max-tokens',
-    '10000',
-    '--model=a,b',
-    'task-1',
-    '--mode',
-    'with-docs',
-  ]);
+test('run flags are validated into a selection, overrides and limits', () => {
+  const parsed = normalizeRunOptions(
+    { 'max-tokens': '10000', model: ['a,b'], mode: ['with-docs'] },
+    ['task-1'],
+  );
   expect(parsed.positionals).toEqual(['task-1']);
   expect(parsed.parameters).toEqual({ maxTokens: 10000 });
   expect(parsed.selection).toEqual({ model: ['a', 'b'], mode: ['with-docs'] });
-  for (const args of [
-    ['--max-tokens'],
-    ['--max-tokens', '-1'],
-    ['--trials', '1.5'],
-    ['--suite', 'one', '--matrix', 'two'],
-    ['--suite', 'one', 'eval-id'],
-    ['--matrix', 'one', 'eval-id'],
-    ['--typo'],
-  ])
-    expect(() => parseRunArgs(args)).toThrow();
+  const invalid: Array<[Parameters<typeof normalizeRunOptions>[0], string[]]> =
+    [
+      [{ 'max-tokens': '-1' }, []],
+      [{ trials: '1.5' }, []],
+      [{ suite: 'one', matrix: 'two' }, []],
+      [{ suite: 'one' }, ['eval-id']],
+      [{ matrix: 'one' }, ['eval-id']],
+      [{ select: ['novalue'] }, []],
+    ];
+  for (const [values, positionals] of invalid)
+    expect(() => normalizeRunOptions(values, positionals)).toThrow();
 });
 
 test('CLI dry-run is side-effect free; execution persists matrix parameters in manifests', async () => {

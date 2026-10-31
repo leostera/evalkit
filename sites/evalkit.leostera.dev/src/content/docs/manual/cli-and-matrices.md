@@ -3,7 +3,7 @@ title: CLI and matrices
 description: Select scenarios and suites, sweep parameter axes, report to CI, compare against a base, and use the dashboard.
 ---
 
-Run the CLI **from the eval project's directory**. In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
+Run the CLI **from the eval project's directory**. `evalkit --help` lists the commands and `evalkit <command> --help` their flags and examples; common flags have short forms (`-c` config, `-e` eval, `-s` suite, `-m` matrix, `-n` trials, `-j` concurrency, `-v` verbose, `-p` port, `-o` out, `-b` base). In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
 
 ## Run commands
 
@@ -151,7 +151,7 @@ Each scenario is **regressed** (passed on base, failed now), **fixed**, **new**,
 
 `bun run evalkit dev` serves the bundled local UI on `http://localhost:4317`, or the next free port when that one is taken (so several projects can run at once); it prints the address it chose. Pass `--port <n>` (`-p`) to require a specific port, or `--no-open` to skip its best-effort browser launch. The sidebar has two groups. **Evals** holds results: the **Scoreboard** (one row per scenario and matrix cell with its latest result, recent history and pass rate, coloured green, yellow and red), and **Runs**, **Trials** and **Workspaces**, which share one set of filters kept in the URL. A run page lists its trials; a trial page shows its trajectory beside its scores, datasets and artifacts; its workspace page browses the files the agent left. **Library** holds what scenarios are built from: **Agents**, **Judges**, **Scenarios** and **Datasets**, each with a page showing how it is defined, where (file and line), and which scenarios use it. A static dataset's page browses its files. Every page has a stable URL (`/scoreboard`, `/runs/:id`, `/runs/:id/trials/:id`, `…/workspace`, `/library/scenarios/:id`, `/library/datasets/:id`), and the header shows the repository and commit being viewed. Data comes from [local reports](/docs/manual/results/). The terminal logs each run launched from the dashboard with its pass/fail result, trial count, duration, and report path. Reports written by an older EvalKit report format are hidden and counted rather than breaking the run list.
 
-The CLI prints its own summaries and hides the runner's structured info logs. Set `EVALKIT_LOG_LEVEL=info` (or `debug`) to show them for `run`, `dev`, and dashboard-launched runs.
+The CLI prints its own summaries and hides the runner's structured info logs. Pass `--log-level info` (or `debug`) to `run`, `dev` or `build` to show them, including for runs launched from the dashboard.
 
 With an unconstrained config-backed matrix, the dashboard asks for **one eval and one configured value for every axis** and starts **one cell** per request. For matrices with `cases` or `exclude`, the dashboard lists only eligible cells through a bounded, server-backed view; you can search, sort, page, and launch one cell at a time. It rejects excluded or invalid one-cell submissions. For selections above 100,000 eligible cells, narrow the matrix using the CLI; the dashboard does not scan unbounded plans. It does not launch an entire suite under a matrix; use the CLI to sweep or run the suite. It rejects a second matrix cell while one is in flight. Without a config-backed matrix it can launch a single eval or an explicit suite, but does not accept custom parameter overrides in the UI. `dev` reads the same project and report directory as CLI runs; it is a local server, not a hosted synchronization service.
 
@@ -182,7 +182,7 @@ bun run evalkit share
 #   ➜  https://evals.example.com/gitlab.example.com/team/evals/-/3a01fda7c2…
 ```
 
-Point the project at the server in `evalkit.config.ts`, or set `EVALKIT_SHARE_URL` (useful in CI):
+Point the project at the server in `evalkit.config.ts`, or pass `--server <url>` to `share` and `compare` (useful in CI):
 
 ```ts
 export default defineConfig({ share: { url: 'https://evals.example.com' } });

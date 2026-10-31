@@ -4,9 +4,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Effect, Option } from 'effect';
-import { Args, Command, Options } from '@effect/cli';
-import { NodeContext } from '@effect/platform-node';
+import { Effect } from 'effect';
 import { Hono } from 'hono';
 import {
   agentRuntimes,
@@ -26,7 +24,6 @@ import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
 import {
   normalizeRunOptions,
-  parseRunArgs,
   printLoadErrors,
   runProjectCommand,
 } from './run-command.js';
@@ -85,6 +82,7 @@ import {
 } from './terminal.js';
 
 import { VERSION } from './version.js';
+import { createProgram } from './program.js';
 import {
   assertSupportedRuntime,
   openInBrowser,
@@ -578,192 +576,62 @@ async function serveDashboard({
   if (open) openInBrowser(url);
 }
 
-/* The command tree and its option/argument parsing are owned by @effect/cli. */
-const config = Options.text('config').pipe(Options.optional);
-const runOptions = {
-  config,
-  eval: Options.text('eval').pipe(Options.repeated),
-  suite: Options.text('suite').pipe(Options.optional),
-  matrix: Options.text('matrix').pipe(Options.optional),
-  model: Options.text('model').pipe(Options.repeated),
-  mode: Options.text('mode').pipe(Options.repeated),
-  select: Options.text('select').pipe(Options.repeated),
-  param: Options.text('param').pipe(Options.repeated),
-  maxTokens: Options.text('max-tokens').pipe(Options.optional),
-  chatTimeout: Options.text('chat-timeout-ms').pipe(Options.optional),
-  turnBudget: Options.text('turn-budget').pipe(Options.optional),
-  concurrency: Options.text('concurrency').pipe(Options.optional),
-  trials: Options.text('trials').pipe(Options.optional),
-  json: Options.boolean('json'),
-  dryRun: Options.boolean('dry-run'),
-  all: Options.boolean('all'),
-  local: Options.boolean('local'),
-  junit: Options.text('junit').pipe(Options.optional),
-  verbose: Options.boolean('verbose'),
-  skipBroken: Options.boolean('skip-broken'),
-};
-type RunOptions = {
-  config: Option.Option<string>;
-  eval: string[];
-  suite: Option.Option<string>;
-  matrix: Option.Option<string>;
-  model: string[];
-  mode: string[];
-  select: string[];
-  param: string[];
-  maxTokens: Option.Option<string>;
-  chatTimeout: Option.Option<string>;
-  turnBudget: Option.Option<string>;
-  concurrency: Option.Option<string>;
-  trials: Option.Option<string>;
-  json: boolean;
-  dryRun: boolean;
-  all: boolean;
-  local: boolean;
-  junit: Option.Option<string>;
-  verbose: boolean;
-  skipBroken: boolean;
-};
-function runInput(options: RunOptions, positionals: string[]) {
-  const unexpected = positionals.find((value) => value.startsWith('-'));
-  if (unexpected) throw new Error(`Unknown option: ${unexpected}`);
-  return normalizeRunOptions(
-    {
-      config: Option.getOrUndefined(options.config),
-      eval: options.eval,
-      suite: Option.getOrUndefined(options.suite),
-      matrix: Option.getOrUndefined(options.matrix),
-      model: options.model,
-      mode: options.mode,
-      select: options.select,
-      param: options.param,
-      'max-tokens': Option.getOrUndefined(options.maxTokens),
-      'chat-timeout-ms': Option.getOrUndefined(options.chatTimeout),
-      'turn-budget': Option.getOrUndefined(options.turnBudget),
-      concurrency: Option.getOrUndefined(options.concurrency),
-      trials: Option.getOrUndefined(options.trials),
-      json: options.json,
-      'dry-run': options.dryRun,
-      all: options.all,
-      local: options.local,
-      junit: Option.getOrUndefined(options.junit),
-      verbose: options.verbose,
-      'skip-broken': options.skipBroken,
-    },
-    positionals,
+async function newAction(directory: string): Promise<void> {
+  const root = await newProject([directory]);
+  console.log(
+    `Created EvalKit project at ${root}\nRun cd ${root} && bun install && bun run evalkit run.`,
   );
 }
-const execute = (input: ReturnType<typeof normalizeRunOptions>) =>
-  Effect.tryPromise({
-    try: () => runProjectCommand([], process.cwd(), input),
-    catch: (error) => error,
-  });
-const runCommand = Command.make(
-  'run',
-  {
-    ...runOptions,
-    evalIds: Args.text({ name: 'eval-id' }).pipe(Args.repeated),
-  },
-  ({ evalIds, ...options }) => execute(runInput(options, evalIds)),
-);
-const newCommand = Command.make(
-  'new',
-  {
-    directory: Args.text({ name: 'directory' }),
-  },
-  ({ directory }) =>
-    Effect.tryPromise({
-      try: async () => {
-        const root = await newProject([directory]);
-        console.log(
-          `Created EvalKit project at ${root}\nRun cd ${root} && bun install && bun run evalkit run.`,
-        );
-      },
-      catch: (error) => error,
-    }),
-);
-const port = Options.integer('port').pipe(
-  Options.withAlias('p'),
-  Options.withDescription(
-    'Serve on exactly this port. Without it, the first free port from the default is used.',
-  ),
-  Options.optional,
-);
-const devCommand = Command.make(
-  'dev',
-  {
-    config,
-    port,
-    noOpen: Options.boolean('no-open').pipe(
-      Options.withDescription('Do not open the dashboard in a browser.'),
-    ),
-  },
-  ({ config, port, noOpen }) =>
-    Effect.tryPromise({
-      try: async () => {
-        await useProject(Option.getOrUndefined(config));
-        await serveDashboard({
-          port: Option.getOrUndefined(port),
-          open: !noOpen,
-        });
-      },
-      catch: (error) => error,
-    }),
-);
-const buildCommand = Command.make(
-  'build',
-  {
-    config,
-    out: Options.text('out').pipe(Options.optional),
-    run: Options.boolean('run'),
-    noRun: Options.boolean('no-run'),
-  },
-  ({ config, out, run, noRun }) =>
-    Effect.tryPromise({
-      try: async () => {
-        if (run && noRun) throw new Error('Choose either --run or --no-run');
-        const started = performance.now();
-        const configPath = Option.getOrUndefined(config);
-        banner('build', VERSION);
-        await loadProjectStep(configPath);
-        if (await shouldRunEvals({ run, noRun })) await runAllEvals(configPath);
-        const result = await buildDashboard(
-          {
-            registry: project!.registry,
-            root: projectRoot,
-            source: await detectSource(projectRoot, {
-              outputDirs: [
-                reportRoot,
-                sandboxRoot,
-                resolve(projectRoot, '_evalkit-dashboard'),
-              ],
-            }),
-            reportRoot,
-            dashboardRoot: dashboardAssets(),
-            outDir: resolve(
-              projectRoot,
-              Option.getOrElse(out, () => '_evalkit-dashboard'),
-            ),
-          },
-          step,
-        );
-        const size = await directorySize(result.outDir);
-        const shown = relative(process.cwd(), result.outDir) || '.';
-        console.log(
-          `\n  ${bold(`${shown}/`)}  ${dim(`${bytes(size.bytes)} · ${plural(size.files, 'file')}`)}`,
-        );
-        console.log(
-          `\n  ${bold('Built read-only dashboard')} in ${duration(performance.now() - started)}\n`,
-        );
-        console.log(`  ${cyan('➜')}  ${bold('Preview:')}  bunx serve ${shown}`);
-        console.log(
-          `  ${yellow('⚠')}  Contains transcripts, scores, evidence, and candidate files\n` +
-            `     (never evaluator workspaces). Review before sharing.\n`,
-        );
-      },
-      catch: (error) => error,
-    }),
-);
+async function devAction(options: {
+  config?: string;
+  port?: number;
+  open: boolean;
+}): Promise<void> {
+  await useProject(options.config);
+  await serveDashboard({ port: options.port, open: options.open });
+}
+/** `run` is undefined unless `--run` or `--no-run` was given. */
+async function buildAction(options: {
+  config?: string;
+  out?: string;
+  run?: boolean;
+}): Promise<void> {
+  const started = performance.now();
+  const configPath = options.config;
+  banner('build', VERSION);
+  await loadProjectStep(configPath);
+  if (await shouldRunEvals(options.run)) await runAllEvals(configPath);
+  const result = await buildDashboard(
+    {
+      registry: project!.registry,
+      root: projectRoot,
+      source: await detectSource(projectRoot, {
+        outputDirs: [
+          reportRoot,
+          sandboxRoot,
+          resolve(projectRoot, '_evalkit-dashboard'),
+        ],
+      }),
+      reportRoot,
+      dashboardRoot: dashboardAssets(),
+      outDir: resolve(projectRoot, options.out ?? '_evalkit-dashboard'),
+    },
+    step,
+  );
+  const size = await directorySize(result.outDir);
+  const shown = relative(process.cwd(), result.outDir) || '.';
+  console.log(
+    `\n  ${bold(`${shown}/`)}  ${dim(`${bytes(size.bytes)} · ${plural(size.files, 'file')}`)}`,
+  );
+  console.log(
+    `\n  ${bold('Built read-only dashboard')} in ${duration(performance.now() - started)}\n`,
+  );
+  console.log(`  ${cyan('➜')}  ${bold('Preview:')}  bunx serve ${shown}`);
+  console.log(
+    `  ${yellow('⚠')}  Contains transcripts, scores, evidence, and candidate files\n` +
+      `     (never evaluator workspaces). Review before sharing.\n`,
+  );
+}
 
 async function loadProjectStep(configPath: string | undefined): Promise<void> {
   await step(
@@ -785,12 +653,8 @@ async function loadProjectStep(configPath: string | undefined): Promise<void> {
  * A snapshot needs data: with no current results, run the evals. Otherwise ask,
  * or keep the existing results when no one can answer (CI, pipes).
  */
-async function shouldRunEvals(flags: {
-  run: boolean;
-  noRun: boolean;
-}): Promise<boolean> {
-  if (flags.run) return true;
-  if (flags.noRun) return false;
+async function shouldRunEvals(run: boolean | undefined): Promise<boolean> {
+  if (run !== undefined) return run;
   const runs = (
     await createDashboardReportReader(reportRoot, project!.registry).listRuns()
   ).filter((entry) => !entry.archived).length;
@@ -815,9 +679,8 @@ async function runAllEvals(configPath: string | undefined): Promise<void> {
   const started = performance.now();
   console.log(`\n  ${cyan('▶')} ${bold('Running evals')}\n`);
   await runProjectCommand(
-    [],
     process.cwd(),
-    parseRunArgs(configPath ? ['--config', configPath] : []),
+    normalizeRunOptions({ config: configPath }, []),
   );
   const failed = process.exitCode === 1;
   console.log(
@@ -827,212 +690,154 @@ async function runAllEvals(configPath: string | undefined): Promise<void> {
   );
 }
 
-const tidyCommand = Command.make('tidy', { config }, ({ config }) =>
-  Effect.tryPromise({
-    try: async () => {
-      banner('tidy', VERSION);
-      await loadProjectStep(Option.getOrUndefined(config));
-      const result = await step(
-        'Run reports',
-        () => tidyReports({ registry: project!.registry, reportRoot }),
-        (value) =>
-          `${plural(value.current + value.archived.length + value.stillArchived, 'run')} checked`,
-      );
-      const byEval = (entries: { evalId: string }[]) =>
-        [
-          ...entries
-            .reduce(
-              (groups, entry) =>
-                groups.set(entry.evalId, (groups.get(entry.evalId) ?? 0) + 1),
-              new Map<string, number>(),
-            )
-            .entries(),
-        ]
-          .map(
-            ([id, total]) =>
-              `    ${bold(id)} ${dim(`(${plural(total, 'run')})`)}`,
-          )
-          .join('\n');
-      console.log('');
-      if (result.archived.length)
-        console.log(
-          `  ${yellow('◆')} Archived ${plural(result.archived.length, 'run')} of evals no longer in the project:\n${byEval(result.archived)}`,
-        );
-      if (result.restored.length)
-        console.log(
-          `  ${cyan('◆')} Restored ${plural(result.restored.length, 'run')} whose eval is back:\n${byEval(result.restored)}`,
-        );
-      if (!result.archived.length && !result.restored.length)
-        console.log(`  ${cyan('✓')} Nothing new to tidy.`);
-      const totalArchived = result.archived.length + result.stillArchived;
-      if (totalArchived)
-        console.log(
-          `\n  ${dim(`Archived runs (${totalArchived}) are hidden in \`evalkit dev\` (filter "Show archived")`)}\n` +
-            `  ${dim('and left out of `evalkit build`. Nothing was deleted.')}`,
-        );
-      console.log('');
-    },
-    catch: (error) => error,
-  }),
-);
-const shareServeCommand = Command.make(
-  'serve',
-  {
-    dir: Options.text('dir').pipe(Options.withDefault('_evalkit-share')),
-    port,
-  },
-  ({ dir, port }) =>
-    Effect.tryPromise({
-      try: async () => {
-        const root = resolve(process.cwd(), dir);
-        const app = await createDirectoryShareApp({
-          dir: root,
-          dashboardRoot: dashboardAssets(),
-        });
-        const server = await listen(
-          app.fetch,
-          Option.getOrUndefined(port),
-          4318,
-        );
-        banner('share serve', VERSION);
-        console.log(
-          `  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(`http://localhost:${server.port}`)}`,
-        );
-        console.log(
-          `  ${cyan('➜')}  ${bold('Storage:'.padEnd(9))}${relative(process.cwd(), root) || '.'}`,
-        );
-        console.log(
-          `\n  ${dim(`Upload with share.url = "http://localhost:${server.port}". No authentication: keep it private.`)}\n`,
-        );
-      },
-      catch: (error) => error,
-    }),
-);
+async function tidyAction(options: { config?: string }): Promise<void> {
+  banner('tidy', VERSION);
+  await loadProjectStep(options.config);
+  const result = await step(
+    'Run reports',
+    () => tidyReports({ registry: project!.registry, reportRoot }),
+    (value) =>
+      `${plural(value.current + value.archived.length + value.stillArchived, 'run')} checked`,
+  );
+  const byEval = (entries: { evalId: string }[]) =>
+    [
+      ...entries
+        .reduce(
+          (groups, entry) =>
+            groups.set(entry.evalId, (groups.get(entry.evalId) ?? 0) + 1),
+          new Map<string, number>(),
+        )
+        .entries(),
+    ]
+      .map(
+        ([id, total]) => `    ${bold(id)} ${dim(`(${plural(total, 'run')})`)}`,
+      )
+      .join('\n');
+  console.log('');
+  if (result.archived.length)
+    console.log(
+      `  ${yellow('◆')} Archived ${plural(result.archived.length, 'run')} of evals no longer in the project:\n${byEval(result.archived)}`,
+    );
+  if (result.restored.length)
+    console.log(
+      `  ${cyan('◆')} Restored ${plural(result.restored.length, 'run')} whose eval is back:\n${byEval(result.restored)}`,
+    );
+  if (!result.archived.length && !result.restored.length)
+    console.log(`  ${cyan('✓')} Nothing new to tidy.`);
+  const totalArchived = result.archived.length + result.stillArchived;
+  if (totalArchived)
+    console.log(
+      `\n  ${dim(`Archived runs (${totalArchived}) are hidden in \`evalkit dev\` (filter "Show archived")`)}\n` +
+        `  ${dim('and left out of `evalkit build`. Nothing was deleted.')}`,
+    );
+  console.log('');
+}
+async function shareServeAction(options: {
+  dir: string;
+  port?: number;
+}): Promise<void> {
+  const root = resolve(process.cwd(), options.dir);
+  const app = await createDirectoryShareApp({
+    dir: root,
+    dashboardRoot: dashboardAssets(),
+  });
+  const server = await listen(app.fetch, options.port, 4318);
+  banner('share serve', VERSION);
+  console.log(
+    `  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(`http://localhost:${server.port}`)}`,
+  );
+  console.log(
+    `  ${cyan('➜')}  ${bold('Storage:'.padEnd(9))}${relative(process.cwd(), root) || '.'}`,
+  );
+  console.log(
+    `\n  ${dim(`Upload with share.url = "http://localhost:${server.port}". No authentication: keep it private.`)}\n`,
+  );
+}
 
-const shareCommand = Command.make(
-  'share',
-  {
-    config,
-    all: Options.boolean('all'),
-    allowDirty: Options.boolean('allow-dirty'),
-    noWorkspace: Options.boolean('no-workspace'),
-  },
-  ({ config, all, allowDirty, noWorkspace }) =>
-    Effect.tryPromise({
-      try: async () => {
-        const started = performance.now();
-        banner('share', VERSION);
-        await loadProjectStep(Option.getOrUndefined(config));
-        const serverUrl =
-          process.env.EVALKIT_SHARE_URL ?? project!.config.share?.url;
-        if (!serverUrl)
-          throw new Error(
-            'No share server configured. Set share: { url } in evalkit.config.ts or EVALKIT_SHARE_URL.',
-          );
-        const head = await step(
-          'Source',
-          () =>
-            detectSource(projectRoot, {
-              outputDirs: [
-                reportRoot,
-                sandboxRoot,
-                resolve(projectRoot, '_evalkit-dashboard'),
-              ],
-            }),
-          (source) =>
-            source
-              ? `${repoKey(source)} @ ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
-              : 'not a git repository',
-        );
-        if (!head)
-          throw new Error(
-            'evalkit share needs to know the commit: run it inside a git repository or set EVALKIT_SOURCE_REPO and EVALKIT_SOURCE_COMMIT. `evalkit build` works without one.',
-          );
-        const registry = project!.registry;
-        const selection = await step(
-          'Runs',
-          async () =>
-            selectRuns(
-              await createDashboardReportReader(
-                reportRoot,
-                registry,
-              ).listRuns(),
-              head,
-              { all, allowDirty },
-            ),
-          (value) => selectionSummary(value, { all }),
-        );
-        if (!selection.selected.length)
-          throw new Error(noRunsMessage(selection, head, { all }));
-        const shareHeaders = await step(
-          'Server',
-          async () => {
-            const headers = await resolveShareHeaders(
-              project!.config.share?.headers,
-            );
-            await checkShareServer(serverUrl, headers);
-            return headers;
-          },
-          (headers) => {
-            const names = Object.keys(headers);
-            return `${new URL(serverUrl).host}${names.length ? dim(` with ${names.join(', ')}`) : ''}`;
-          },
-        );
-        const result = await shareRuns({
-          serverUrl,
-          headers: shareHeaders,
-          reportRoot,
-          registry,
-          runs: selection.selected,
-          workspaceFiles: !noWorkspace,
-          step,
-        });
-        for (const failure of result.failed)
-          console.log(
-            `  ${yellow('✗')} ${failure.runId.slice(0, 8)} ${dim(failure.error)}`,
-          );
-        const target = shareTarget(serverUrl, head, selection.selected);
-        console.log(
-          `\n  ${bold(result.failed.length ? 'Shared with errors' : 'Shared')} in ${duration(performance.now() - started)}\n`,
-        );
-        console.log(`  ${cyan('➜')}  ${cyan(target)}\n`);
-        if (result.failed.length) process.exitCode = 1;
-      },
-      catch: (error) => error,
-    }),
-).pipe(Command.withSubcommands([shareServeCommand]));
-
-const compareCommand = Command.make(
-  'compare',
-  {
-    config,
-    base: Options.text('base').pipe(Options.optional),
-    baseDir: Options.text('base-dir').pipe(Options.optional),
-    markdown: Options.text('markdown').pipe(Options.optional),
-    json: Options.boolean('json'),
-    failOn: Options.text('fail-on').pipe(Options.repeated),
-    requireBase: Options.boolean('require-base'),
-    allowDirty: Options.boolean('allow-dirty'),
-  },
-  (options) =>
-    Effect.tryPromise({
-      try: () =>
-        compareCommandAction({
-          config: Option.getOrUndefined(options.config),
-          base: Option.getOrUndefined(options.base),
-          baseDir: Option.getOrUndefined(options.baseDir),
-          markdown: Option.getOrUndefined(options.markdown),
-          json: options.json,
-          failOn: options.failOn,
-          requireBase: options.requireBase,
-          allowDirty: options.allowDirty,
-        }),
-      catch: (error) => error,
-    }),
-);
-
-async function compareCommandAction(options: {
+async function shareAction(options: {
   config?: string;
+  server?: string;
+  all: boolean;
+  allowDirty: boolean;
+  workspace: boolean;
+}): Promise<void> {
+  const { all, allowDirty } = options;
+  const started = performance.now();
+  banner('share', VERSION);
+  await loadProjectStep(options.config);
+  const serverUrl = options.server ?? project!.config.share?.url;
+  if (!serverUrl)
+    throw new Error(
+      'No share server configured. Set share: { url } in evalkit.config.ts or pass --server <url>.',
+    );
+  const head = await step(
+    'Source',
+    () =>
+      detectSource(projectRoot, {
+        outputDirs: [
+          reportRoot,
+          sandboxRoot,
+          resolve(projectRoot, '_evalkit-dashboard'),
+        ],
+      }),
+    (source) =>
+      source
+        ? `${repoKey(source)} @ ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
+        : 'not a git repository',
+  );
+  if (!head)
+    throw new Error(
+      'evalkit share needs to know the commit: run it inside a git repository or set EVALKIT_SOURCE_REPO and EVALKIT_SOURCE_COMMIT. `evalkit build` works without one.',
+    );
+  const registry = project!.registry;
+  const selection = await step(
+    'Runs',
+    async () =>
+      selectRuns(
+        await createDashboardReportReader(reportRoot, registry).listRuns(),
+        head,
+        { all, allowDirty },
+      ),
+    (value) => selectionSummary(value, { all }),
+  );
+  if (!selection.selected.length)
+    throw new Error(noRunsMessage(selection, head, { all }));
+  const shareHeaders = await step(
+    'Server',
+    async () => {
+      const headers = await resolveShareHeaders(project!.config.share?.headers);
+      await checkShareServer(serverUrl, headers);
+      return headers;
+    },
+    (headers) => {
+      const names = Object.keys(headers);
+      return `${new URL(serverUrl).host}${names.length ? dim(` with ${names.join(', ')}`) : ''}`;
+    },
+  );
+  const result = await shareRuns({
+    serverUrl,
+    headers: shareHeaders,
+    reportRoot,
+    registry,
+    runs: selection.selected,
+    workspaceFiles: options.workspace,
+    step,
+  });
+  for (const failure of result.failed)
+    console.log(
+      `  ${yellow('✗')} ${failure.runId.slice(0, 8)} ${dim(failure.error)}`,
+    );
+  const target = shareTarget(serverUrl, head, selection.selected);
+  console.log(
+    `\n  ${bold(result.failed.length ? 'Shared with errors' : 'Shared')} in ${duration(performance.now() - started)}\n`,
+  );
+  console.log(`  ${cyan('➜')}  ${cyan(target)}\n`);
+  if (result.failed.length) process.exitCode = 1;
+}
+
+async function compareAction(options: {
+  config?: string;
+  server?: string;
   base?: string;
   baseDir?: string;
   markdown?: string;
@@ -1072,11 +877,10 @@ async function compareCommandAction(options: {
     );
     base = runs.length ? { label: options.baseDir, runs } : undefined;
   } else {
-    const serverUrl =
-      process.env.EVALKIT_SHARE_URL ?? project!.config.share?.url;
+    const serverUrl = options.server ?? project!.config.share?.url;
     if (!serverUrl)
       throw new Error(
-        'No share server configured for --base. Set share: { url } in evalkit.config.ts or EVALKIT_SHARE_URL, or use --base-dir.',
+        'No share server configured for --base. Set share: { url } in evalkit.config.ts, pass --server <url>, or use --base-dir.',
       );
     const found = await baseRunsFromServer({
       serverUrl,
@@ -1149,25 +953,18 @@ async function compareCommandAction(options: {
   if (failures.length) process.exitCode = 1;
 }
 
-const app = Command.make('evalkit').pipe(
-  Command.withSubcommands([
-    newCommand,
-    runCommand,
-    devCommand,
-    buildCommand,
-    tidyCommand,
-    shareCommand,
-    compareCommand,
-  ]),
-);
-const cli = Command.run(app, { name: 'EvalKit', version: VERSION });
-const argv = process.argv.slice();
-if (argv[2] === 'help') argv.splice(2, 1, '--help');
-// Preserve the CLI's existing help spelling while letting @effect/cli render it.
-if (argv.at(-2) === '--' && argv.at(-1) === '--help') argv.splice(-2, 1);
 try {
   assertSupportedRuntime();
-  await Effect.runPromise(cli(argv).pipe(Effect.provide(NodeContext.layer)));
+  await createProgram({
+    create: newAction,
+    run: (input) => runProjectCommand(process.cwd(), input),
+    dev: devAction,
+    build: buildAction,
+    tidy: tidyAction,
+    share: shareAction,
+    shareServe: shareServeAction,
+    compare: compareAction,
+  }).parseAsync(process.argv);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

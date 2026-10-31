@@ -129,18 +129,30 @@ export const runLog = {
   },
 };
 
+export const LOG_LEVELS = ['error', 'warning', 'info', 'debug'] as const;
+export type RunnerLogLevel = (typeof LOG_LEVELS)[number];
+
+const effectLevels: Record<RunnerLogLevel, LogLevel.LogLevel> = {
+  error: LogLevel.Error,
+  warning: LogLevel.Warning,
+  info: LogLevel.Info,
+  debug: LogLevel.Debug,
+};
+let runnerLevel: LogLevel.LogLevel = LogLevel.Warning;
+
+/** Set once from `--log-level` before a command runs. */
+export function setRunnerLogLevel(level: RunnerLogLevel): void {
+  runnerLevel = effectLevels[level];
+}
+
 /**
  * The runner logs structured Effect lines; the CLI prints its own summaries, so
- * only warnings show by default. `EVALKIT_LOG_LEVEL=info` (or `debug`) restores them.
+ * only warnings show by default. `--log-level info` (or `debug`) restores them.
  */
 export function runnerLogs<A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> {
-  const requested = process.env.EVALKIT_LOG_LEVEL?.toLowerCase();
-  const level =
-    LogLevel.allLevels.find((item) => item.label.toLowerCase() === requested) ??
-    LogLevel.Warning;
-  return effect.pipe(Logger.withMinimumLogLevel(level));
+  return effect.pipe(Logger.withMinimumLogLevel(runnerLevel));
 }
 
 /** True when a person can answer a prompt (not CI, pipes, or redirected input). */
