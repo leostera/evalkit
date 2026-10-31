@@ -128,8 +128,13 @@ test('new creates a self-contained, provider-free project without overwriting fi
     await expect(newProject(['my-evals'], cwd)).rejects.toThrow(
       'already exists',
     );
-    await expect(newProject(['../escape'], cwd)).rejects.toThrow('Usage:');
     await expect(newProject([], cwd)).rejects.toThrow('Usage:');
+    // Any directory name works; the package name is made npm-safe.
+    const dotted = await newProject(['./work/ocaml.ai'], cwd);
+    expect(dotted).toBe(join(cwd, 'work/ocaml.ai'));
+    expect(
+      JSON.parse(await readFile(join(dotted, 'package.json'), 'utf8')).name,
+    ).toBe('ocaml-ai');
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

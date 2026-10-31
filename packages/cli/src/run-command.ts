@@ -230,7 +230,10 @@ export async function runProjectCommand(
   const trials = parsed.trials ?? project.config.execution?.trials;
   const plan = {
     matrix: authoringId(matrix),
-    evals: requestedEvals,
+    // The scenarios that will run: the requested ones, or all of the matrix's.
+    evals: requestedEvals.length
+      ? requestedEvals
+      : matrix.evals.map((definition) => definition.id),
     cells,
     parameters: selection.parameters,
     overrides: selection.overrides,

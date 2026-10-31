@@ -95,6 +95,16 @@ test('a file that fails to import becomes a load error, not a failed project', a
   ]);
 });
 
+test('an empty scenario file says so', async () => {
+  const root = await project();
+  await writeFile(join(root, 'scenarios/a.eval.ts'), evaluation(1));
+  await writeFile(join(root, 'scenarios/draft.eval.ts'), '\n');
+  const loaded = await loadProject(root);
+  expect(loaded.loadErrors[0]?.error.message).toStartWith(
+    'scenarios/draft.eval.ts is empty.',
+  );
+});
+
 test('an old evals/ directory gets a hint to move it', async () => {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-project-'));
   roots.push(root);
@@ -218,6 +228,8 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
   const dry = await invoke(['--dry-run']);
   expect(dry.status).toBe(0);
   expect(JSON.parse(dry.out).cells).toBe(4);
+  // Without --eval the plan names every scenario it will run, not [].
+  expect(JSON.parse(dry.out).evals).toEqual(['task-1']);
   const byId = await invoke(['task-1', '--dry-run']);
   expect(byId.status).toBe(0);
   expect(JSON.parse(byId.out).evals).toEqual(['task-1']);

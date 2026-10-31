@@ -1,5 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { starterFiles, starterReadme } from './new-project-template.js';
 
 const npmDependency = '^0.6.1';
@@ -47,21 +47,17 @@ export async function newProject(
   return root;
 }
 
+/** Any directory works; the package name is derived from its name (`ocaml.ai` → `ocaml-ai`). */
 function projectTarget(args: string[], cwd: string) {
-  const inPlace = args.length === 1 && (args[0] === '.' || args[0] === './');
-  const match =
-    args.length === 1
-      ? /^(?:\.\/)?([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/.exec(args[0]!)
-      : null;
-  if (!inPlace && !match)
-    throw new Error('Usage: evalkit new <lowercase-kebab-case-directory|.>');
-  const root = inPlace ? resolve(cwd) : resolve(cwd, match![1]!);
-  const name = inPlace
-    ? basename(root)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'evalkit-evals'
-    : match![1]!;
+  if (args.length !== 1 || !args[0]!.trim())
+    throw new Error('Usage: evalkit new <directory|.>');
+  const root = resolve(cwd, args[0]!);
+  const inPlace = root === resolve(cwd);
+  const name =
+    basename(root)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'evalkit-evals';
   return { root, name, inPlace };
 }
 
@@ -71,7 +67,8 @@ async function prepareDirectory(root: string, inPlace: boolean): Promise<void> {
       throw new Error(`Not a directory: ${root}`);
     await checkExistingScaffold(root);
   } else {
-    // Atomic mkdir refuses to replace any existing project, even an empty one.
+    // Atomic mkdir of the last segment refuses to replace any existing project, even an empty one.
+    await mkdir(dirname(root), { recursive: true });
     try {
       await mkdir(root);
     } catch (error) {

@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, dirname, relative, sep } from 'node:path';
 import { globMatcher, importProjectModule } from './runtime.js';
 import {
@@ -120,6 +120,10 @@ async function discover(
       if (suiteId !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(suiteId))
         throw new Error(
           `Directory ${testDir}/${suiteId} names a suite, so it must be lowercase kebab-case (or set discovery.suites: false)`,
+        );
+      if (!(await readFile(file, 'utf8')).trim())
+        throw new Error(
+          `${fromRoot} is empty. Default-export a scenario: export default defineEval({ ... })`,
         );
       const module = (await importProjectModule(file)) as { default?: unknown };
       const exported = await module.default;
