@@ -2,6 +2,16 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Added
+
+- **Selecting a slice in one line.** `-m` and `-s` combine: `evalkit run -m models -s testing -a model=luna -a toolchain=riot` runs the testing suite's scenarios on Luna with Riot. `-s` alone narrows the config's matrix the same way, eval IDs (as arguments or `-e`) narrow further, and selections that cannot be met are errors. `--select` has a short form, `-a` (for axis), and takes comma-separated values: `-a model=luna,kimi`.
+
+### Changed
+
+- `-s` with a config matrix records its runs under that matrix's ID, as `-m` does, instead of `default`.
+
 ## [0.8.0] - 2026-10-31
 
 Shell commands in trajectories read like a terminal, and each scenario can choose what its snapshots leave out.

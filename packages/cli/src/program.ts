@@ -115,7 +115,10 @@ export function createProgram(actions: Actions): Command {
       'run this scenario; repeatable, or comma-separated',
       collect,
     )
-    .option('-s, --suite <id>', 'run every scenario in this suite')
+    .option(
+      '-s, --suite <id>',
+      'run the scenarios in this suite; with -m, only those in both',
+    )
     .option('-m, --matrix <id>', 'run this matrix')
     .option(
       '--model <value>',
@@ -128,8 +131,8 @@ export function createProgram(actions: Actions): Command {
       collect,
     )
     .option(
-      '--select <axis=value>',
-      'select a value of any matrix axis; repeatable',
+      '-a, --select <axis=value>',
+      'keep only these values of a matrix axis (a for axis); repeatable, comma-separated',
       collect,
     )
     .option(
@@ -172,6 +175,7 @@ export function createProgram(actions: Actions): Command {
         'evalkit run greeting -n 5',
         'evalkit run -s billing --junit _evalkit-results/junit.xml',
         'evalkit run -m models --model model-a,model-b --dry-run',
+        'evalkit run -m models -s testing -a model=luna -a toolchain=riot',
       ]),
     )
     .action((evalIds: string[], options: RunFlags) => {

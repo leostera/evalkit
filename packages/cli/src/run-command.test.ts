@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import {
   mkdir,
   mkdtemp,
@@ -142,4 +142,83 @@ export default { id: 'hang', agent, transcript: [{ kind: 'user', message: 'hi' }
     await readFile(join(reports, runId!, 'summary.json'), 'utf8'),
   );
   expect(summary.status).toBe('cancelled');
+});
+
+describe('selecting a matrix, a suite, scenarios and axis values together', () => {
+  const files = {
+    'evalkit.config.js': `export default { matrix: { id: 'models', parameters: { model: ['luna', 'kimi'], toolchain: ['riot', 'dune'] } } };`,
+    'scenarios/testing/unit.eval.js': scenario('unit', 'ok'),
+    'scenarios/testing/property.eval.js': scenario('property', 'ok'),
+    'scenarios/docs/readme.eval.js': scenario('readme', 'ok'),
+  };
+  const plan = async (args: string[]) => {
+    const root = await project(files);
+    const result = await run(root, [...args, '--dry-run']);
+    return result.status === 0
+      ? JSON.parse(result.out)
+      : { status: result.status, error: result.err };
+  };
+
+  test('suite × axis values: -m and -s narrow to the scenarios in both', async () => {
+    const daily = await plan([
+      '-m',
+      'models',
+      '-s',
+      'testing',
+      '-a',
+      'model=luna',
+      '-a',
+      'toolchain=riot',
+    ]);
+    expect(daily).toMatchObject({
+      matrix: 'models',
+      evals: ['property', 'unit'],
+      cells: 2,
+      parameters: { model: ['luna'], toolchain: ['riot'] },
+    });
+    // -s alone narrows the config's matrix the same way.
+    expect(
+      await plan(['-s', 'testing', '-a', 'model=luna', '-a', 'toolchain=riot']),
+    ).toEqual(daily);
+  });
+
+  test('comma-separated values, and scenarios as arguments or -e', async () => {
+    expect(
+      await plan([
+        '-s',
+        'testing',
+        '-a',
+        'model=luna,kimi',
+        '-a',
+        'toolchain=dune',
+      ]),
+    ).toMatchObject({ evals: ['property', 'unit'], cells: 4 });
+    expect(
+      await plan(['-m', 'models', '-s', 'testing', 'unit', '-a', 'model=kimi']),
+    ).toMatchObject({ evals: ['unit'], cells: 2 });
+    expect(
+      await plan(['-s', 'testing', '-e', 'unit', '-a', 'model=kimi']),
+    ).toMatchObject({ evals: ['unit'], cells: 2 });
+    expect(await plan(['readme', '-a', 'toolchain=riot'])).toMatchObject({
+      matrix: 'models',
+      evals: ['readme'],
+      cells: 2,
+    });
+  });
+
+  test('selections that cannot be met fail with a reason', async () => {
+    const failure = async (args: string[], message: string) => {
+      const result = await plan(args);
+      expect(result.status).toBe(1);
+      expect(result.error).toContain(message);
+    };
+    await failure(
+      ['-s', 'testing', 'readme'],
+      'Not in both matrix models and suite testing: readme',
+    );
+    await failure(['-s', 'nope'], 'Unknown suite: nope');
+    await failure(['-m', 'nope'], 'Unknown matrix: nope');
+    await failure(['-a', 'gpu=yes'], 'Unknown matrix axis: gpu');
+    await failure(['-a', 'model'], '--select requires axis=value');
+  });
 });

@@ -82,23 +82,22 @@ export function normalizeRunOptions(
     const index = value.indexOf('=');
     if (index < 1) throw new Error('--select requires axis=value');
     const axis = value.slice(0, index);
-    let choice: JsonValue;
+    const raw = value.slice(index + 1);
+    let choices: JsonValue[];
     try {
-      choice = JSON.parse(value.slice(index + 1));
+      // JSON values select themselves: `n=3`, `flag=true`, `name="a,b"`.
+      choices = [JSON.parse(raw)];
     } catch {
-      choice = value.slice(index + 1);
+      // Anything else is text, and commas list several values.
+      choices = raw.split(',').filter(Boolean);
     }
-    (selection[axis] ??= []).push(choice);
+    (selection[axis] ??= []).push(...choices);
   }
   for (const value of values.param ?? []) {
     const index = value.indexOf('=');
     if (index < 1) throw new Error('--param requires name=JSON');
     parameters[value.slice(0, index)] = JSON.parse(value.slice(index + 1));
   }
-  if (values.suite && values.matrix)
-    throw new Error('--suite and --matrix cannot be used together');
-  if ((values.suite || values.matrix) && positionals.length)
-    throw new Error('Use --eval to select evals with --suite or --matrix');
   return {
     values,
     positionals,
@@ -149,42 +148,59 @@ export async function runProjectCommand(
   // Dataset paths are relative to the config project, even when invoked elsewhere.
   process.chdir(project.root);
   const registry = project.registry;
-  const requestedEvals =
-    values.eval?.flatMap((value) => value.split(',')) ?? [];
+  // Eval IDs from --eval and positional arguments mean the same thing.
+  const requestedEvals = [...(values.eval ?? []), ...positionals].flatMap(
+    (value) => value.split(',').filter(Boolean),
+  );
   let matrix;
   let suiteId: string | undefined;
   // JSON and dry-run output stay machine-readable on stdout.
   const quiet = Boolean(values.json || values['dry-run']);
   if (!quiet) banner('run', VERSION);
+  const suite = values.suite
+    ? registry.suites.find((item) => item.id === values.suite)
+    : undefined;
   if (values.suite) {
-    const suite = registry.suites.find((item) => item.id === values.suite);
     const broken = project.loadErrors.filter(
       (error) => error.suiteId === values.suite,
     );
     if (!suite && !broken.length)
       throw new Error(`Unknown suite: ${values.suite}`);
     suiteId = values.suite;
-    matrix = defineEvalMatrix({
-      id: 'default',
-      evals: suite?.evals ?? [],
-      parameters: project.config.matrix?.parameters ?? {},
-      defaults: project.config.matrix?.defaults,
-      cases: project.config.matrix?.cases,
-      exclude: project.config.matrix?.exclude,
-    });
-  } else if (values.matrix) {
-    matrix = registry.matrices.find((item) => item.id === values.matrix);
-    if (!matrix) throw new Error(`Unknown matrix: ${values.matrix}`);
-  } else {
-    requestedEvals.push(...positionals.flatMap((value) => value.split(',')));
-    matrix = project.config.matrix
-      ? registry.matrices.at(-1)!
-      : defineEvalMatrix({
-          id: 'default',
-          evals: registry.evals,
-          parameters: {},
-        });
   }
+  // The named matrix, else the config's; a plain list of scenarios without one.
+  const configured = values.matrix
+    ? registry.matrices.find((item) => item.id === values.matrix)
+    : project.config.matrix
+      ? registry.matrices.at(-1)
+      : undefined;
+  if (values.matrix && !configured)
+    throw new Error(`Unknown matrix: ${values.matrix}`);
+  if (configured && suite) {
+    // A suite narrows the matrix to the scenarios in both.
+    const inSuite = new Set(suite.evals.map(authoringId));
+    const both = configured.evals
+      .map(authoringId)
+      .filter((id) => inSuite.has(id));
+    if (!both.length)
+      throw new Error(
+        `Matrix ${authoringId(configured)} has no scenarios from suite ${suite.id}`,
+      );
+    const outside = requestedEvals.filter((id) => !both.includes(id));
+    if (outside.length)
+      throw new Error(
+        `Not in both matrix ${authoringId(configured)} and suite ${suite.id}: ${outside.join(', ')}`,
+      );
+    if (!requestedEvals.length) requestedEvals.push(...both);
+  }
+  matrix =
+    configured ??
+    defineEvalMatrix({
+      id: 'default',
+      // A suite whose files all failed to load has no evals; that is reported below.
+      evals: values.suite ? (suite?.evals ?? []) : registry.evals,
+      parameters: {},
+    });
   const broken = brokenSelection(project.loadErrors, {
     ...(suiteId ? { suiteId } : {}),
     evalIds: requestedEvals,

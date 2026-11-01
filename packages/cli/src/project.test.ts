@@ -191,13 +191,22 @@ test('run flags are validated into a selection, overrides and limits', () => {
   expect(parsed.positionals).toEqual(['task-1']);
   expect(parsed.parameters).toEqual({ maxTokens: 10000 });
   expect(parsed.selection).toEqual({ model: ['a', 'b'], mode: ['with-docs'] });
+  // --select (-a) takes comma-separated text, or one JSON value.
+  expect(
+    normalizeRunOptions(
+      { select: ['model=luna,kimi', 'toolchain=riot', 'n=3', 'name="a,b"'] },
+      [],
+    ).selection,
+  ).toEqual({
+    model: ['luna', 'kimi'],
+    toolchain: ['riot'],
+    n: [3],
+    name: ['a,b'],
+  });
   const invalid: Array<[Parameters<typeof normalizeRunOptions>[0], string[]]> =
     [
       [{ 'max-tokens': '-1' }, []],
       [{ trials: '1.5' }, []],
-      [{ suite: 'one', matrix: 'two' }, []],
-      [{ suite: 'one' }, ['eval-id']],
-      [{ matrix: 'one' }, ['eval-id']],
       [{ select: ['novalue'] }, []],
     ];
   for (const [values, positionals] of invalid)

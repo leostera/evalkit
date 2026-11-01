@@ -22,15 +22,15 @@ bun run evalkit run --matrix letter-case --eval case-transform --select style=up
 bun run evalkit run --suite billing
 ```
 
-| Command             | Selection                                                                                                                                                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `new <directory>`   | Generate a provider-free project with `bunx @leostera/evalkit new ./agent-evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add @leostera/evalkit`. Never overwrites existing files. |
-| `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` for a named matrix and `--suite <id>` for a suite. These selectors are mutually exclusive.                                |
-| `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                                |
-| `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                                    |
-| `tidy`              | Mark runs of evals that are no longer in the project as archived, and remove sandboxes `keepSandboxes` would not keep. See [Archiving removed evals](#archiving-removed-evals).                                          |
-| `compare`           | Compare this commit's results with a base commit's. See [Comparing against a base](#comparing-against-a-base).                                                                                                           |
-| `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                        |
+| Command             | Selection                                                                                                                                                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `new <directory>`   | Generate a provider-free project with `bunx @leostera/evalkit new ./agent-evals`, or initialize an existing Bun project with `bun run evalkit new .` after `bun add @leostera/evalkit`. Never overwrites existing files.                                                           |
+| `run [eval-id,...]` | Run all discovered/registered evals or select IDs by position or `--eval`. Use `--matrix <id>` (`-m`) for a named matrix and `--suite <id>` (`-s`) for a suite; together they run the scenarios in both, and eval IDs narrow further. See [Selecting a slice](#selecting-a-slice). |
+| `dev`               | Start the local dashboard and run launcher; `--config` selects a project.                                                                                                                                                                                                          |
+| `build`             | Write a read-only static dashboard snapshot to `_evalkit-dashboard/` (or `--out <dir>`). See [Sharing a static snapshot](#sharing-a-static-snapshot).                                                                                                                              |
+| `tidy`              | Mark runs of evals that are no longer in the project as archived, and remove sandboxes `keepSandboxes` would not keep. See [Archiving removed evals](#archiving-removed-evals).                                                                                                    |
+| `compare`           | Compare this commit's results with a base commit's. See [Comparing against a base](#comparing-against-a-base).                                                                                                                                                                     |
+| `share`             | Upload results for the current commit to your share server and print the URL. `share serve` runs a share server locally. See [Sharing results](#sharing-results).                                                                                                                  |
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. Suites come from directories below `scenarios/`; see [Project structure](/docs/manual/project-structure/#suites).
 
@@ -65,7 +65,22 @@ bun run evalkit run --matrix letter-case --eval case-transform --select style=up
 bun run evalkit run --matrix models --eval greeting --model model-a,model-b --mode with-docs
 ```
 
-`--model` and `--mode` accept comma-separated values and can be repeated; they select _existing_ axes rather than adding new choices. `--select axis=value` is repeatable for other axes; its value is parsed as JSON when possible (`--select 'temperature=0.5'` selects a numeric choice). Quote shell-sensitive JSON. Without a configured matrix, one `--model` or `--mode` value becomes a plain parameter override, **not** a provider setting; multiple values require an axis. `--param name=JSON` supplies a non-axis override (e.g. `--param 'temperature=0.5'`), and trying to override a matrix axis that way fails. Axes/defaults/overrides must be finite JSON values, not functions, `undefined`, or `NaN`.
+`--select axis=value` (`-a`, for axis) keeps only those values of an axis and is repeatable. Its value is parsed as JSON when possible (`-a 'temperature=0.5'` selects a numeric choice); otherwise it is text, and commas list several values (`-a model=luna,kimi`); quote a JSON string to keep a comma (`-a 'name="a,b"'`). `--model` and `--mode` are shorthands for `-a model=…` and `-a mode=…`. They all select _existing_ axis values rather than adding new choices.
+
+### Selecting a slice
+
+Every selector narrows the same plan, so a daily run is one line:
+
+```sh
+# The testing suite, on Luna, with Riot:
+bun run evalkit run -m models -s testing -a model=luna -a toolchain=riot
+# The same, using the config's matrix:
+bun run evalkit run -s testing -a model=luna -a toolchain=riot
+# Two scenarios of that suite, on every model:
+bun run evalkit run -s testing unit property -a toolchain=riot
+```
+
+The matrix (`-m`, or the config's) gives the axes and scenarios; `-s` keeps the scenarios that are also in the suite; eval IDs, as arguments or with `-e`, keep only those; and `-a` keeps only the chosen axis values. An ID outside the suite, an unknown axis, or a suite with no scenarios in the matrix is an error, never an empty run. Check a slice with `--dry-run` first. Quote shell-sensitive JSON. Without a configured matrix, one `--model` or `--mode` value becomes a plain parameter override, **not** a provider setting; multiple values require an axis. `--param name=JSON` supplies a non-axis override (e.g. `--param 'temperature=0.5'`), and trying to override a matrix axis that way fails. Axes/defaults/overrides must be finite JSON values, not functions, `undefined`, or `NaN`.
 
 An AUT only responds to these choices if its adapter reads `context.parameters`. The [configured-matrix agent](https://github.com/leostera/evalkit/blob/main/examples/configured-matrix/agents/case-agent.ts) uses `context.parameters.style`. The built-in `piAgent()` does **not** read `model`, `maxTokens`, or other forwarded parameters; `piAgent({ args: [...] })` configures its Pi invocation separately.
 
