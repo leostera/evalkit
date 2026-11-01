@@ -17,6 +17,8 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 - **`tokens` has one definition:** each turn's `inputTokens + outputTokens`, with cached input counted as input, and `totalTokens` only when a turn reports neither. Before, a reported `totalTokens` took precedence.
 - `-s` with a config matrix records its runs under that matrix's ID, as `-m` does, instead of `default`.
 
+- **Missing metrics are "not measured", never zero.** Trials from before a metric existed, or that recorded nothing for it, stay out of its means, and the dashboard shows how many contributed: "3 of 5 trials" on run pages, "1 of 2 runs" on the scoreboard and in Compare cells, and "not measured" when none did. Each run metric has `trials` beside `count`.
+
 ### Fixed
 
 - **Agent-written files are never rendered.** The local dashboard served candidate workspace and dataset files with a type from their extension, so an `.html` file an agent wrote would open as a page on the dashboard's origin. They are now served as bytes with `nosniff` and a sandboxing CSP, as the share server already did.

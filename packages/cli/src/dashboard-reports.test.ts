@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { registerEvals } from '@evalkit/core';
+import { defineAgent, defineEval, registerEvals, user } from '@evalkit/core';
+import { localReportStore, runEval } from '@evalkit/runner';
+import { Effect } from 'effect';
 import { createDashboardReportReader } from './dashboard-reports.js';
 
 const runId = '9c67c094-94cd-4bfc-9ddf-b48b813e4331';
@@ -118,5 +120,55 @@ test('agent-written files are served as untrusted bytes, never as HTML', async (
     await expect(
       reports.attachmentFile(runId, trialId, 'logs'),
     ).rejects.toThrow('Attachment is not a file');
+  });
+});
+
+test('a trial from before metrics existed is not measured: left out of the mean, and counted', async () => {
+  await withReports(async (root) => {
+    const evaluation = defineEval({
+      id: 'counts-tools',
+      agent: defineAgent({
+        async start() {
+          return {
+            send: async () => ({
+              reply: 'ok',
+              toolCalls: [{ name: 'bash' }, { name: 'bash' }],
+            }),
+          };
+        },
+      }),
+      transcript: [user('go')],
+      scoring: [],
+      policy: { trials: 2 },
+    });
+    const result = await Effect.runPromise(
+      runEval(evaluation, { report: localReportStore(root) }),
+    );
+    // Rewrite one trial as an older EvalKit would have saved it.
+    const old = join(
+      root,
+      result.runId,
+      'trials',
+      result.trials![0]!.trialId,
+      'summary.json',
+    );
+    const summary = JSON.parse(await readFile(old, 'utf8'));
+    delete summary.scoring.metrics;
+    await writeFile(old, JSON.stringify(summary));
+
+    const reports = createDashboardReportReader(
+      root,
+      registerEvals([evaluation]),
+    );
+    const [run] = await reports.listRuns();
+    expect(
+      run?.metrics?.find((metric) => metric.name === 'tool calls'),
+    ).toEqual({
+      name: 'tool calls',
+      builtIn: true,
+      mean: 2,
+      count: 1,
+      trials: 2,
+    });
   });
 });

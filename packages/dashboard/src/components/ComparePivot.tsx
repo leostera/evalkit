@@ -147,6 +147,7 @@ export function ComparePivot({
                     <PivotValue
                       value={cell?.value}
                       runs={cell?.runs ?? 0}
+                      measured={cell?.measured ?? 0}
                       measure={shown.measure}
                       range={range}
                     />
@@ -164,21 +165,25 @@ export function ComparePivot({
 function PivotValue({
   value,
   runs,
+  measured,
   measure,
   range,
 }: {
   value: number | undefined;
   runs: number;
+  measured: number;
   measure: PivotMeasure;
   range?: { min: number; max: number };
 }) {
   if (value === undefined)
     return (
       <span
-        className="text-kumo-subtle"
-        title={runs ? 'Not measured' : 'No finished runs'}
+        className="text-xs text-kumo-subtle"
+        title={
+          runs ? `None of these ${runs} runs measured it` : 'No finished runs'
+        }
       >
-        —
+        {runs ? 'not measured' : '—'}
       </span>
     );
   const text =
@@ -199,7 +204,9 @@ function PivotValue({
         {text}
       </span>
       <span className="text-[11px] text-kumo-subtle tabular-nums">
-        {runs} {runs === 1 ? 'run' : 'runs'}
+        {measured < runs
+          ? `${measured} of ${runs} runs`
+          : `${runs} ${runs === 1 ? 'run' : 'runs'}`}
       </span>
     </span>
   );

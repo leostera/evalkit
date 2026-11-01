@@ -222,7 +222,9 @@ EvalKit also records three **built-in metrics** for every trial. Their names are
 
 Tokens are only what the adapter reports; EvalKit does not count them itself. See [reporting usage](/docs/manual/agents/#reporting-token-usage).
 
-Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set. A scenario's **Compare** table can show any metric by matrix parameter.
+Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set.
+
+A metric a trial did not record, because it predates the metric, its agent reported no usage, or the metric returned `undefined`, is **not measured**, never zero. It is left out of every mean, and the dashboard says how many contributed: "3 of 5 trials" on a run page, "1 of 2 runs" on the scoreboard and in Compare cells, and "not measured" when none did. Runs list each metric's `count` (trials measured) beside `trials` (trials scored). A scenario's **Compare** table can show any metric by matrix parameter.
 
 ### Partial execution and errors
 

@@ -88,7 +88,10 @@ export type RunMetric = {
   better?: 'lower' | 'higher';
   builtIn?: true;
   mean?: number;
+  /** Trials with a value; the mean is over these only. */
   count: number;
+  /** Trials that were scored at all, measured or not. Absent in snapshots from before 0.9. */
+  trials?: number;
 };
 
 export type RunSummary = {

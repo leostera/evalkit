@@ -53,10 +53,10 @@ test('cells aggregate finished runs by one axis down and another across', () => 
   expect(table.columns.map((column) => column.label)).toEqual(['dune', 'opam']);
   const cell = (row: string, column: string) =>
     table.cells[JSON.stringify(row)]![JSON.stringify(column)];
-  expect(cell('glm', 'dune')).toEqual({ runs: 2, value: 0.5 });
-  expect(cell('glm', 'opam')).toEqual({ runs: 1, value: 1 });
+  expect(cell('glm', 'dune')).toEqual({ runs: 2, measured: 2, value: 0.5 });
+  expect(cell('glm', 'opam')).toEqual({ runs: 1, measured: 1, value: 1 });
   // The only kimi/opam run is still running, so it is not counted.
-  expect(cell('kimi', 'opam')).toEqual({ runs: 0 });
+  expect(cell('kimi', 'opam')).toEqual({ runs: 0, measured: 0 });
 });
 
 test('without a column axis each row is one cell; metrics weight by trials measured', () => {
@@ -68,9 +68,14 @@ test('without a column axis each row is one cell; metrics weight by trials measu
   const [column] = table.columns;
   expect(table.cells[JSON.stringify('kimi')]![column!.key]).toEqual({
     runs: 2,
+    measured: 2,
     value: 250,
   });
-  expect(table.cells[JSON.stringify('glm')]![column!.key]).toEqual({ runs: 3 });
+  // glm's runs predate the metric: not measured, rather than a zero.
+  expect(table.cells[JSON.stringify('glm')]![column!.key]).toEqual({
+    runs: 3,
+    measured: 0,
+  });
 });
 
 test('values follow the matrix order, then their labels', () => {
@@ -85,6 +90,7 @@ test('values follow the matrix order, then their labels', () => {
   );
   expect(table.rows.map((row) => row.label)).toEqual(['kimi', 'glm']);
   expect(table.cells[JSON.stringify('kimi')]).toEqual({
-    [table.columns[0]!.key]: { runs: 2, value: 0.5 },
+    // One kimi run has no score: the mean is over the other.
+    [table.columns[0]!.key]: { runs: 2, measured: 1, value: 0.5 },
   });
 });

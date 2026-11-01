@@ -90,17 +90,26 @@ export function RunPage({
                 ? '—'
                 : formatDuration(run.durationMs)!,
             ],
-            ...(run.metrics ?? [])
-              .filter((metric) => metric.mean !== undefined)
-              .map(
-                (metric) =>
-                  [
-                    metric.count > 1 ? `Mean ${metric.name}` : metric.name,
-                    <span key={metric.name} className="tabular-nums">
-                      {formatMetric(metric.mean!, metric.unit)}
-                    </span>,
-                  ] as const,
-              ),
+            ...(run.metrics ?? []).map(
+              (metric) =>
+                [
+                  metric.count > 1 ? `Mean ${metric.name}` : metric.name,
+                  <span key={metric.name} className="tabular-nums">
+                    {metric.mean === undefined ? (
+                      <span className="text-kumo-subtle">not measured</span>
+                    ) : (
+                      formatMetric(metric.mean, metric.unit)
+                    )}
+                    {metric.trials !== undefined &&
+                    metric.count < metric.trials ? (
+                      <span className="text-kumo-subtle">
+                        {' '}
+                        · {metric.count} of {metric.trials} trials
+                      </span>
+                    ) : null}
+                  </span>,
+                ] as const,
+            ),
             ['Commit', <CommitLabel key="commit" source={run.source} />],
           ]}
         />

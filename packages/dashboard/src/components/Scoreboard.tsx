@@ -48,8 +48,17 @@ export type ScoreboardRow = {
   /** Mean score over the history's scored runs. */
   meanScore?: number;
   /** Each metric's mean over the history, weighted by trials measured. */
-  metrics: Record<string, number>;
+  metrics: Record<string, MetricMean>;
+  /** Finished runs in the history: what `MetricMean.runs` is out of. */
+  finished: number;
 };
+
+/**
+ * A metric's mean over the runs that measured it. Runs that did not (from
+ * before the metric existed, or that measured nothing) are left out, never
+ * counted as zero; `runs` says how many contributed.
+ */
+export type MetricMean = { mean: number; runs: number };
 
 /** A metric column: its unit and which direction is better, from the runs. */
 export type MetricColumn = {
@@ -80,18 +89,24 @@ export function metricColumns(runs: readonly RunSummary[]): MetricColumn[] {
   );
 }
 
-function historyMetrics(runs: readonly RunSummary[]): Record<string, number> {
-  const sums = new Map<string, { sum: number; count: number }>();
+export function historyMetrics(
+  runs: readonly RunSummary[],
+): Record<string, MetricMean> {
+  const sums = new Map<string, { sum: number; count: number; runs: number }>();
   for (const run of runs)
     for (const metric of run.metrics ?? []) {
       if (metric.mean === undefined || !metric.count) continue;
-      const entry = sums.get(metric.name) ?? { sum: 0, count: 0 };
+      const entry = sums.get(metric.name) ?? { sum: 0, count: 0, runs: 0 };
       entry.sum += metric.mean * metric.count;
       entry.count += metric.count;
+      entry.runs += 1;
       sums.set(metric.name, entry);
     }
   return Object.fromEntries(
-    [...sums].map(([name, { sum, count }]) => [name, sum / count]),
+    [...sums].map(([name, { sum, count, runs }]) => [
+      name,
+      { mean: sum / count, runs },
+    ]),
   );
 }
 
@@ -132,6 +147,7 @@ export function scoreboardRows(
       runs: newest,
       outcome: latest.status,
       metrics: historyMetrics(finished),
+      finished: finished.length,
       ...(scored.length
         ? {
             meanScore:
@@ -158,6 +174,7 @@ export function scoreboardRows(
         runs: [],
         outcome: 'not-run',
         metrics: {},
+        finished: 0,
       });
   return rows;
 }
@@ -408,13 +425,29 @@ function ScoreboardLine({
         return (
           <Table.Cell key={column.name} className="text-right">
             {value === undefined ? (
-              <span className="text-kumo-subtle">—</span>
-            ) : (
               <span
-                className={`inline-block rounded px-1.5 py-0.5 tabular-nums ${metricTint(value, column, ranges.get(column.name))}`}
-                title={`Mean ${column.name} over the last ${HISTORY} runs`}
+                className="text-xs text-kumo-subtle"
+                title={
+                  row.finished
+                    ? `None of the last ${row.finished} finished runs measured ${column.name}`
+                    : 'No finished runs'
+                }
               >
-                {formatMetric(value, column.unit)}
+                {row.finished ? 'not measured' : '—'}
+              </span>
+            ) : (
+              <span className="inline-flex flex-col items-end">
+                <span
+                  className={`inline-block rounded px-1.5 py-0.5 tabular-nums ${metricTint(value.mean, column, ranges.get(column.name))}`}
+                  title={`Mean ${column.name} over the ${value.runs} of the last ${row.finished} finished runs that measured it`}
+                >
+                  {formatMetric(value.mean, column.unit)}
+                </span>
+                {value.runs < row.finished ? (
+                  <span className="text-[11px] text-kumo-subtle tabular-nums">
+                    {value.runs} of {row.finished} runs
+                  </span>
+                ) : null}
               </span>
             )}
           </Table.Cell>
@@ -441,7 +474,7 @@ function sortValue(row: ScoreboardRow, key: string): number | undefined {
   if (key === 'score') return row.runs[0]?.score;
   if (key === 'meanScore') return row.meanScore;
   if (key === 'passRate') return row.passRate;
-  if (key.startsWith('metric:')) return row.metrics[key.slice(7)];
+  if (key.startsWith('metric:')) return row.metrics[key.slice(7)]?.mean;
   return undefined;
 }
 
@@ -466,7 +499,7 @@ function columnRanges(
   const ranges = new Map<string, { min: number; max: number }>();
   for (const column of columns) {
     const values = rows
-      .map((row) => row.metrics[column.name])
+      .map((row) => row.metrics[column.name]?.mean)
       .filter((value): value is number => value !== undefined);
     if (values.length)
       ranges.set(column.name, {

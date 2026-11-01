@@ -68,8 +68,10 @@ export type RunMetric = {
   builtIn?: true;
   /** Absent when no trial measured a value. */
   mean?: number;
-  /** Trials with a value. */
+  /** Trials with a value; the mean is over these only. */
   count: number;
+  /** Trials that were scored at all, measured or not. */
+  trials: number;
 };
 
 function runMetrics(
@@ -78,6 +80,9 @@ function runMetrics(
   )[],
 ): RunMetric[] {
   const byName = new Map<string, RunMetric & { sum: number }>();
+  // A trial from before a metric existed, or one it could not measure, is
+  // "not measured": it is left out of the mean, never counted as zero.
+  const scored = trials.filter((trial) => trial?.scoring).length;
   for (const trial of trials)
     for (const result of trial?.scoring?.metrics ?? []) {
       const entry = byName.get(result.name) ?? {
@@ -86,6 +91,7 @@ function runMetrics(
         ...(result.better ? { better: result.better } : {}),
         ...(result.builtIn ? { builtIn: true as const } : {}),
         count: 0,
+        trials: scored,
         sum: 0,
       };
       if (result.value !== undefined) {

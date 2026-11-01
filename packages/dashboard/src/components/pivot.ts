@@ -17,6 +17,12 @@ export type PivotCell = {
   value?: number;
   /** Finished runs counted in the cell. */
   runs: number;
+  /**
+   * Of those, the runs the value is over: all of them for the pass rate, the
+   * scored ones for the score, those that measured the metric for a metric.
+   * The rest are "not measured", never zero.
+   */
+  measured: number;
 };
 
 export type Pivot = {
@@ -104,9 +110,10 @@ export function pivot(
     cells[row.key] = {};
     for (const column of columns) {
       const members = groups.get(`${row.key}\0${column.key}`) ?? [];
-      const value = measured(members, measure);
+      const { value, runs } = measured(members, measure);
       cells[row.key]![column.key] = {
         runs: members.length,
+        measured: runs,
         ...(value === undefined ? {} : { value }),
       };
     }
@@ -144,29 +151,35 @@ function axisValues(
 function measured(
   runs: readonly RunSummary[],
   measure: PivotMeasure,
-): number | undefined {
-  if (!runs.length) return undefined;
+): { value?: number; runs: number } {
+  if (!runs.length) return { runs: 0 };
   if (measure.kind === 'pass-rate')
-    return runs.filter((run) => run.status === 'passed').length / runs.length;
+    return {
+      value: runs.filter((run) => run.status === 'passed').length / runs.length,
+      runs: runs.length,
+    };
   if (measure.kind === 'score') {
     const scores = runs
       .map((run) => run.score)
       .filter((score): score is number => score !== undefined);
     return scores.length
-      ? scores.reduce((sum, score) => sum + score, 0) / scores.length
-      : undefined;
+      ? {
+          value: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+          runs: scores.length,
+        }
+      : { runs: 0 };
   }
   let sum = 0;
   let count = 0;
-  for (const run of runs)
-    for (const metric of run.metrics ?? [])
-      if (
-        metric.name === measure.metric.name &&
-        metric.mean !== undefined &&
-        metric.count
-      ) {
-        sum += metric.mean * metric.count;
-        count += metric.count;
-      }
-  return count ? sum / count : undefined;
+  let contributing = 0;
+  for (const run of runs) {
+    const metric = run.metrics?.find(
+      (entry) => entry.name === measure.metric.name,
+    );
+    if (metric?.mean === undefined || !metric.count) continue;
+    sum += metric.mean * metric.count;
+    count += metric.count;
+    contributing += 1;
+  }
+  return count ? { value: sum / count, runs: contributing } : { runs: 0 };
 }
