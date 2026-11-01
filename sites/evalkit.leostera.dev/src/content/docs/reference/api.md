@@ -42,8 +42,10 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
   A number measured for every trial. `unit: 'ms'` formats as a duration; `better: 'lower' | 'higher'` colours comparisons.
 - `skip(reason: string)`  
   Returned by a scorer that does not apply to this trial; it neither passes nor fails and is left out of averages.
-- `BUILT_IN_METRICS`: `readonly string[]`  
-  `agent time`, `tokens` and `tool calls`: recorded for every trial. Scenario metrics may not reuse these names.
+- `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'tool calls']`  
+  Recorded for every trial; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string.
+- `turnTokens(usage: Usage): number | undefined`  
+  What a turn counts toward `tokens`: `inputTokens + outputTokens` (cached input included), or `totalTokens` when neither is reported.
 
 `ScoringContext`, the argument of every scorer and metric:
 

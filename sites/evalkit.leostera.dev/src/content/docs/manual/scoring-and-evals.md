@@ -186,7 +186,15 @@ export default defineEval({
 
 A metric receives the same context as a final scorer and runs after the scorers. Return `undefined` when there is nothing to measure; a thrown error is recorded on that metric and the others still run. `unit` labels the value (`ms` formats as a duration) and `better: 'lower' | 'higher'` says which direction is an improvement.
 
-EvalKit also records three metrics for every trial: **agent time** (first event to the last one before final scoring), **tokens** (summed from `turn-completed` usage, only when the agent reports it) and **tool calls**. Scenario metrics may not reuse these names.
+EvalKit also records three **built-in metrics** for every trial. Their names are the type `BuiltInMetricName`, and reusing one for a scenario metric is a type error and a definition error.
+
+| Name         | Unit   | What it counts                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent time` | ms     | From the trial's first recorded event to its last one before final scoring: the agent's turns and the checkpoints between them.                                                                                                                                                                                                                                                                   |
+| `tokens`     | tokens | The sum over turns of `inputTokens + outputTokens` from each `turn-completed` event's `usage`, or the turn's `totalTokens` when it reports neither. **Cached input counts**: `inputTokens` is every input token the model read, from a cache or not (`cachedInputTokens` says how many were cached, for information). Not recorded when no turn reported usage, so it is never a misleading zero. |
+| `tool calls` | —      | The agent's `tool-call` events.                                                                                                                                                                                                                                                                                                                                                                   |
+
+Tokens are only what the adapter reports; EvalKit does not count them itself. See [reporting usage](/docs/manual/agents/#reporting-token-usage).
 
 Each trial's metrics are saved in `scoring.json` and shown on its page; the run page shows their means, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set. A scenario's **Compare** table can show any metric by matrix parameter.
 

@@ -115,6 +115,7 @@ export const TrialManifestSchema = Schema.Struct({
 export const UsageSchema = Schema.Struct({
   inputTokens: Schema.optional(Schema.Number),
   outputTokens: Schema.optional(Schema.Number),
+  cachedInputTokens: Schema.optional(Schema.Number),
   totalTokens: Schema.optional(Schema.Number),
 });
 

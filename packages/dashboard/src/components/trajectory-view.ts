@@ -1,3 +1,4 @@
+import { turnTokens } from '@evalkit/core/usage';
 import type { TrajectoryEvent } from '../api.js';
 
 /** Milliseconds since the trajectory's first event. */
@@ -42,6 +43,7 @@ export type TrajectoryItem =
 export type TurnUsage = {
   inputTokens?: number;
   outputTokens?: number;
+  cachedInputTokens?: number;
   totalTokens?: number;
 };
 
@@ -94,6 +96,7 @@ function usage(value: unknown): TurnUsage | undefined {
   const result: TurnUsage = {
     inputTokens: num(record.inputTokens),
     outputTokens: num(record.outputTokens),
+    cachedInputTokens: num(record.cachedInputTokens),
     totalTokens: num(record.totalTokens),
   };
   return Object.values(result).some((entry) => entry !== undefined)
@@ -326,11 +329,7 @@ export function formatDuration(ms: number): string {
 
 /** `1,204 tokens (900 in · 304 out)`. */
 export function formatUsage(usage: TurnUsage): string {
-  const total =
-    usage.totalTokens ??
-    (usage.inputTokens !== undefined || usage.outputTokens !== undefined
-      ? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)
-      : undefined);
+  const total = turnTokens(usage);
   const parts = [
     usage.inputTokens === undefined
       ? undefined
@@ -338,6 +337,9 @@ export function formatUsage(usage: TurnUsage): string {
     usage.outputTokens === undefined
       ? undefined
       : `${usage.outputTokens.toLocaleString()} out`,
+    usage.cachedInputTokens
+      ? `${usage.cachedInputTokens.toLocaleString()} cached`
+      : undefined,
   ].filter(Boolean);
   const head = total === undefined ? '' : `${total.toLocaleString()} tokens`;
   return parts.length

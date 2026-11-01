@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./canonical-json": "./src/canonical-json.ts",
-    "./glob": "./src/glob.ts"
+    "./glob": "./src/glob.ts",
+    "./usage": "./src/usage.ts"
   },
   "dependencies": {
     "effect": "^3.19.0"

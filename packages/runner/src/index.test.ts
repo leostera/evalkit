@@ -612,7 +612,11 @@ describe('runEval', () => {
       }),
     ]);
     expect(() =>
-      defineEval({ ...evaluation, metrics: [metric('tokens', () => 1)] }),
+      defineEval({
+        ...evaluation,
+        // @ts-expect-error built-in metric names are rejected by the type too
+        metrics: [metric('tokens', () => 1)],
+      }),
     ).toThrow('more than one metric named tokens');
   });
 

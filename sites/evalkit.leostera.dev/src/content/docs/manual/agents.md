@@ -82,7 +82,20 @@ Returned results and `onEvent` calls append evidence in order. AUT events get `s
 | `tool-call`, `tool-result`       | Shared call `id`, tool `name`, JSON arguments/result, `timestamp`           | Actual tool activity.                              |
 | `turn-started`, `turn-completed` | Turn number; optional `latencyMs` and token `usage` on completion           | A turn boundary and any measured usage.            |
 
-Timestamps are ISO strings; omit them to use the time of recording. Any turn-completion usage or latency you emit is available in the trajectory; EvalKit does not infer provider tokens or latency from message text. If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
+Timestamps are ISO strings; omit them to use the time of recording. Any turn-completion usage or latency you emit is available in the trajectory; EvalKit does not infer provider tokens or latency from message text.
+
+### Reporting token usage
+
+A turn's `usage` feeds the [`tokens` metric](/docs/manual/scoring-and-evals/#metrics). Report what the model actually processed that turn:
+
+| Field               | Meaning                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `inputTokens`       | Every input token, **including cached ones**. Providers that report cache reads or writes separately need them added in.       |
+| `outputTokens`      | Every generated token, including reasoning tokens.                                                                             |
+| `cachedInputTokens` | Of `inputTokens`, how many were read from a prompt cache. Optional and informational; shown on the trial page, not subtracted. |
+| `totalTokens`       | The provider's own total. Used only when a turn has neither `inputTokens` nor `outputTokens`.                                  |
+
+For example, a provider that reports `input_tokens: 200, cache_read_input_tokens: 9000, cache_creation_input_tokens: 500` should report `inputTokens: 9700, cachedInputTokens: 9000`. `turnTokens(usage)` computes what a turn counts. If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
 
 ## Built-in and custom integrations
 

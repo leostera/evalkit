@@ -1,5 +1,6 @@
 import {
   recordError,
+  turnTokens,
   type EvalDefinition,
   type MetricResult,
   type ScoringContext,
@@ -34,12 +35,7 @@ export function builtInMetrics(
       event.kind === 'turn-completed' &&
       event.usage
     ) {
-      const { totalTokens, inputTokens, outputTokens } = event.usage;
-      const turn =
-        totalTokens ??
-        (inputTokens === undefined && outputTokens === undefined
-          ? undefined
-          : (inputTokens ?? 0) + (outputTokens ?? 0));
+      const turn = turnTokens(event.usage);
       if (turn !== undefined) tokens = (tokens ?? 0) + turn;
     }
   if (tokens !== undefined)

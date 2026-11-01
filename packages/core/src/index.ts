@@ -45,11 +45,8 @@ export type AgentRuntime = {
 
 export type AgentRuntimes = Partial<Record<AgentRuntimeName, AgentRuntime>>;
 
-export type Usage = {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-};
+export { turnTokens, type Usage } from './usage.js';
+import type { Usage } from './usage.js';
 
 export type RecordedError = {
   name: string;
@@ -404,8 +401,9 @@ export type Metric = {
   ): number | undefined | Promise<number | undefined>;
 };
 
-export function metric(
-  name: string,
+/** A built-in metric's name is a type error here, as well as at definition time. */
+export function metric<const Name extends string>(
+  name: Name extends BuiltInMetricName ? never : Name,
   run: Metric['run'],
   options: Pick<Metric, 'unit' | 'better'> = {},
 ): Metric {
@@ -415,7 +413,7 @@ export function metric(
 
 /** A metric's value for one trial. */
 export type MetricResult = {
-  name: string;
+  name: MetricName;
   /** Absent when the metric measured nothing or failed. */
   value?: number;
   unit?: string;
@@ -498,7 +496,7 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
       );
     datasetIds.add(dataset.id);
   }
-  const metricNames = new Set(BUILT_IN_METRICS);
+  const metricNames = new Set<string>(BUILT_IN_METRICS);
   for (const [index, entry] of (definition.metrics ?? []).entries()) {
     if (entry?.kind !== 'metric')
       throw new Error(
@@ -755,12 +753,20 @@ export type CheckpointResult = {
   matchedToolCall?: { eventIndex: number; id: string };
 };
 
-/** Metrics EvalKit records for every trial; scenario metrics may not reuse these names. */
-export const BUILT_IN_METRICS: readonly string[] = [
-  'agent time',
-  'tokens',
-  'tool calls',
-];
+/**
+ * Metrics EvalKit records for every trial; scenario metrics may not reuse
+ * these names.
+ *
+ * - `agent time` (ms): from the trial's first event to its last one before
+ *   final scoring.
+ * - `tokens`: the sum of `turnTokens(usage)` over the turns that reported
+ *   usage, cached input included. Absent when no turn reported any.
+ * - `tool calls`: the agent's `tool-call` events.
+ */
+export const BUILT_IN_METRICS = ['agent time', 'tokens', 'tool calls'] as const;
+export type BuiltInMetricName = (typeof BUILT_IN_METRICS)[number];
+/** A built-in metric's name (suggested by editors), or a scenario's own. */
+export type MetricName = BuiltInMetricName | (string & {});
 
 export type TrialScoring = {
   results: ScoreResult[];

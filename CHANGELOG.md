@@ -8,8 +8,12 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 - **Selecting a slice in one line.** `-m` and `-s` combine: `evalkit run -m models -s testing -a model=luna -a toolchain=riot` runs the testing suite's scenarios on Luna with Riot. `-s` alone narrows the config's matrix the same way, eval IDs (as arguments or `-e`) narrow further, and selections that cannot be met are errors. `--select` has a short form, `-a` (for axis), and takes comma-separated values: `-a model=luna,kimi`.
 
+- **Built-in metric names are typed.** `BuiltInMetricName` is `'agent time' | 'tokens' | 'tool calls'`, `MetricResult.name` suggests them, and `metric('tokens', ...)` is a type error. The docs define each one precisely.
+- `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the trial page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
+
 ### Changed
 
+- **`tokens` has one definition:** each turn's `inputTokens + outputTokens`, with cached input counted as input, and `totalTokens` only when a turn reports neither. Before, a reported `totalTokens` took precedence.
 - `-s` with a config matrix records its runs under that matrix's ID, as `-m` does, instead of `default`.
 
 ## [0.8.0] - 2026-10-31
