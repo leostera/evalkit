@@ -44,6 +44,8 @@ export const supportAgent = defineAgent({
 
 A returned result is recorded after any events emitted during `send()`: one `tool-call` (and `tool-result` when `result` is given) per tool call, then the assistant `message` with the reply, then the usage on the turn's completion. Replies, arguments and results may be any plain values; they are converted to JSON once, and a value that cannot be (a function, `bigint`, a cycle) fails the trial with the path of the bad field.
 
+A tool call whose arguments carry a shell command (`command`, `cmd` or `script`, as a string or an argv list, with an optional `cwd`) is shown on the trial page as a small terminal: the command, then its output, ending at the last lines. For that, return the result as a string, or as an object with `output` (or `stdout` and `stderr`) and an `exitCode`; a non-zero exit or `isError: true` marks the call as failed.
+
 ### Streaming events
 
 To record activity as it happens (long tool loops, intermediate messages), call and await `onEvent` during the turn instead of, or as well as, returning a result. Lifecycle events (`started`, `turn-started`, `turn-completed`, `completed`) are optional: the runner records when each step starts and ends, and their durations. Emit them only to attach data such as usage. `timestamp` defaults to the time the event is recorded.

@@ -8,6 +8,12 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 - **Per-scenario snapshot ignores.** `defineEval({ workspace: { ignore: [...] } })` adds gitignore-style patterns after the project's `artifacts.exclude`, so each scenario decides what in its workspace is noise. Later patterns win, and `!pattern` keeps a path even inside an ignored directory: `['!_build/doc/**']` saves generated docs and drops the rest of `_build`. Ignored directories are walked only when a `!` pattern could keep something in them. Each trial manifest records the effective list as `workspaceIgnore`.
 
+## [Unreleased]
+
+### Added
+
+- **Shell commands as terminals.** On the trial page, a tool call that ran a shell command shows as a small terminal: the command, its output (the last lines first, where errors are, with earlier ones a click away) and stderr in red, with the exit code beside the tool name. Any tool whose arguments have a `command`, `cmd` or `script` qualifies.
+
 ## [0.7.0] - 2026-10-31
 
 Metrics, computed prompts, comparing runs by parameter, smaller results, and a clearer command line. This release has breaking changes; see [Migrating from 0.6](#migrating-from-06).
@@ -188,7 +194,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.7.0]: https://github.com/leostera/evalkit/compare/1ca784e...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/7e8c3e5...main
+[0.7.0]: https://github.com/leostera/evalkit/compare/1ca784e...7e8c3e5
 [0.6.1]: https://github.com/leostera/evalkit/compare/91c2c86...1ca784e
 [0.6.0]: https://github.com/leostera/evalkit/compare/99008d5...91c2c86
 [0.5.0]: https://github.com/leostera/evalkit/compare/49ad689...99008d5

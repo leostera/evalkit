@@ -7,12 +7,14 @@ import {
   RobotIcon,
   SignOutIcon,
   SkipForwardIcon,
+  TerminalWindowIcon,
   UserIcon,
   WarningOctagonIcon,
   WrenchIcon,
 } from '@phosphor-icons/react';
 import { useState, type ReactNode } from 'react';
 import type { TrajectoryEvent } from '../api.js';
+import { shellView, type ShellView } from './shell-view.js';
 import { StatusBadge } from './StatusBadge.js';
 import {
   formatDuration,
@@ -256,6 +258,8 @@ function ToolCall({
 }: {
   item: Extract<TrajectoryItem, { type: 'tool' }>;
 }) {
+  const shell = shellView(item.arguments, item.result);
+  if (shell) return <ShellCall item={item} shell={shell} />;
   const args = preview(item.arguments);
   return (
     <details className="tool-call group">
@@ -410,6 +414,129 @@ function ErrorText({ error }: { error: EventError }) {
 }
 
 /** Messages are prose; structured content is shown as JSON. */
+/** A shell command, shown as a small terminal: the command, then what it printed. */
+function ShellCall({
+  item,
+  shell,
+}: {
+  item: Extract<TrajectoryItem, { type: 'tool' }>;
+  shell: ShellView;
+}) {
+  const unread =
+    item.result !== undefined &&
+    shell.output === undefined &&
+    shell.stderr === undefined;
+  return (
+    <Row
+      icon={<TerminalWindowIcon />}
+      tone={shell.failed ? 'danger' : 'default'}
+      label={
+        <>
+          <span className="font-mono text-[13px] font-medium text-kumo-strong">
+            {item.name}
+          </span>
+          {shell.exitCode === undefined ? null : (
+            <span
+              className={cn(
+                'rounded px-1.5 font-mono text-xs tabular-nums',
+                shell.failed
+                  ? 'bg-kumo-danger-tint text-kumo-danger'
+                  : 'text-kumo-subtle',
+              )}
+            >
+              exit {shell.exitCode}
+            </span>
+          )}
+          {shell.exitCode === undefined && shell.failed ? (
+            <span className="rounded bg-kumo-danger-tint px-1.5 text-xs text-kumo-danger">
+              error
+            </span>
+          ) : null}
+          {item.result ? (
+            <Meta>{formatDuration(item.result.durationMs)}</Meta>
+          ) : (
+            <span className="text-kumo-warning">no result</span>
+          )}
+          {shell.options.length ? (
+            <Meta>
+              {shell.options
+                .map(([name, value]) => `${name} ${preview(value, 40)}`)
+                .join(' · ')}
+            </Meta>
+          ) : null}
+        </>
+      }
+      at={item.at}
+    >
+      <figure
+        aria-label={`Shell command: ${shell.command}`}
+        className="terminal flex max-w-[100ch] flex-col overflow-hidden rounded-md bg-[#17171c] font-mono text-xs leading-relaxed text-[#e4e4e7] shadow-sm ring-1 ring-black/10"
+      >
+        {shell.cwd ? (
+          <figcaption className="border-b border-white/10 px-3 py-1 text-[11px] text-[#9a9aa3]">
+            {shell.cwd}
+          </figcaption>
+        ) : null}
+        <pre className="px-3 py-2 break-words whitespace-pre-wrap">
+          <span aria-hidden className="text-[#86efac] select-none">
+            ${' '}
+          </span>
+          {shell.command}
+        </pre>
+        {shell.output ? <TerminalOutput text={shell.output} /> : null}
+        {shell.stderr ? (
+          <TerminalOutput text={shell.stderr} className="text-[#fca5a5]" />
+        ) : null}
+      </figure>
+      {unread ? <Json value={item.result!.value} /> : null}
+    </Row>
+  );
+}
+
+const TERMINAL_LINES = 12;
+
+/**
+ * Command output, cut to its last lines until asked for: like a terminal,
+ * the end is where errors and results are.
+ */
+function TerminalOutput({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const lines = text.replace(/\n$/, '').split('\n');
+  // Hiding only a few lines would cost a click for nothing.
+  const long = lines.length > TERMINAL_LINES + 4;
+  const [open, setOpen] = useState(false);
+  const hidden = lines.length - TERMINAL_LINES;
+  return (
+    <div className="border-t border-white/10">
+      {long ? (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="w-full border-b border-white/10 px-3 py-1 text-left text-[11px] text-[#9a9aa3] hover:bg-white/5 hover:text-[#e4e4e7] focus-visible:outline-2 focus-visible:outline-kumo-brand"
+        >
+          {open
+            ? `Hide the first ${hidden} lines`
+            : `Show ${hidden} earlier lines`}
+        </button>
+      ) : null}
+      <pre
+        className={cn(
+          'max-h-[32rem] overflow-auto px-3 py-2 break-words whitespace-pre-wrap text-[#c4c4cc]',
+          className,
+        )}
+      >
+        {long && !open ? lines.slice(-TERMINAL_LINES).join('\n') : text}
+      </pre>
+    </div>
+  );
+}
+
 function Content({ value }: { value: unknown }) {
   return typeof value === 'string' ? (
     <Prose>{value}</Prose>
