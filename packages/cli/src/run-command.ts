@@ -340,6 +340,7 @@ export async function runProjectCommand(
           workspaceRoot: sandboxDir,
           keepWorkspaces: project.config.keepSandboxes,
           artifactExclude: project.config.artifacts?.exclude,
+          attachmentLimits: project.config.artifacts?.attachments,
           signal: controller.signal,
           onEvent: (trial, event) => reporter.onEvent(trial, event),
           onResult: (cell, result) => {

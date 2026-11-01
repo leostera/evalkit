@@ -12,7 +12,9 @@ import { internalModule, markDefinitionSite } from './definition-site.js';
 internalModule(import.meta.url);
 export {
   DEFAULT_ARTIFACT_EXCLUDE,
+  DEFAULT_ATTACHMENT_LIMITS,
   defineConfig,
+  type AttachmentLimits,
   type EvalkitConfig,
   type KeepSandboxes,
   type ShareConfig,
@@ -171,6 +173,14 @@ export type AutAdapter<TMessage = string> = {
     runtime?: AgentRuntime;
     /** Optional: stream events as they happen. Returning a turn result from `send` is enough for most agents. */
     onEvent: (event: AutEventInput) => void | Promise<void>;
+    /**
+     * Saves a file with the trial's results, such as the agent's raw log,
+     * whether or not its sandbox is kept. `name` is a relative path of
+     * letters, digits, `.`, `_` and `-` (`logs/agent.log`); each name once.
+     * A file over the size limit keeps its last bytes; past the trial's
+     * total limit it is rejected. See `artifacts.attachments` in the config.
+     */
+    attach: (name: string, content: string | Uint8Array) => Promise<void>;
   }): Promise<AutSession<TMessage>>;
 };
 
@@ -356,6 +366,12 @@ export type ScoringContext = {
   checkpoint(
     rule: JudgeRule | ExpectToolCallStep,
   ): CheckpointOutcome<JsonValue> | undefined;
+  /**
+   * Saves a file with the trial's results, like the agent's `attach()`: for
+   * example a container's log, or a file the agent reported, read before the
+   * workspace is gone. Same names, limits and rules.
+   */
+  attach(name: string, content: string | Uint8Array): Promise<void>;
 };
 
 /**
@@ -809,12 +825,22 @@ export type ArtifactEntry = {
   size?: number;
 };
 
+/** A file an adapter attached with `attach()`, saved as `artifacts/attachments/<name>`. */
+export type AttachmentEntry = {
+  name: string;
+  /** Bytes saved. */
+  size: number;
+  /** The original size, when the file was cut to its last `maxFileBytes`. */
+  truncatedFrom?: number;
+};
+
 export type TrialSummary = {
   status: RunStatus;
   endedAt: string;
   durationMs?: number;
   scoring?: TrialScoring;
   artifacts?: ArtifactEntry[];
+  attachments?: AttachmentEntry[];
   error?: RecordedError;
 };
 

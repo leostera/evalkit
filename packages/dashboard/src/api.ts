@@ -1,4 +1,5 @@
 import type {
+  AttachmentEntry,
   EvalCatalogAgent,
   EvalCatalogDataset,
   EvalCatalogEntry,
@@ -6,7 +7,7 @@ import type {
   EvalCatalogStep,
   MetricResult,
 } from '@evalkit/core';
-export type { MetricResult };
+export type { AttachmentEntry, MetricResult };
 export type EvalSummary = {
   id: string;
   name?: string;
@@ -171,6 +172,8 @@ export type TrialSummary = {
   }>;
   metrics?: MetricResult[];
   checkpoints?: CheckpointResult[];
+  /** Files the adapter or scorers attached; read them with `getAttachment`. */
+  attachments?: AttachmentEntry[];
   skippedScorers?: string[];
 };
 
@@ -210,6 +213,11 @@ export interface DashboardApi {
     trialId: string,
   ): Promise<Array<{ path: string; kind: string; size?: number }>>;
   listWorkspace(runId: string, trialId: string): Promise<WorkspaceEntry[]>;
+  getAttachment(
+    runId: string,
+    trialId: string,
+    name: string,
+  ): Promise<Response>;
   getWorkspaceFile(
     runId: string,
     trialId: string,
@@ -297,6 +305,17 @@ export function createHttpDashboardApi(options: {
       return request<WorkspaceEntry[]>(
         `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace`,
       );
+    },
+    async getAttachment(runId, trialId, name) {
+      const response = await send(
+        new URL(
+          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/attachments/${encodePath(name)}`,
+          options.baseUrl,
+        ),
+      );
+      if (!response.ok)
+        throw new Error(`Dashboard request failed: ${response.status}`);
+      return response;
     },
     async getWorkspaceFile(runId, trialId, filePath) {
       const response = await send(

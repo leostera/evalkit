@@ -14,6 +14,12 @@ export const trialHref = (runId: string, trialId: string) =>
   `${runHref(runId)}/trials/${segment(trialId)}`;
 export const workspaceHref = (runId: string, trialId: string) =>
   `${trialHref(runId, trialId)}/workspace`;
+export const attachmentsHref = (
+  runId: string,
+  trialId: string,
+  file?: string,
+) =>
+  `${trialHref(runId, trialId)}/attachments${file ? `?file=${encodeURIComponent(file)}` : ''}`;
 
 export type LibrarySection = 'agents' | 'judges' | 'scenarios' | 'datasets';
 export const libraryHref = (section: LibrarySection, id?: string) =>

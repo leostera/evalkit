@@ -26,7 +26,7 @@ import { RunTable } from './components/RunTable.js';
 import { ScenarioPage } from './components/ScenarioPage.js';
 import { ScenarioTable } from './components/ScenarioTable.js';
 import { Scoreboard } from './components/Scoreboard.js';
-import { TrialPage } from './components/TrialPage.js';
+import { TrialPage, type TrialView } from './components/TrialPage.js';
 import { TrialsPage } from './components/TrialsPage.js';
 
 type Data = {
@@ -55,7 +55,11 @@ export function DashboardRoutes(data: Data) {
       />
       <Route
         path="/runs/:runId/trials/:trialId/workspace"
-        element={<TrialRoute {...data} workspace />}
+        element={<TrialRoute {...data} view="workspace" />}
+      />
+      <Route
+        path="/runs/:runId/trials/:trialId/attachments"
+        element={<TrialRoute {...data} view="attachments" />}
       />
       <Route path="/trials" element={<TrialsRoute {...data} />} />
       <Route
@@ -146,17 +150,7 @@ function RunRoute(data: Data) {
   return <RunPage {...data} runId={runId} />;
 }
 
-function TrialRoute({
-  workspace = false,
-  ...data
-}: Data & { workspace?: boolean }) {
+function TrialRoute({ view = 'trial', ...data }: Data & { view?: TrialView }) {
   const { runId = '', trialId = '' } = useParams();
-  return (
-    <TrialPage
-      {...data}
-      runId={runId}
-      trialId={trialId}
-      workspace={workspace}
-    />
-  );
+  return <TrialPage {...data} runId={runId} trialId={trialId} view={view} />;
 }

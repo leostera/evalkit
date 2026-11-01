@@ -67,6 +67,7 @@ type FinalScoringInput = {
   skippedScorers: string[];
   data: JsonObject;
   checkpoints: readonly CheckpointResult[];
+  attach: ScoringContext['attach'];
   now: () => Date;
   emitRunner: (event: RunnerEvent) => Promise<void>;
 };
@@ -81,6 +82,7 @@ export function scoringContext(input: {
   checkpoints: readonly CheckpointResult[];
   /** The scenario's transcript, for `checkpoint(rule)`. */
   transcript: readonly TranscriptStep[];
+  attach: ScoringContext['attach'];
 }): ScoringContext {
   return {
     context: input.context,
@@ -91,6 +93,7 @@ export function scoringContext(input: {
     data: input.data,
     checkpoints: input.checkpoints,
     checkpoint: checkpointLookup(input.transcript, input.checkpoints),
+    attach: input.attach,
   };
 }
 

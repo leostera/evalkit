@@ -7,15 +7,19 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 ### Added
 
 - **Selecting a slice in one line.** `-m` and `-s` combine: `evalkit run -m models -s testing -a model=luna -a toolchain=riot` runs the testing suite's scenarios on Luna with Riot. `-s` alone narrows the config's matrix the same way, eval IDs (as arguments or `-e`) narrow further, and selections that cannot be met are errors. `--select` has a short form, `-a` (for axis), and takes comma-separated values: `-a model=luna,kimi`.
-
 - **Built-in metric names are typed.** `BuiltInMetricName` is `'agent time' | 'tokens' | 'tool calls'`, `MetricResult.name` suggests them, and `metric('tokens', ...)` is a type error. The docs define each one precisely.
 - `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the trial page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
 - **Typed checkpoint lookups.** `checkpoint(rule)` on the scoring context returns a checkpoint's latest result by the rule itself, not its name, with the predicate's evidence type: `checkpoint(builds)?.evidence?.stdout`. Renaming the check cannot break it, and a rule outside the transcript throws instead of reading as "not run".
+- **Attachments.** Adapters get `attach(name, content)` in `start()`, and scorers and checkpoints on their context, to save files such as the agent's raw log with the trial's results. They survive when a passing trial's sandbox is removed, show on the trial page and its new **Attachments** page, and are included by `build` and `share`. Names are checked relative paths; a file over 5 MB keeps its last bytes, and a trial's attachments are capped at 20 MB (`artifacts.attachments` sets both). Sharing runs with attachments needs a share server on this version.
 
 ### Changed
 
 - **`tokens` has one definition:** each turn's `inputTokens + outputTokens`, with cached input counted as input, and `totalTokens` only when a turn reports neither. Before, a reported `totalTokens` took precedence.
 - `-s` with a config matrix records its runs under that matrix's ID, as `-m` does, instead of `default`.
+
+### Fixed
+
+- **Agent-written files are never rendered.** The local dashboard served candidate workspace and dataset files with a type from their extension, so an `.html` file an agent wrote would open as a page on the dashboard's origin. They are now served as bytes with `nosniff` and a sandboxing CSP, as the share server already did.
 
 ## [0.8.0] - 2026-10-31
 
@@ -24,7 +28,6 @@ Shell commands in trajectories read like a terminal, and each scenario can choos
 ### Added
 
 - **Per-scenario snapshot ignores.** `defineEval({ workspace: { ignore: [...] } })` adds gitignore-style patterns after the project's `artifacts.exclude`, so each scenario decides what in its workspace is noise. Later patterns win, and `!pattern` keeps a path even inside an ignored directory: `['!_build/doc/**']` saves generated docs and drops the rest of `_build`. Ignored directories are walked only when a `!` pattern could keep something in them. Each trial manifest records the effective list as `workspaceIgnore`.
-
 - **Shell commands as terminals.** On the trial page, a tool call that ran a shell command shows as a small terminal: the command, its output (the last lines first, where errors are, with earlier ones a click away) and stderr in red, with the exit code beside the tool name. Any tool whose arguments have a `command`, `cmd` or `script` qualifies.
 
 ## [0.7.0] - 2026-10-31

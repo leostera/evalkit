@@ -26,6 +26,8 @@ export type EvalkitConfig = {
      * A scenario's `workspace.ignore` patterns come after these.
      */
     exclude?: readonly string[];
+    /** Limits for files adapters `attach()`. */
+    attachments?: AttachmentLimits;
   };
   /** Where each trial's real workspace lives during a run. Default `_evalkit-sandbox`. */
   sandboxDir?: string;
@@ -35,6 +37,18 @@ export type EvalkitConfig = {
 };
 
 export type KeepSandboxes = 'failed' | 'all' | 'none';
+
+export type AttachmentLimits = {
+  /** A larger attachment keeps its last this-many bytes. Default 5 MB. */
+  maxFileBytes?: number;
+  /** All of one trial's attachments; past it, `attach()` rejects. Default 20 MB. */
+  maxTrialBytes?: number;
+};
+
+export const DEFAULT_ATTACHMENT_LIMITS: Required<AttachmentLimits> = {
+  maxFileBytes: 5_000_000,
+  maxTrialBytes: 20_000_000,
+};
 
 /** Left out of candidate snapshots unless `artifacts.exclude` says otherwise. */
 export const DEFAULT_ARTIFACT_EXCLUDE: readonly string[] = [

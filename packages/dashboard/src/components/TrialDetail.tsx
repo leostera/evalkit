@@ -1,8 +1,11 @@
 import { Table } from '@cloudflare/kumo';
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { DashboardApi, TrajectoryEvent, TrialSummary } from '../api.js';
 import { ArtifactRow } from './ArtifactRow.js';
-import { monoClass, NestedTable } from './DataTable.js';
+import { monoClass, NestedTable, tableLinkClass } from './DataTable.js';
+import { formatBytes } from './FileTree.js';
+import { attachmentsHref } from './links.js';
 import { DetailList } from './DetailList.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
@@ -123,6 +126,35 @@ export function TrialDetail({
         {trial.checkpoints?.length ? (
           <EvidenceSection title="Checkpoints">
             <CheckpointTable checkpoints={trial.checkpoints} />
+          </EvidenceSection>
+        ) : null}
+        {trial.attachments?.length ? (
+          <EvidenceSection title="Attachments">
+            <ul className="flex flex-col gap-1 text-[13px]">
+              {trial.attachments.map((attachment) => (
+                <li
+                  key={attachment.name}
+                  className="flex items-baseline justify-between gap-3"
+                >
+                  <Link
+                    to={attachmentsHref(
+                      selected.run.id,
+                      trial.id,
+                      attachment.name,
+                    )}
+                    className={`${tableLinkClass} ${monoClass} min-w-0 truncate`}
+                    title={attachment.name}
+                  >
+                    {attachment.name}
+                  </Link>
+                  <span className="shrink-0 text-xs text-kumo-subtle tabular-nums">
+                    {attachment.truncatedFrom
+                      ? `last ${formatBytes(attachment.size)} of ${formatBytes(attachment.truncatedFrom)}`
+                      : formatBytes(attachment.size)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </EvidenceSection>
         ) : null}
         {datasets.length ? (

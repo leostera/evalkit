@@ -16,7 +16,8 @@ _evalkit-results/<run-uuid>/
     ├── trajectory.jsonl          # AUT + runner events, one JSON object per line
     ├── scoring.json              # the scores: scorer results, checkpoints, metrics, overall, passed
     ├── summary.json              # how it ended: execution status, scoring (again), error, artifacts
-    └── artifacts/candidate/...   # end-of-trial candidate file snapshot, if any
+    ├── artifacts/candidate/...   # end-of-trial candidate file snapshot, if any
+    └── artifacts/attachments/... # files the agent or scorers attach()
 ```
 
 **Looking for scores?** They are in each trial's `scoring.json`, repeated in its `summary.json`; the run's `summary.json` counts passed and failed trials. Manifests describe what ran and its status, never scores. From code, use `readTrialScoring` and the other readers in the [API reference](/docs/reference/api/#running-and-reading-results-leosteraevalkitrunner).

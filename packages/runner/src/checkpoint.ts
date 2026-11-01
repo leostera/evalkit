@@ -40,6 +40,7 @@ export function evaluateCheckpoint(
     data: JsonObject;
     checkpoints: readonly CheckpointResult[];
     checkpoint: ScoringContext['checkpoint'];
+    attach: ScoringContext['attach'];
   },
   now: () => Date,
   judgeAgent?: AutAdapter,

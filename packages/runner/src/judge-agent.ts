@@ -59,6 +59,8 @@ export function runJudgeAgent(
         try: () =>
           agent.start({
             context,
+            // A judge's files are the trial's attachments too.
+            attach: input.attach,
             onEvent: (event) => {
               // Validate normalized judge observations before persisting them separately.
               const observed = Schema.decodeUnknownSync(TrajectoryEventSchema)({

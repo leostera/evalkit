@@ -95,7 +95,34 @@ A turn's `usage` feeds the [`tokens` metric](/docs/manual/scoring-and-evals/#met
 | `cachedInputTokens` | Of `inputTokens`, how many were read from a prompt cache. Optional and informational; shown on the trial page, not subtracted. |
 | `totalTokens`       | The provider's own total. Used only when a turn has neither `inputTokens` nor `outputTokens`.                                  |
 
-For example, a provider that reports `input_tokens: 200, cache_read_input_tokens: 9000, cache_creation_input_tokens: 500` should report `inputTokens: 9700, cachedInputTokens: 9000`. `turnTokens(usage)` computes what a turn counts. If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
+For example, a provider that reports `input_tokens: 200, cache_read_input_tokens: 9000, cache_creation_input_tokens: 500` should report `inputTokens: 9700, cachedInputTokens: 9000`. `turnTokens(usage)` computes what a turn counts.
+
+### Attaching files
+
+An agent's own records (its raw log, a session transcript, a crash dump) help review a trial, but they often live in the sandbox, which is removed for trials that pass. `attach(name, content)`, passed to `start()`, saves a file with the trial's results instead:
+
+```ts
+export const myAgent = defineAgent({
+  async start({ context, attach }) {
+    const agent = await launch(context.workspace.root);
+    return {
+      send: (message) => agent.prompt(message),
+      async close() {
+        await attach('logs/agent.log', await agent.log());
+        await agent.stop();
+      },
+    };
+  },
+});
+```
+
+- **Names** are relative paths of letters, digits, `.`, `_` and `-`, not starting with a dot (`logs/agent.log`); each name can be attached once. Anything else is rejected, so a name can never escape the trial's folder.
+- **Content** is a string (saved as UTF-8) or a `Uint8Array`, stored as given and never interpreted. Dashboards and share servers serve it as plain bytes, never as a page.
+- **Size:** a file over `artifacts.attachments.maxFileBytes` (default 5 MB) keeps its **last** bytes, where a log's errors are, and is marked truncated; an attachment that would take the trial past `maxTrialBytes` (default 20 MB) is rejected.
+- Await it before `close()` returns; attaching after the trial has finished is rejected.
+
+Scorers and checkpoints have the same `attach` on their context, for something only they can read, such as a container's log before teardown or a file the agent reported writing. Attachments appear on the trial page and its **Attachments** page, are saved as `artifacts/attachments/<name>` and listed in the trial's `summary.json`, and are included by `evalkit build` and `evalkit share` (not with `--no-workspace`). They may contain secrets, like any log.
+If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
 
 ## Built-in and custom integrations
 

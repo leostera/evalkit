@@ -27,7 +27,7 @@ const evaluation = defineEval({
   id: 'writes-file',
   agent: {
     identity: { kind: 'in-process', id: 'writer' },
-    async start({ context, onEvent }) {
+    async start({ context, onEvent, attach }) {
       return {
         async send(message: string) {
           await mkdir(join(context.workspace.root, 'out'), { recursive: true });
@@ -46,7 +46,9 @@ const evaluation = defineEval({
             timestamp: new Date().toISOString(),
           });
         },
-        async close() {},
+        async close() {
+          await attach('logs/writer.log', '<script>not run</script>');
+        },
       };
     },
   },
@@ -78,7 +80,8 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   const paths = await fixture();
   const registry = registerEvals([evaluation]);
   const result = await buildDashboard({ registry, ...paths });
-  expect(result).toMatchObject({ runs: 1, trials: 1, files: 1 });
+  // The candidate's file and the attachment.
+  expect(result).toMatchObject({ runs: 1, trials: 1, files: 2 });
   expect(await readFile(join(paths.outDir, 'index.html'), 'utf8')).toContain(
     '"./assets/app.js"',
   );
@@ -115,6 +118,12 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   );
   const events = await api.getTrialEvents(run!.id, trial!.id);
   expect(events.some((event) => event.content === 'hello snapshot')).toBe(true);
+  expect(trial!.attachments).toEqual([{ name: 'logs/writer.log', size: 24 }]);
+  expect(
+    await (
+      await api.getAttachment(run!.id, trial!.id, 'logs/writer.log')
+    ).text(),
+  ).toBe('<script>not run</script>');
   expect(await api.listWorkspace(run!.id, trial!.id)).toContainEqual(
     expect.objectContaining({ path: 'out/reply.txt', kind: 'file' }),
   );

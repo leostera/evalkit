@@ -280,8 +280,10 @@ export function directorySink(root: string): SnapshotSink {
 /**
  * One run's snapshot, shared by `evalkit build` (files on disk) and
  * `evalkit share` (an upload bundle): `trials.json`, then per trial
- * `detail.json`, `events.json`, `artifacts.json`, `workspace.json`, and the
- * candidate files under `workspace/`. Evaluator workspaces are never read.
+ * `detail.json`, `events.json`, `artifacts.json`, `workspace.json`, the
+ * candidate files under `workspace/`, and attachments under `attachments/`
+ * (both left out with `workspaceFiles: false`; they stay listed). Evaluator
+ * workspaces are never read.
  */
 export async function snapshotRun(
   reports: ReturnType<typeof createDashboardReportReader>,
@@ -307,6 +309,18 @@ export async function snapshotRun(
     const workspace = await reports.listCandidateWorkspace(runId, trial.id);
     await sink.json(`${base}/workspace.json`, workspace);
     if (options.workspaceFiles === false) continue;
+    for (const attachment of trial.attachments ?? []) {
+      const response = await reports.attachmentFile(
+        runId,
+        trial.id,
+        attachment.name,
+      );
+      await sink.bytes(
+        `${base}/attachments/${attachment.name}`,
+        new Uint8Array(await response.arrayBuffer()),
+      );
+      files += 1;
+    }
     for (const entry of workspace) {
       if (entry.kind !== 'file') continue;
       const response = await reports.candidateFile(runId, trial.id, entry.path);

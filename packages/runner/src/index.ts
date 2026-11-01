@@ -7,6 +7,7 @@ export {
   CheckpointExecutionError,
 } from './errors.js';
 
+import { attachmentStore } from './attachments.js';
 import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
@@ -34,6 +35,7 @@ import {
   type RunMetadata,
   type RunCatalog,
   type RunSource,
+  type AttachmentLimits,
   type KeepSandboxes,
   type MetricResult,
   type ScoreResult,
@@ -99,6 +101,8 @@ export type RunEvalOptions = {
    * own `workspace.ignore`. Default `DEFAULT_ARTIFACT_EXCLUDE`.
    */
   artifactExclude?: readonly string[];
+  /** Size limits for files adapters and scorers `attach()`. Default `DEFAULT_ATTACHMENT_LIMITS`. */
+  attachmentLimits?: AttachmentLimits;
   /** Repository and commit the eval code came from, recorded in the manifest. */
   source?: RunSource;
   /** The project's evals and suites at run time, saved beside the manifest. */
@@ -417,6 +421,7 @@ async function runTrial(
     workspaceIgnore,
     ...(prepared.length ? { datasets: trialDatasets(prepared) } : {}),
   });
+  const attachments = attachmentStore(trialWriter, options.attachmentLimits);
 
   let writeChain = Promise.resolve();
   let reportingFailed = false;
@@ -529,6 +534,7 @@ async function runTrial(
               context: trialContext,
               ...(runtime ? { runtime } : {}),
               onEvent: onAutEvent,
+              attach: attachments.attach,
             }),
           catch: (cause) =>
             new AutExecutionError({
@@ -550,6 +556,7 @@ async function runTrial(
                 data: scoringData,
                 signal,
                 progress,
+                attach: attachments.attach,
               }),
             catch: (cause) => cause,
           }),
@@ -601,6 +608,7 @@ async function runTrial(
       skippedScorers,
       data: scoringData,
       checkpoints,
+      attach: attachments.attach,
       now,
       emitRunner,
     });
@@ -618,6 +626,7 @@ async function runTrial(
             data: scoringData,
             checkpoints,
             transcript: definition.transcript,
+            attach: attachments.attach,
           }),
         )),
       );
@@ -663,6 +672,7 @@ async function runTrial(
   status = wasCancelled ? 'cancelled' : primaryError ? 'failed' : 'completed';
 
   const error = primaryError ? recordError(primaryError) : undefined;
+  const attached = await attachments.close();
   const endedAt = now().toISOString();
   await trialWriter.finalize({
     status,
@@ -670,6 +680,7 @@ async function runTrial(
     durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
     scoring,
     ...(artifacts ? { artifacts } : {}),
+    ...(attached.length ? { attachments: attached } : {}),
     ...(error ? { error } : {}),
   });
   if (!options.runWriter) {

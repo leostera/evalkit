@@ -204,7 +204,7 @@ export default defineConfig({ share: { url: 'https://evals.example.com' } });
 ```
 
 - **Which runs:** finished runs at the current commit. Runs made with uncommitted changes are skipped unless you pass `--allow-dirty`, and they are then labelled and left out of the commit's pass rate. `--all` also uploads runs from other commits. Untracked runs (no git) and archived runs are never uploaded.
-- **What is uploaded:** the same data as `evalkit build`: run summaries, scores, checkpoints, trajectories, and candidate workspace files. Evaluator workspaces are never uploaded. `--no-workspace` leaves out candidate file contents and keeps their listing.
+- **What is uploaded:** the same data as `evalkit build`: run summaries, scores, checkpoints, trajectories, candidate workspace files and attachments. Evaluator workspaces are never uploaded. `--no-workspace` leaves out the contents of candidate files and attachments and keeps their listing. A share server older than 0.9 rejects uploads that include attachments; update it first.
 - **Safe to repeat:** uploading a run again does nothing, so rerunning `share` after a failure only sends what's missing. Concurrent CI jobs for the same commit don't interfere.
 
 On the server, `/<repo>` opens the latest commit, `/<repo>/-/<branch>` opens the latest commit on that branch, and a version picker in the header switches between commits. An eval project inside a larger repository gets its own address, `/<repo>/~<path>`.

@@ -317,6 +317,7 @@ test('run bundle paths are limited to the snapshot format', () => {
     'trials.json',
     `trials/${trial}/events.json`,
     `trials/${trial}/workspace/deep/file.txt`,
+    `trials/${trial}/attachments/logs/agent.log`,
   ])
     expect([path, allowedRunPath(path)]).toEqual([path, true]);
   for (const path of [
@@ -326,6 +327,7 @@ test('run bundle paths are limited to the snapshot format', () => {
     `trials/${trial}/workspace/../x`,
     `trials/${trial}/workspace//x`,
     `trials/${trial}/evaluator/x`,
+    `trials/${trial}/attachments/../manifest.json`,
   ])
     expect([path, allowedRunPath(path)]).toEqual([path, false]);
 });

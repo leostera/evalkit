@@ -183,12 +183,20 @@ export const ArtifactEntrySchema = Schema.Struct({
   kind: Schema.Literal('file', 'directory'),
   size: Schema.optional(Schema.Number),
 });
+export const AttachmentEntrySchema = Schema.Struct({
+  name: Schema.String,
+  size: Schema.Number,
+  truncatedFrom: Schema.optional(Schema.Number),
+});
 export const TrialSummarySchema = Schema.Struct({
   status: RunStatusSchema,
   endedAt: Schema.String,
   durationMs: Schema.optional(Schema.Number),
   scoring: Schema.optional(TrialScoringSchema),
   artifacts: Schema.optional(Schema.mutable(Schema.Array(ArtifactEntrySchema))),
+  attachments: Schema.optional(
+    Schema.mutable(Schema.Array(AttachmentEntrySchema)),
+  ),
   error: Schema.optional(RecordedErrorSchema),
 });
 

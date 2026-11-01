@@ -90,3 +90,33 @@ test('artifact listings share a walker; candidate reads cannot escape their root
     ).rejects.toThrow('Invalid workspace path');
   });
 });
+
+test('agent-written files are served as untrusted bytes, never as HTML', async () => {
+  await withReports(async (root) => {
+    const artifacts = join(root, runId, 'trials', trialId, 'artifacts');
+    await mkdir(join(artifacts, 'candidate'), { recursive: true });
+    await mkdir(join(artifacts, 'attachments', 'logs'), { recursive: true });
+    await writeFile(
+      join(artifacts, 'candidate', 'page.html'),
+      '<script>x</script>',
+    );
+    await writeFile(join(artifacts, 'attachments', 'logs', 'agent.log'), 'log');
+    const reports = createDashboardReportReader(root, registerEvals([]));
+    for (const response of [
+      await reports.candidateFile(runId, trialId, 'page.html'),
+      await reports.attachmentFile(runId, trialId, 'logs/agent.log'),
+    ]) {
+      expect(response.headers.get('content-type')).toBe(
+        'application/octet-stream',
+      );
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(response.headers.get('content-security-policy')).toBe('sandbox');
+    }
+    await expect(
+      reports.attachmentFile(runId, trialId, '../candidate/page.html'),
+    ).rejects.toThrow('Invalid attachment path');
+    await expect(
+      reports.attachmentFile(runId, trialId, 'logs'),
+    ).rejects.toThrow('Attachment is not a file');
+  });
+});

@@ -10,6 +10,7 @@ import {
   type CheckpointResult,
   type EvalDefinition,
   type RunnerEvent,
+  type ScoringContext,
   type TrajectoryEvent,
   type TurnView,
   type UserStep,
@@ -45,6 +46,7 @@ type TranscriptExecution = {
   data: JsonObject;
   signal: AbortSignal;
   progress: TranscriptProgress;
+  attach: ScoringContext['attach'];
 };
 
 export async function executeTranscript(
@@ -189,6 +191,7 @@ async function runCheckpoint(
         checkpoint: checkpointLookup(definition.transcript, [
           ...progress.checkpoints,
         ]),
+        attach: input.attach,
       },
       now,
       definition.judge,

@@ -1,6 +1,7 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { lstat, readFile, readdir, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import type {
+  AttachmentEntry,
   CheckpointResult,
   MetricResult,
   EvalRegistry,
@@ -177,6 +178,7 @@ export type LocalTrial = {
   metrics?: MetricResult[];
   checkpoints: CheckpointResult[];
   skippedScorers?: string[];
+  attachments?: AttachmentEntry[];
 };
 
 export type ArtifactPath = {
@@ -233,6 +235,16 @@ function trialStatus(summary: {
   if (summary.status !== 'completed') return 'errored';
   return summary.scoring?.passed === true ? 'passed' : 'failed';
 }
+
+/**
+ * Headers for files an agent, a dataset or an adapter produced: untrusted
+ * content on the dashboard's origin, so never rendered or sniffed as HTML.
+ */
+export const UNTRUSTED_FILE: Record<string, string> = {
+  'content-type': 'application/octet-stream',
+  'x-content-type-options': 'nosniff',
+  'content-security-policy': 'sandbox',
+};
 
 export function fileContentType(file: string): string {
   return (
@@ -396,6 +408,9 @@ export function createDashboardReportReader(
             ? { metrics: summary.scoring.metrics }
             : {}),
           checkpoints: summary?.scoring?.checkpoints ?? [],
+          ...(summary?.attachments?.length
+            ? { attachments: summary.attachments }
+            : {}),
           ...(summary?.scoring?.skippedScorers
             ? { skippedScorers: summary.scoring.skippedScorers }
             : {}),
@@ -431,25 +446,35 @@ export function createDashboardReportReader(
     );
   }
 
-  async function candidateFile(
+  /** A file below one of a trial's artifact trees; never outside it. */
+  async function artifactFile(
     runId: string,
     trialId: string,
+    tree: 'candidate' | 'attachments',
     relativePath: string,
   ): Promise<Response> {
-    const candidateRoot = resolve(
+    const treeRoot = resolve(
       trialPath(root, runId, trialId),
       'artifacts',
-      'candidate',
+      tree,
     );
-    const file = resolve(candidateRoot, relativePath);
-    if (file !== candidateRoot && !file.startsWith(`${candidateRoot}${sep}`))
-      throw new Error('Invalid workspace path');
-    const info = await stat(file);
-    if (!info.isFile()) throw new Error('Workspace path is not a file');
-    return new Response(await readFile(file), {
-      headers: { 'content-type': fileContentType(file) },
-    });
+    const file = resolve(treeRoot, relativePath);
+    if (file === treeRoot || !file.startsWith(`${treeRoot}${sep}`))
+      throw new Error(
+        `Invalid ${tree === 'candidate' ? 'workspace' : 'attachment'} path`,
+      );
+    const info = await lstat(file);
+    if (!info.isFile())
+      throw new Error(
+        `${tree === 'candidate' ? 'Workspace path' : 'Attachment'} is not a file`,
+      );
+    return new Response(await readFile(file), { headers: UNTRUSTED_FILE });
   }
+
+  const candidateFile = (runId: string, trialId: string, path: string) =>
+    artifactFile(runId, trialId, 'candidate', path);
+  const attachmentFile = (runId: string, trialId: string, name: string) =>
+    artifactFile(runId, trialId, 'attachments', name);
 
   async function trajectory(runId: string, trialId: string) {
     trialPath(root, runId, trialId);
@@ -465,6 +490,7 @@ export function createDashboardReportReader(
     listArtifacts,
     listCandidateWorkspace,
     candidateFile,
+    attachmentFile,
     trajectory,
   };
 }

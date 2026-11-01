@@ -19,6 +19,7 @@ import { listMatrixCells } from './dashboard-cells.js';
 import {
   createDashboardReportReader,
   fileContentType,
+  UNTRUSTED_FILE,
 } from './dashboard-reports.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
 import { loadProject } from './project.js';
@@ -132,6 +133,7 @@ async function runEvals(options: {
                 workspaceRoot: sandboxRoot,
                 keepWorkspaces: project?.config?.keepSandboxes,
                 artifactExclude: project?.config?.artifacts?.exclude,
+                attachmentLimits: project?.config?.artifacts?.attachments,
                 suiteId: options.suiteId,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
@@ -268,6 +270,7 @@ function registerMatrixRoutes(
                 workspaceRoot: sandboxRoot,
                 keepWorkspaces: project?.config?.keepSandboxes,
                 artifactExclude: project?.config?.artifacts?.exclude,
+                attachmentLimits: project?.config?.artifacts?.attachments,
                 ...provenance,
                 onResult: (cell, result) =>
                   runLog.cell(cell, result, performance.now() - started),
@@ -342,7 +345,7 @@ function registerReportRoutes(
     const file = context.req.param('path');
     try {
       return new Response(await datasetFile(dataset, projectRoot, file), {
-        headers: { 'content-type': fileContentType(file) },
+        headers: UNTRUSTED_FILE,
       });
     } catch (error) {
       return context.text(
@@ -422,6 +425,23 @@ function registerReportRoutes(
           error instanceof Error
             ? error.message
             : 'Unable to read workspace file',
+          400,
+        );
+      }
+    },
+  );
+  app.get(
+    '/v1/runs/:runId/trials/:trialId/attachments/:name{.+}',
+    async (context) => {
+      try {
+        return await reports.attachmentFile(
+          context.req.param('runId'),
+          context.req.param('trialId'),
+          context.req.param('name'),
+        );
+      } catch (error) {
+        return context.text(
+          error instanceof Error ? error.message : 'Unable to read attachment',
           400,
         );
       }

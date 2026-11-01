@@ -2,7 +2,7 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TRIAL_JSON =
   /^trials\/([^/]+)\/(detail|events|artifacts|workspace)\.json$/;
-const TRIAL_FILE = /^trials\/([^/]+)\/workspace\/(.+)$/;
+const TRIAL_FILE = /^trials\/([^/]+)\/(?:workspace|attachments)\/(.+)$/;
 
 export const isUuid = (value: string) => UUID.test(value);
 export const isSha = (value: string) => /^[0-9a-f]{40}$/.test(value);
@@ -20,7 +20,8 @@ export function safeSegment(segment: string): boolean {
 
 /**
  * The only files a run bundle may contain (the snapshot format from
- * `evalkit build`, for one run). Never evaluator workspaces.
+ * `evalkit build`, for one run): its JSON, candidate workspace files and
+ * attachments. Never evaluator workspaces.
  */
 export function allowedRunPath(path: string): boolean {
   if (path === 'run.json' || path === 'catalog.json' || path === 'trials.json')

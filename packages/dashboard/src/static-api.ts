@@ -17,7 +17,9 @@ export function createStaticDashboardApi(options: {
     if (!response.ok)
       // Listings are always shared; `evalkit share --no-workspace` leaves out contents.
       throw new Error(
-        path.includes('/workspace/') || /^datasets\/[^/]+\/files\//.test(path)
+        path.includes('/workspace/') ||
+          path.includes('/attachments/') ||
+          /^datasets\/[^/]+\/files\//.test(path)
           ? 'This file is listed, but its contents were not shared.'
           : `Snapshot file is missing: data/${path}`,
       );
@@ -63,6 +65,8 @@ export function createStaticDashboardApi(options: {
       ).artifacts,
     listWorkspace: (runId, trialId) =>
       json(`${trial(runId, trialId)}/workspace.json`),
+    getAttachment: (runId, trialId, name) =>
+      file(`${trial(runId, trialId)}/attachments/${encodePath(name)}`),
     getWorkspaceFile: (runId, trialId, path) =>
       file(
         `${trial(runId, trialId)}/workspace/${path

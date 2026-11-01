@@ -287,7 +287,11 @@ export function createShareApp(options: ShareAppOptions) {
     if (!runFile || !isUuid(runFile[1]!)) return context.notFound();
     const body = await files.get(`${commitBase}/${path}`);
     if (!body) return context.notFound();
-    const json = path.endsWith('.json') && !path.includes('/workspace/');
+    // Workspace files and attachments are untrusted, whatever their name.
+    const json =
+      path.endsWith('.json') &&
+      !path.includes('/workspace/') &&
+      !path.includes('/attachments/');
     return new Response(body as BodyInit, {
       headers: json
         ? { 'content-type': 'application/json', 'cache-control': IMMUTABLE }

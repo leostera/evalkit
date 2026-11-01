@@ -58,6 +58,7 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 | `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the trial's two workspaces.                                               |
 | `data`        | Values of **all** the scenario's datasets, candidate and evaluator, by dataset ID.                                                          |
 | `checkpoints` | Results of the checkpoints so far, in order (all of them for final scorers and metrics).                                                    |
+| `attach`      | `attach(name, content)`: save a file with the trial's results, as adapters do.                                                              |
 | `checkpoint`  | `checkpoint(rule)`: the latest result of that transcript step, with a predicate's evidence typed; throws for a rule outside the transcript. |
 
 ## Agents
@@ -75,7 +76,7 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 - `turnResultEvents(result: TurnResult, turn, now)`  
   The events a `send()` return value stands for: tool calls and results, the reply, then `turn-completed` with usage.
 
-An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, onEvent })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage? }`, instead of emitting events with `onEvent`.
+An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, onEvent, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage? }`, instead of emitting events with `onEvent`. `attach(name, content)` saves a file such as the agent's log with the trial's results; see [Attaching files](/docs/manual/agents/#attaching-files).
 
 ## Datasets
 
@@ -92,6 +93,8 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
   Types an `evalkit.config.ts`. Settings are listed in [Project structure](/docs/manual/project-structure/#configuration-and-precedence).
 - `DEFAULT_ARTIFACT_EXCLUDE`: `readonly string[]`  
   What candidate snapshots leave out by default; spread it into `artifacts.exclude` to extend the list.
+- `DEFAULT_ATTACHMENT_LIMITS`: `{ maxFileBytes: 5_000_000, maxTrialBytes: 20_000_000 }`  
+  The limits for `attach()` when `artifacts.attachments` does not set them.
 - `defineSuite({ id, name?, evals })`  
   Groups evals explicitly, for a registry.
 - `defineEvalMatrix({ id, evals, parameters, defaults?, cases?, exclude? })`  
@@ -120,7 +123,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 - `parseTrajectoryJsonl(contents): TrajectoryEvent[]`  
   Parse and check a `trajectory.jsonl` file.
 
-Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunSourceSchema`, `RunStatusSchema`, `TrialManifestSchema`, `TrialMetadataSchema`, `TrialSummarySchema`, `TrialScoringSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `TrajectoryEventSchema`, `ArtifactEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`.
+Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunSourceSchema`, `RunStatusSchema`, `TrialManifestSchema`, `TrialMetadataSchema`, `TrialSummarySchema`, `TrialScoringSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `TrajectoryEventSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`.
 
 ## Running and reading results (`@leostera/evalkit/runner`)
 
