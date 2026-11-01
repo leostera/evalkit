@@ -11,6 +11,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 - `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the trial page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
 - **Typed checkpoint lookups.** `checkpoint(rule)` on the scoring context returns a checkpoint's latest result by the rule itself, not its name, with the predicate's evidence type: `checkpoint(builds)?.evidence?.stdout`. Renaming the check cannot break it, and a rule outside the transcript throws instead of reading as "not run".
 - **Attachments.** Adapters get `attach(name, content)` in `start()`, and scorers and checkpoints on their context, to save files such as the agent's raw log with the trial's results. They survive when a passing trial's sandbox is removed, show on the trial page and its new **Attachments** page, and are included by `build` and `share`. Names are checked relative paths; a file over 5 MB keeps its last bytes, and a trial's attachments are capped at 20 MB (`artifacts.attachments` sets both). Sharing runs with attachments needs a share server on this version.
+- **Agent replies render as Markdown** on the trial page: headings, lists, code blocks, tables, task lists and links, with single newlines kept. "Source" shows the exact text. Raw HTML is shown as text, links open in a new tab without a referrer, and images are never loaded, only linked.
 
 ### Changed
 

@@ -14,6 +14,7 @@ import {
 } from '@phosphor-icons/react';
 import { useState, type ReactNode } from 'react';
 import type { TrajectoryEvent } from '../api.js';
+import { Markdown, looksLikeMarkdown } from './Markdown.js';
 import { shellView, type ShellView } from './shell-view.js';
 import { StatusBadge } from './StatusBadge.js';
 import {
@@ -159,7 +160,7 @@ function Item({ item }: { item: TrajectoryItem }) {
     case 'assistant':
       return (
         <Row icon={<RobotIcon />} label={<Label>Assistant</Label>} at={item.at}>
-          <Content value={item.content} />
+          <Content value={item.content} markdown />
         </Row>
       );
     case 'message':
@@ -537,9 +538,19 @@ function TerminalOutput({
   );
 }
 
-function Content({ value }: { value: unknown }) {
+function Content({
+  value,
+  markdown = false,
+}: {
+  value: unknown;
+  markdown?: boolean;
+}) {
   return typeof value === 'string' ? (
-    <Prose>{value}</Prose>
+    markdown && looksLikeMarkdown(value) ? (
+      <MarkdownProse>{value}</MarkdownProse>
+    ) : (
+      <Prose>{value}</Prose>
+    )
   ) : (
     <Json value={value} />
   );
@@ -576,6 +587,53 @@ function Prose({
           {open ? 'Show less' : `Show all ${children.split('\n').length} lines`}
         </Button>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * An agent's reply rendered as Markdown. Long replies collapse by height
+ * (line clamping does not work on block content); "Source" shows the exact
+ * text the agent sent.
+ */
+function MarkdownProse({ children }: { children: string }) {
+  const lines = children.split('\n').length;
+  const long = children.length > CLAMP_CHARS || lines > CLAMP_LINES;
+  const [open, setOpen] = useState(false);
+  const [source, setSource] = useState(false);
+  const clamped = long && !open;
+  return (
+    <div className="flex max-w-[75ch] min-w-0 flex-col items-start gap-1">
+      <div
+        className={cn(
+          'w-full min-w-0',
+          clamped &&
+            'max-h-72 overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]',
+        )}
+      >
+        {source ? (
+          <p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap text-kumo-default">
+            {children}
+          </p>
+        ) : (
+          <Markdown>{children}</Markdown>
+        )}
+      </div>
+      <div className="flex gap-1">
+        {long ? (
+          <Button size="xs" variant="ghost" onClick={() => setOpen(!open)}>
+            {open ? 'Show less' : `Show all ${lines} lines`}
+          </Button>
+        ) : null}
+        <Button
+          size="xs"
+          variant="ghost"
+          aria-pressed={source}
+          onClick={() => setSource(!source)}
+        >
+          {source ? 'Rendered' : 'Source'}
+        </Button>
+      </div>
     </div>
   );
 }
