@@ -35,7 +35,7 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 ## Scoring
 
 - `predicate(name, run: (ctx: ScoringContext) => boolean | ScoreValue, { passAt?, supportsPartial? })`  
-  A scorer in code. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence? }`, or `skip(reason)`. A number passes at `passAt` (default only 1).
+  A scorer in code; `predicate<Evidence>` types what it returns as `evidence`. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence? }`, or `skip(reason)`. A number passes at `passAt` (default only 1).
 - `judge(name, { rubric, supportsPartial? })`  
   A scorer graded by the scenario's `judge` agent against the rubric.
 - `metric(name, run: (ctx: ScoringContext) => number | undefined, { unit?, better? })`  
@@ -49,15 +49,16 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 `ScoringContext`, the argument of every scorer and metric:
 
-| Field         | Meaning                                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `context`     | The trial's `AutContext`: IDs, `parameters`, candidate `data`, and the workspaces.                               |
-| `trajectory`  | `{ events }`: everything recorded so far, agent and runner events.                                               |
-| `turn`        | The most recent turn: its `assistantMessages`, `toolCalls` (with results when observed) and `lastAssistantText`. |
-| `output`      | The content of the turn's last assistant message.                                                                |
-| `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the trial's two workspaces.                    |
-| `data`        | Values of **all** the scenario's datasets, candidate and evaluator, by dataset ID.                               |
-| `checkpoints` | Results of the checkpoints so far, in order (all of them for final scorers and metrics).                         |
+| Field         | Meaning                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context`     | The trial's `AutContext`: IDs, `parameters`, candidate `data`, and the workspaces.                                                          |
+| `trajectory`  | `{ events }`: everything recorded so far, agent and runner events.                                                                          |
+| `turn`        | The most recent turn: its `assistantMessages`, `toolCalls` (with results when observed) and `lastAssistantText`.                            |
+| `output`      | The content of the turn's last assistant message.                                                                                           |
+| `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the trial's two workspaces.                                               |
+| `data`        | Values of **all** the scenario's datasets, candidate and evaluator, by dataset ID.                                                          |
+| `checkpoints` | Results of the checkpoints so far, in order (all of them for final scorers and metrics).                                                    |
+| `checkpoint`  | `checkpoint(rule)`: the latest result of that transcript step, with a predicate's evidence typed; throws for a rule outside the transcript. |
 
 ## Agents
 

@@ -565,6 +565,61 @@ describe('runEval', () => {
     });
   });
 
+  test('checkpoint(rule) finds a checkpoint by the rule itself, with typed evidence', async () => {
+    const root = await reportDirectory();
+    const builds = predicate('hello builds (renamed)', () => ({
+      value: 1,
+      evidence: { binary: '_build/hello.exe', stdout: 'Hello' },
+    }));
+    const notInTranscript = predicate('elsewhere', () => true);
+    let beforeItRan: unknown = 'unset';
+    let missing = '';
+    const evaluation = defineEval({
+      id: 'eval-checkpoint-lookup',
+      agent: defineAgent({
+        async start() {
+          return { send: async () => 'done' };
+        },
+      }),
+      transcript: [
+        user('go'),
+        predicate('first', ({ checkpoint }) => {
+          beforeItRan = checkpoint(builds);
+          return true;
+        }),
+        builds,
+      ],
+      scoring: [
+        predicate('runs the binary', ({ checkpoint }) => {
+          const evidence = checkpoint(builds)?.evidence;
+          // Typed: a misspelt field would not compile.
+          const stdout: string | undefined = evidence?.stdout;
+          // @ts-expect-error evidence is typed, so a misspelt field is an error
+          void evidence?.stdot;
+          try {
+            checkpoint(notInTranscript);
+          } catch (error) {
+            missing = (error as Error).message;
+          }
+          return (
+            stdout === 'Hello' && evidence?.binary.endsWith('.exe') === true
+          );
+        }),
+      ],
+    });
+    const result = await execute(evaluation, {
+      report: localReportStore(root),
+    });
+    expect(beforeItRan).toBeUndefined();
+    expect(missing).toContain(
+      'checkpoint("elsewhere") is not a checkpoint in this scenario',
+    );
+    expect(result.scoring?.results[0]).toMatchObject({
+      name: 'runs the binary',
+      passed: true,
+    });
+  });
+
   test('scenario metrics are recorded beside scores and never decide pass or fail', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({

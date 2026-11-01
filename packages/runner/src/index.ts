@@ -617,6 +617,7 @@ async function runTrial(
             lastTurn,
             data: scoringData,
             checkpoints,
+            transcript: definition.transcript,
           }),
         )),
       );

@@ -4,6 +4,7 @@ import {
   CheckpointResultSchema,
   type ArtifactView,
   type AutContext,
+  type ScoringContext,
   type ScoringRule,
   type AutAdapter,
   type ExpectToolCallStep,
@@ -38,6 +39,7 @@ export function evaluateCheckpoint(
     output?: JsonValue;
     data: JsonObject;
     checkpoints: readonly CheckpointResult[];
+    checkpoint: ScoringContext['checkpoint'];
   },
   now: () => Date,
   judgeAgent?: AutAdapter,

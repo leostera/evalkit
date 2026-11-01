@@ -1,3 +1,4 @@
+import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
   recordError,
@@ -8,6 +9,7 @@ import {
   type MetricResult,
   type RunnerEvent,
   type ScoringContext,
+  type TranscriptStep,
   type ScoreResult,
   type TrajectoryEvent,
   type TrialScoring,
@@ -77,6 +79,8 @@ export function scoringContext(input: {
   lastTurn?: TurnView;
   data: JsonObject;
   checkpoints: readonly CheckpointResult[];
+  /** The scenario's transcript, for `checkpoint(rule)`. */
+  transcript: readonly TranscriptStep[];
 }): ScoringContext {
   return {
     context: input.context,
@@ -86,6 +90,7 @@ export function scoringContext(input: {
     ...turnOutput(input.lastTurn),
     data: input.data,
     checkpoints: input.checkpoints,
+    checkpoint: checkpointLookup(input.transcript, input.checkpoints),
   };
 }
 
@@ -119,7 +124,12 @@ export async function evaluateFinalScorers(
       const score = await runBoundary(
         evaluateRule(
           scorer,
-          scoringContext({ ...input, context, workspace }),
+          scoringContext({
+            ...input,
+            context,
+            workspace,
+            transcript: definition.transcript,
+          }),
           definition.judge,
           'scoring',
         ).pipe(

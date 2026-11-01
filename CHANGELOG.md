@@ -10,6 +10,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 - **Built-in metric names are typed.** `BuiltInMetricName` is `'agent time' | 'tokens' | 'tool calls'`, `MetricResult.name` suggests them, and `metric('tokens', ...)` is a type error. The docs define each one precisely.
 - `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the trial page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
+- **Typed checkpoint lookups.** `checkpoint(rule)` on the scoring context returns a checkpoint's latest result by the rule itself, not its name, with the predicate's evidence type: `checkpoint(builds)?.evidence?.stdout`. Renaming the check cannot break it, and a rule outside the transcript throws instead of reading as "not run".
 
 ### Changed
 

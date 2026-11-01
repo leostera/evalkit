@@ -62,7 +62,33 @@ The trajectory records the message each trial was actually sent; the scenario pa
 
 Use `predicate(name, callback)` between user steps for deterministic assertions against the live workspace or the just-completed turn. It receives `{ context, output, data, trajectory, artifacts, checkpoints, turn? }`; `turn` is always present at an inline checkpoint, but is optional in the shared callback type because final scoring can run without a user turn. Its `lastAssistantText`, `assistantMessages`, `toolCalls`, and `events` describe the turn as recorded, including a reply or tool calls returned from `send()`. In final scoring, `turn` refers to the last completed user turn (if any), while `trajectory` contains the whole trial. Multiple inline rules after one user step inspect the same turn. An inline rule before the first user step is invalid.
 
-`checkpoints` holds the results of the checkpoints so far, with their `value`, `status`, `explanation` and `evidence`; final scorers see all of them. Final scoring runs after the session closes, so a checkpoint is the place to inspect live state (a container, a server) and put what it saw in `evidence` for final scorers to read, instead of sharing it through module-level variables.
+Final scoring runs after the session closes, so a checkpoint is the place to inspect live state (a container, a server) and put what it saw in `evidence` for final scorers to read, instead of sharing it through module-level variables. Look its result up with `checkpoint(rule)`, passing the checkpoint itself rather than its name, so renaming it cannot break the lookup, and its `evidence` keeps the type the predicate returned:
+
+```ts
+// exec() stands for your own helper that runs a command in the workspace.
+const builds = predicate('hello builds', async ({ context }) => {
+  const run = await exec(context.workspace.root, 'dune exec ./hello.exe');
+  return {
+    value: run.exitCode === 0 ? 1 : 0,
+    evidence: { stdout: run.stdout },
+  };
+});
+
+export default defineEval({
+  // ...
+  transcript: [user('Write hello world in OCaml.'), builds],
+  scoring: [
+    predicate(
+      'prints hello',
+      ({ checkpoint }) =>
+        // evidence is { stdout: string } | undefined
+        checkpoint(builds)?.evidence?.stdout.includes('Hello') ?? false,
+    ),
+  ],
+});
+```
+
+`checkpoint(rule)` returns the latest result of that step (`status`, `value`, `explanation`, `evidence`, ...), or `undefined` if it has not run yet. A rule that is not in the transcript throws, so a stale reference fails loudly. Evidence is saved as JSON, so it arrives in its JSON form (a `Date` becomes a string). `checkpoints` also lists every result so far, in order, for scorers that look at all of them.
 
 ```ts
 import { readFile } from 'node:fs/promises';

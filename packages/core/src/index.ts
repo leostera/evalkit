@@ -284,15 +284,18 @@ export type JudgeRunInfo = {
 /** A scorer's "does not apply" result; see `skip()`. */
 export type SkippedScore = { skipped: true; reason: string };
 
-export type ScoreValue =
+export type ScoreValue<Evidence = unknown> =
   | number
   | SkippedScore
   | {
       value: number;
       passed?: boolean;
       explanation?: string;
-      /** Any JSON-convertible value. */
-      evidence?: unknown;
+      /**
+       * Any JSON-convertible value: what the scorer observed. A checkpoint's
+       * evidence reaches later scorers through `checkpoint(rule)`.
+       */
+      evidence?: Evidence;
       /** Judge-agent evidence, never inferred from AUT usage. */
       judge?: JudgeRunInfo;
     };
@@ -341,9 +344,30 @@ export type ScoringContext = {
    * example, in a container that is gone by final scoring).
    */
   checkpoints: readonly CheckpointResult[];
+  /**
+   * The latest result of a checkpoint in this scenario's transcript, looked
+   * up by the rule itself, so renaming it cannot break the lookup. A
+   * predicate's `evidence` keeps its type. Undefined until that step has
+   * run; throws for a rule that is not in the transcript.
+   */
+  checkpoint<Evidence>(
+    rule: PredicateScorer<Evidence>,
+  ): CheckpointOutcome<Evidence> | undefined;
+  checkpoint(
+    rule: JudgeRule | ExpectToolCallStep,
+  ): CheckpointOutcome<JsonValue> | undefined;
 };
 
-export type PredicateScorer = {
+/**
+ * A checkpoint's result with typed evidence. Evidence is saved as JSON, so
+ * it arrives as its JSON form: a `Date` becomes a string, `undefined` fields
+ * are dropped.
+ */
+export type CheckpointOutcome<Evidence> = Omit<CheckpointResult, 'evidence'> & {
+  evidence?: Evidence;
+};
+
+export type PredicateScorer<Evidence = unknown> = {
   kind: 'predicate';
   name: string;
   supportsPartial?: boolean;
@@ -351,7 +375,7 @@ export type PredicateScorer = {
   passAt?: number;
   run(
     context: ScoringContext,
-  ): boolean | ScoreValue | Promise<boolean | ScoreValue>;
+  ): boolean | ScoreValue<Evidence> | Promise<boolean | ScoreValue<Evidence>>;
 };
 
 export type JudgeRule = {
@@ -364,11 +388,12 @@ export type JudgeRule = {
 
 export type ScoringRule = PredicateScorer | JudgeRule;
 
-export function predicate(
+/** A scorer in code. Its `evidence` type carries through to `checkpoint(rule)`. */
+export function predicate<Evidence = unknown>(
   name: string,
-  run: PredicateScorer['run'],
+  run: PredicateScorer<Evidence>['run'],
   options: Pick<PredicateScorer, 'supportsPartial' | 'passAt'> = {},
-): PredicateScorer {
+): PredicateScorer<Evidence> {
   if (!name.trim()) throw new Error('Predicate name must not be empty');
   if (
     options.passAt !== undefined &&

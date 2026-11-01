@@ -1,3 +1,4 @@
+import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
   recordError,
@@ -185,6 +186,9 @@ async function runCheckpoint(
         ...turnOutput(progress.lastTurn),
         data: input.data,
         checkpoints: [...progress.checkpoints],
+        checkpoint: checkpointLookup(definition.transcript, [
+          ...progress.checkpoints,
+        ]),
       },
       now,
       definition.judge,
