@@ -1,7 +1,7 @@
 # RFD0008 - Runs Without Trials
 
 - Feature Name: `runs-without-trials`
-- Status: Draft
+- Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-11-01`
 - Updated: `2026-11-01`
