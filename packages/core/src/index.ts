@@ -2,6 +2,7 @@ import { authorId, type ResourceUri } from './identity.js';
 import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
 import type { AutEventInput, TurnResult } from './aut-events.js';
 import { toJsonObject } from './json.js';
+import { assertNoRemovedOptions } from './upgrade.js';
 import {
   catalogEntry,
   type CatalogOptions,
@@ -90,7 +91,7 @@ export type AutEvent =
   | { kind: 'error'; error: RecordedError; timestamp: string };
 
 export type RunnerEvent =
-  | { kind: 'trial-started'; timestamp: string }
+  | { kind: 'run-started'; timestamp: string }
   | {
       kind: 'transcript-step-started';
       step: number;
@@ -133,14 +134,14 @@ export type RunnerEvent =
       error: RecordedError;
       timestamp: string;
     }
-  | { kind: 'trial-completed'; timestamp: string }
+  | { kind: 'run-completed'; timestamp: string }
   | { kind: 'error'; error: RecordedError; timestamp: string };
 
 export type TrajectoryEvent =
   (AutEvent & { source: 'aut' }) | (RunnerEvent & { source: 'runner' });
 
 export type WorkspaceView = {
-  /** Absolute path to this trial-scoped workspace. Do not persist it in reports. */
+  /** Absolute path to this run-scoped workspace. Do not persist it in reports. */
   root: string;
 };
 
@@ -150,8 +151,8 @@ export type EvaluatorWorkspace = WorkspaceView;
 export type AutContext = {
   runId: string;
   evalId: string;
-  trialId: string;
-  trialIndex: number;
+  /** Set when this run is one of several repeats launched together. */
+  batch?: Batch;
   metadata: JsonObject;
   /** Run-time parameters supplied by the eval definition or CLI invocation. */
   parameters?: JsonObject;
@@ -174,10 +175,10 @@ export type AutAdapter<TMessage = string> = {
     /** Optional: stream events as they happen. Returning a turn result from `send` is enough for most agents. */
     onEvent: (event: AutEventInput) => void | Promise<void>;
     /**
-     * Saves a file with the trial's results, such as the agent's raw log,
+     * Saves a file with the run's results, such as the agent's raw log,
      * whether or not its sandbox is kept. `name` is a relative path of
      * letters, digits, `.`, `_` and `-` (`logs/agent.log`); each name once.
-     * A file over the size limit keeps its last bytes; past the trial's
+     * A file over the size limit keeps its last bytes; past the run's
      * total limit it is rejected. See `artifacts.attachments` in the config.
      */
     attach: (name: string, content: string | Uint8Array) => Promise<void>;
@@ -221,14 +222,15 @@ export type UserMessageInput = {
   parameters: JsonObject;
   /** Values of the scenario's candidate datasets, by dataset ID (never evaluator ones). */
   data: JsonObject;
-  /** The trial's random seed (also in `context.metadata.randomSeed`). */
+  /** The run's random seed (also in `context.metadata.randomSeed`). */
   seed: number;
-  trialIndex: number;
+  /** Set when this run is one of several repeats launched together. */
+  batch?: Batch;
 };
 
 export type UserStep = {
   kind: 'user';
-  /** A fixed message, or one computed for each trial. */
+  /** A fixed message, or one computed for each run. */
   message: string | ((input: UserMessageInput) => string);
 };
 
@@ -273,7 +275,7 @@ export function expectToolCall(
 }
 
 /**
- * A user message. Pass a function to compute it for each trial, e.g. from a
+ * A user message. Pass a function to compute it for each run, e.g. from a
  * matrix axis: `user(({ parameters }) => `Set up OCaml with ${parameters.toolchain}.`)`.
  */
 export function user(message: UserStep['message']): UserStep {
@@ -311,8 +313,8 @@ export type ScoreValue<Evidence = unknown> =
     };
 
 /**
- * Marks a scorer as not applicable to this trial. A skipped result neither
- * passes nor fails the trial and is left out of score averages.
+ * Marks a scorer as not applicable to this run. A skipped result neither
+ * passes nor fails the run and is left out of score averages.
  */
 export function skip(reason: string): SkippedScore {
   if (!reason.trim()) throw new Error('skip() needs a reason');
@@ -367,7 +369,7 @@ export type ScoringContext = {
     rule: JudgeRule | ExpectToolCallStep,
   ): CheckpointOutcome<JsonValue> | undefined;
   /**
-   * Saves a file with the trial's results, like the agent's `attach()`: for
+   * Saves a file with the run's results, like the agent's `attach()`: for
    * example a container's log, or a file the agent reported, read before the
    * workspace is gone. Same names, limits and rules.
    */
@@ -426,7 +428,7 @@ export function predicate<Evidence = unknown>(
 }
 
 /**
- * A number measured for every trial, such as tokens, retries or web searches.
+ * A number measured for every run, such as tokens, retries or web searches.
  * Metrics never decide pass or fail; they are averaged per run and shown on
  * the scoreboard. Return undefined when there is nothing to measure.
  */
@@ -452,7 +454,7 @@ export function metric<const Name extends string>(
   return markDefinitionSite({ kind: 'metric', name, run, ...options });
 }
 
-/** A metric's value for one trial. */
+/** A metric's value for one run. */
 export type MetricResult = {
   name: MetricName;
   /** Absent when the metric measured nothing or failed. */
@@ -477,8 +479,6 @@ export type EvalPolicy = {
   timeoutMs?: number;
   /** Stop later transcript steps after a failed checkpoint assertion. Default false. */
   failfast?: boolean;
-  /** Number of independent trials requested by local and hosted runners. */
-  trials?: number;
 };
 
 export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
@@ -487,13 +487,18 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   agent: TAgent;
   /** Separate judge agent; its model and tools are never inherited from the AUT. */
   judge?: AutAdapter;
-  /** Data and files the scenario uses; each trial gets its own copy. */
+  /** Data and files the scenario uses; each run gets its own copy. */
   datasets?: readonly Dataset[];
   transcript: TranscriptStep[];
   scoring: ScoringRule[];
-  /** Numbers to measure for every trial; they never affect pass or fail. */
+  /** Numbers to measure for every run; they never affect pass or fail. */
   metrics?: readonly Metric[];
   policy?: EvalPolicy;
+  /**
+   * How many runs to start each time the scenario runs, as one batch: repeats
+   * under identical conditions, to see how often it passes. Default 1.
+   */
+  repeat?: number;
   /** Any JSON-convertible object; converted when the eval is defined. */
   metadata?: Record<string, unknown>;
   workspace?: EvalWorkspace;
@@ -502,7 +507,7 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
 /** How EvalKit treats this scenario's candidate workspace. */
 export type EvalWorkspace = {
   /**
-   * Paths to leave out of the trial's snapshot, read like `.gitignore`: globs
+   * Paths to leave out of the run's snapshot, read like `.gitignore`: globs
    * relative to the workspace, where a pattern without `/` matches that name
    * at any depth and later patterns win. They come after the project's
    * `artifacts.exclude` (default `DEFAULT_ARTIFACT_EXCLUDE`), so `!pattern`
@@ -514,10 +519,7 @@ export type EvalWorkspace = {
 
 export function defineEval<const T extends EvalDefinition>(definition: T): T {
   authoringId(definition);
-  if ('fixtures' in definition)
-    throw new Error(
-      `Eval ${definition.id} uses fixtures, which were replaced by datasets: [defineDataset(...)]`,
-    );
+  assertNoRemovedOptions(definition);
   if (definition.metadata !== undefined)
     toJsonObject(definition.metadata, `${definition.id}.metadata`);
   for (const [index, pattern] of (definition.workspace?.ignore ?? []).entries())
@@ -707,7 +709,20 @@ export function registerEvals<
   };
 }
 
-export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+/**
+ * How a run ended: `passed` or `failed` by its scores, `errored` when it could
+ * not finish (the agent, a dataset or EvalKit failed), `cancelled` by Ctrl+C.
+ */
+export type RunStatus =
+  'running' | 'passed' | 'failed' | 'errored' | 'cancelled';
+
+/** Runs launched together as repeats of one configuration (`repeat`). */
+export type Batch = {
+  id: string;
+  /** Zero-based position in the batch. */
+  index: number;
+  size: number;
+};
 
 /**
  * Where a run's eval code came from: the repository, eval project and commit.
@@ -738,7 +753,7 @@ export type RunCatalog = {
 export type RunProcess = { pid: number; hostname: string };
 
 export type RunMetadata = {
-  schemaVersion: 2 | 3 | 4 | 5;
+  schemaVersion: 6;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -747,35 +762,22 @@ export type RunMetadata = {
   matrix?: { id: string; cellKey: string };
   aut?: AutIdentity;
   startedAt: string;
-  /** Present from schema version 4 when the run's commit could be determined. */
+  /** Present when the run's commit could be determined. */
   source?: RunSource;
-  /** From schema version 5. */
   process?: RunProcess;
-};
-
-export type TrialMetadata = {
-  schemaVersion: 2 | 3 | 4 | 5;
-  runId: string;
-  runUri: ResourceUri<'run'>;
-  trialId: string;
-  trialUri: ResourceUri<'trial'>;
-  trialIndex: number;
-  evalId: string;
-  parameters?: JsonObject;
-  matrix?: { id: string; cellKey: string };
-  aut?: AutIdentity;
-  startedAt: string;
+  /** Set when this run is one of several repeats launched together. */
+  batch?: Batch;
   /** The effective snapshot ignore patterns: the project's `artifacts.exclude`, then the scenario's `workspace.ignore`. */
   workspaceIgnore?: string[];
-  /** From schema version 5: the datasets this trial used, with content digests. */
-  datasets?: TrialDataset[];
+  /** The datasets this run used, with content digests. */
+  datasets?: RunDataset[];
 };
 
-export type TrialDataset = {
+export type RunDataset = {
   id: string;
   visibility: DatasetVisibility;
   source: 'static' | 'computed';
-  /** SHA-256 of the trial's content: file paths and bytes, and the canonical value. */
+  /** SHA-256 of the run's content: file paths and bytes, and the canonical value. */
   digest: string;
 };
 
@@ -795,10 +797,10 @@ export type CheckpointResult = {
 };
 
 /**
- * Metrics EvalKit records for every trial; scenario metrics may not reuse
+ * Metrics EvalKit records for every run; scenario metrics may not reuse
  * these names.
  *
- * - `agent time` (ms): from the trial's first event to its last one before
+ * - `agent time` (ms): from the run's first event to its last one before
  *   final scoring.
  * - `tokens`: the sum of `turnTokens(usage)` over the turns that reported
  *   usage, cached input included. Absent when no turn reported any.
@@ -809,7 +811,7 @@ export type BuiltInMetricName = (typeof BUILT_IN_METRICS)[number];
 /** A built-in metric's name (suggested by editors), or a scenario's own. */
 export type MetricName = BuiltInMetricName | (string & {});
 
-export type TrialScoring = {
+export type RunScoring = {
   results: ScoreResult[];
   metrics?: MetricResult[];
   checkpoints?: CheckpointResult[];
@@ -819,7 +821,7 @@ export type TrialScoring = {
 };
 
 export type ArtifactEntry = {
-  /** Path relative to this trial's artifact root. */
+  /** Path relative to this run's artifact root. */
   path: string;
   kind: 'file' | 'directory';
   size?: number;
@@ -834,39 +836,22 @@ export type AttachmentEntry = {
   truncatedFrom?: number;
 };
 
-export type TrialSummary = {
+export type RunSummary = {
   status: RunStatus;
   endedAt: string;
   durationMs?: number;
-  scoring?: TrialScoring;
+  scoring?: RunScoring;
   artifacts?: ArtifactEntry[];
   attachments?: AttachmentEntry[];
   error?: RecordedError;
 };
 
-export type RunSummary = {
-  status: RunStatus;
-  endedAt: string;
-  durationMs?: number;
-  trialCount: number;
-  passed: number;
-  failed: number;
-  /** Trials stopped by cancellation; counted neither as passed nor failed. */
-  cancelled?: number;
-  error?: RecordedError;
-};
-
-export type TrialWriter = {
-  appendEvent(event: TrajectoryEvent): Promise<void>;
-  writeScores(scoring: TrialScoring): Promise<void>;
-  /** Writes a file below this trial's artifact root. */
-  writeArtifact(path: string, data: Uint8Array): Promise<void>;
-  finalize(summary: TrialSummary): Promise<void>;
-};
-
 export type RunWriter = {
   readonly location: string;
-  startTrial(metadata: TrialMetadata): Promise<TrialWriter>;
+  appendEvent(event: TrajectoryEvent): Promise<void>;
+  writeScores(scoring: RunScoring): Promise<void>;
+  /** Writes a file below this run's artifact root. */
+  writeArtifact(path: string, data: Uint8Array): Promise<void>;
   finalize(summary: RunSummary): Promise<void>;
 };
 
@@ -877,36 +862,17 @@ export type ReportStore = {
   ): Promise<RunWriter>;
 };
 
-export type TrialResult = {
+/** One finished run, as `runEval` returns it. */
+export type RunResult = {
   runId: string;
   runUri: ResourceUri<'run'>;
-  trialId: string;
-  trialUri: ResourceUri<'trial'>;
-  trialIndex: number;
   evalId: string;
   status: RunStatus;
+  batch?: Batch;
   reportLocation: string;
   durationMs?: number;
-  scoring?: TrialScoring;
+  scoring?: RunScoring;
   error?: RecordedError;
-};
-
-export type AggregateScoring = {
-  passed: number;
-  failed: number;
-  cancelled?: number;
-  passRate: number;
-  overall?: number;
-};
-
-export type RunResult = TrialResult & {
-  runId: string;
-  trialCount?: number;
-  passed?: number;
-  failed?: number;
-  aggregateScoring?: AggregateScoring;
-  /** Present for an aggregate multi-trial run. */
-  trials?: TrialResult[];
 };
 
 export * from './identity.js';

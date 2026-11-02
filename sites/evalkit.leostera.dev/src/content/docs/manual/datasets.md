@@ -3,7 +3,7 @@ title: Datasets
 description: Give scenarios files and values, keep expected answers from the agent, and cache expensive inputs.
 ---
 
-A dataset is named data that scenarios use: files placed in each trial's workspace, a value given to the agent and scorers, or both. Define each one once, by convention in `datasets/`, and import it from the scenarios that need it. Nothing is discovered from `datasets/`, so a broken dataset only affects the scenarios that import it.
+A dataset is named data that scenarios use: files placed in each run's workspace, a value given to the agent and scorers, or both. Define each one once, by convention in `datasets/`, and import it from the scenarios that need it. Nothing is discovered from `datasets/`, so a broken dataset only affects the scenarios that import it.
 
 ```ts
 // datasets/help-center.dataset.ts
@@ -57,9 +57,9 @@ defineDataset({
 
 ## Computed datasets
 
-When inputs are expensive to build (fetched, generated, or read from a large source), give `onLoad` instead of the static fields. It returns `{ files?, value? }` and is called the first time a trial needs the dataset in this process, never at import. Its result is cached: every scenario, matrix cell and trial of one `evalkit run` shares one load, and `evalkit dev` reuses it until the project reloads. A failed load is not cached; the trials that needed it fail with the error in their reports, and the next trial retries.
+When inputs are expensive to build (fetched, generated, or read from a large source), give `onLoad` instead of the static fields. It returns `{ files?, value? }` and is called the first time a run needs the dataset in this process, never at import. Its result is cached: every scenario, matrix cell and run of one `evalkit run` shares one load, and `evalkit dev` reuses it until the project reloads. A failed load is not cached; the runs that needed it fail with the error in their reports, and the next run retries.
 
-`onRun` derives each trial's copy from the loaded content, for example to choose a case by the trial's seed or the matrix cell's parameters:
+`onRun` derives each run's copy from the loaded content, for example to choose a case by the run's seed or the matrix cell's parameters:
 
 ```ts
 export const tickets = defineDataset({
@@ -81,11 +81,11 @@ export const tickets = defineDataset({
 });
 ```
 
-The trial context has `evalId`, `runId`, `trialId`, zero-based `trialIndex`, a per-trial `seed`, the cell's `parameters` (or `{}`), and an abort `signal`. Without `onRun`, every trial gets the loaded content as is.
+The run context has `evalId`, `runId`, `batch` (when the run is one of several repeats), a per-run `seed`, the cell's `parameters` (or `{}`), and an abort `signal`. Without `onRun`, every run gets the loaded content as is.
 
 ## Who sees what
 
-Each trial gets two separate workspaces:
+Each run gets two separate workspaces:
 
 - **Candidate** (`context.workspace.root` in the agent, `artifacts.candidate.root` in scorers): files the agent can read and change. Candidate datasets (the default) write their files here, and their values are `context.data[id]` in the agent.
 - **Evaluator** (`context.evaluatorWorkspace.root`, `artifacts.evaluator.root`): private inputs for trusted scorers, such as expected answers. `visibility: 'evaluator'` datasets write their files here, and their values are only available to scorers.
@@ -98,15 +98,15 @@ These are directory conventions, **not** a security sandbox. A trusted adapter c
 
 A dataset's files go below a directory named after its ID: `help-center` writes `help-center/…` in the workspace. Set `mount` to choose another directory, or `mount: '.'` for the workspace root. Paths may not escape the mount, and two datasets in one scenario may not write the same file. `{ file }` sources and directories resolve from the project root, not from the dataset's file.
 
-Each trial's files are written fresh before the agent starts, so edits made in one trial never become another trial's starting state. The CLI uses `_evalkit-sandbox/<trial-uuid>/{candidate,evaluator}/` and keeps it after the run. A low-level `runEval(...)` call without a persistent `workspaceRoot` uses an OS temporary workspace that is removed afterwards.
+Each run's files are written fresh before the agent starts, so edits made in one run never become another run's starting state. The CLI uses `_evalkit-sandbox/<run-uuid>/{candidate,evaluator}/` and keeps it after the run. A low-level `runEval(...)` call without a persistent `workspaceRoot` uses an OS temporary workspace that is removed afterwards.
 
 ## Digests
 
-Each trial's manifest records, per dataset, its visibility, whether it is static or computed, and a SHA-256 digest of the content that trial got (file paths and bytes, and the canonical JSON of its value). `evalkit compare` uses them to say which datasets changed between two commits, so a score change can be read against changed inputs.
+Each run's manifest records, per dataset, its visibility, whether it is static or computed, and a SHA-256 digest of the content that run got (file paths and bytes, and the canonical JSON of its value). `evalkit compare` uses them to say which datasets changed between two commits, so a score change can be read against changed inputs.
 
 ## Reports and sharing
 
-At trial end, EvalKit copies **regular files** from the candidate workspace to `trials/<trial-id>/artifacts/candidate/`, leaving out the project's `artifacts.exclude` (dependencies, build output and VCS metadata by default). That snapshot is taken after the agent ran, not of the dataset as declared. Symbolic links and unsupported entries in the candidate tree fail the snapshot rather than being followed. What counts as noise depends on the scenario, so a scenario can add its own patterns with `workspace.ignore`. They are read like `.gitignore`: a pattern without `/` matches that name at any depth, later patterns win, and `!pattern` keeps a path. They come after the project's list, so a scenario whose evidence is build output can keep just that, even inside an ignored directory:
+At run end, EvalKit copies **regular files** from the candidate workspace to `<run-id>/artifacts/candidate/`, leaving out the project's `artifacts.exclude` (dependencies, build output and VCS metadata by default). That snapshot is taken after the agent ran, not of the dataset as declared. Symbolic links and unsupported entries in the candidate tree fail the snapshot rather than being followed. What counts as noise depends on the scenario, so a scenario can add its own patterns with `workspace.ignore`. They are read like `.gitignore`: a pattern without `/` matches that name at any depth, later patterns win, and `!pattern` keeps a path. They come after the project's list, so a scenario whose evidence is build output can keep just that, even inside an ignored directory:
 
 ```ts
 defineEval({
@@ -116,7 +116,7 @@ defineEval({
 });
 ```
 
-An ignored directory is only walked when a `!` pattern could keep something in it, so `node_modules` stays unread. The trial manifest records the effective list as `workspaceIgnore`.
+An ignored directory is only walked when a `!` pattern could keep something in it, so `node_modules` stays unread. The run manifest records the effective list as `workspaceIgnore`.
 
 Evaluator files are never copied, but their contents can still leak if your adapter emits them in events or writes them into the candidate workspace.
 

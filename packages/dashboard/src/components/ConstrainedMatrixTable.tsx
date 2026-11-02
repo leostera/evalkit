@@ -113,7 +113,7 @@ export function ConstrainedMatrixTable({
                 parameters={dimensions.map((key) =>
                   cell.parameters[key] === null ? 'None' : cell.parameters[key],
                 )}
-                trials={matrix.trials}
+                repeat={matrix.repeat}
                 latestRun={latest(cell.key)}
                 cellParameters={cell.parameters}
                 onRun={

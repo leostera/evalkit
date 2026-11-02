@@ -6,7 +6,7 @@ const at = (ms: number) => new Date(Date.UTC(2026, 0, 1) + ms).toISOString();
 
 test('built-in metrics: agent time before scoring, reported tokens, tool calls', () => {
   const events: TrajectoryEvent[] = [
-    { source: 'runner', kind: 'trial-started', timestamp: at(0) },
+    { source: 'runner', kind: 'run-started', timestamp: at(0) },
     {
       source: 'aut',
       kind: 'tool-call',

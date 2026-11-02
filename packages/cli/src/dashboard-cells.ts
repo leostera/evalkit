@@ -41,7 +41,7 @@ export function listMatrixCells(matrix: EvalMatrix, input: CellQuery) {
     ![
       'eval',
       'agent',
-      'trials',
+      'repeat',
       ...dimensions.map((key) => `axis:${key}`),
     ].includes(input.sort)
   )
@@ -79,7 +79,7 @@ export function listMatrixCells(matrix: EvalMatrix, input: CellQuery) {
       return (
         cell.eval.agent?.identity?.name ?? cell.eval.agent?.identity?.kind ?? ''
       );
-    return cell.eval.policy?.trials ?? 1;
+    return cell.eval.repeat ?? 1;
   }
   cells.sort((left, right) => {
     const a = value(left);

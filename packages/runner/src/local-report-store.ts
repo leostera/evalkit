@@ -4,26 +4,21 @@ import path from 'node:path';
 import * as Schema from 'effect/Schema';
 import {
   RunMetadataSchema,
+  RunScoringSchema,
   RunSummarySchema,
-  TrialMetadataSchema,
-  TrialScoringSchema,
-  TrialSummarySchema,
   TrajectoryEventSchema,
 } from '@evalkit/core';
 import type {
   ReportStore,
   RunMetadata,
+  RunScoring,
   RunSummary,
   RunWriter,
-  TrialMetadata,
-  TrialScoring,
-  TrialSummary,
-  TrialWriter,
   TrajectoryEvent,
 } from '@evalkit/core';
 
 const MANIFEST_FILE = 'manifest.json';
-/** The project's evals and suites when the run started (schema version 4+). */
+/** The project's evals and suites when the run started. */
 export const CATALOG_FILE = 'catalog.json';
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
@@ -61,10 +56,11 @@ function artifactPath(root: string, value: string): string {
   return path.join(root, normalized);
 }
 
-class LocalTrialWriter implements TrialWriter {
+class LocalRunWriter implements RunWriter {
   constructor(
+    readonly location: string,
     private readonly directory: string,
-    private readonly metadata: TrialMetadata,
+    private readonly metadata: RunMetadata,
   ) {}
 
   appendEvent(event: TrajectoryEvent): Promise<void> {
@@ -74,10 +70,10 @@ class LocalTrialWriter implements TrialWriter {
     );
   }
 
-  writeScores(scoring: TrialScoring): Promise<void> {
+  writeScores(scoring: RunScoring): Promise<void> {
     return writeJson(
       path.join(this.directory, 'scoring.json'),
-      Schema.encodeSync(TrialScoringSchema)(scoring),
+      Schema.encodeSync(RunScoringSchema)(scoring),
     );
   }
 
@@ -88,36 +84,6 @@ class LocalTrialWriter implements TrialWriter {
     );
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, data);
-  }
-
-  async finalize(summary: TrialSummary): Promise<void> {
-    await writeJson(
-      path.join(this.directory, 'summary.json'),
-      Schema.encodeSync(TrialSummarySchema)(summary),
-    );
-    await replaceJson(path.join(this.directory, MANIFEST_FILE), {
-      ...Schema.encodeSync(TrialMetadataSchema)(this.metadata),
-      status: summary.status,
-    });
-  }
-}
-
-class LocalRunWriter implements RunWriter {
-  constructor(
-    readonly location: string,
-    private readonly directory: string,
-    private readonly metadata: RunMetadata,
-  ) {}
-
-  async startTrial(metadata: TrialMetadata): Promise<TrialWriter> {
-    assertPathSegment(metadata.trialId, 'trialId');
-    const directory = path.join(this.directory, 'trials', metadata.trialId);
-    await mkdir(directory, { recursive: true });
-    await writeJson(path.join(directory, MANIFEST_FILE), {
-      ...Schema.encodeSync(TrialMetadataSchema)(metadata),
-      status: 'running',
-    });
-    return new LocalTrialWriter(directory, metadata);
   }
 
   async finalize(summary: RunSummary): Promise<void> {

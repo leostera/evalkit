@@ -13,7 +13,12 @@ import {
   type EvalRegistry,
   type AgentRuntimeName,
 } from '@evalkit/core';
-import { localReportStore, runEval, runMatrix } from '@evalkit/runner';
+import {
+  localReportStore,
+  runEval,
+  runMatrix,
+  upgradeReports,
+} from '@evalkit/runner';
 import { buildDashboard, directorySize } from './dashboard-build.js';
 import { listMatrixCells } from './dashboard-cells.js';
 import {
@@ -22,7 +27,7 @@ import {
   UNTRUSTED_FILE,
 } from './dashboard-reports.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
-import { loadProject } from './project.js';
+import { loadConfig, loadProject } from './project.js';
 import {
   normalizeRunOptions,
   printLoadErrors,
@@ -173,7 +178,7 @@ function registerMatrixRoutes(
   app: Hono,
   registry: EvalRegistry,
   dashboardMatrix: EvalRegistry['matrices'][number] | undefined,
-  trials?: number,
+  repeat?: number,
 ): void {
   let matrixRunning = false;
   app.get('/v1/matrix', (context) =>
@@ -193,7 +198,7 @@ function registerMatrixRoutes(
             ...(dashboardMatrix.cases?.length || dashboardMatrix.exclude?.length
               ? { constrained: true }
               : {}),
-            ...(trials ? { trials } : {}),
+            ...(repeat ? { repeat } : {}),
           }
         : null,
     }),
@@ -264,7 +269,7 @@ function registerMatrixRoutes(
               runMatrix(dashboardMatrix, {
                 selection,
                 concurrency: 1,
-                trials,
+                ...(repeat ? { repeat } : {}),
                 ...(suiteId ? { suiteId } : {}),
                 report: localReportStore(reportRoot),
                 workspaceRoot: sandboxRoot,
@@ -369,26 +374,9 @@ function registerReportRoutes(
   app.get('/v1/runs', async (context) =>
     context.json({ runs: await reports.listRuns() }),
   );
-  app.get('/v1/runs/:runId/trials', async (context) => {
+  app.get('/v1/runs/:runId', async (context) => {
     try {
-      return context.json({
-        trials: await reports.listTrials(context.req.param('runId')),
-      });
-    } catch (error) {
-      return context.text(
-        error instanceof Error ? error.message : 'Bad request',
-        400,
-      );
-    }
-  });
-  app.get('/v1/runs/:runId/trials/:trialId', async (context) => {
-    try {
-      return context.json(
-        await reports.trialDetail(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-        ),
-      );
+      return context.json(await reports.runDetail(context.req.param('runId')));
     } catch (error) {
       return context.text(
         error instanceof Error ? error.message : 'Not found',
@@ -396,13 +384,10 @@ function registerReportRoutes(
       );
     }
   });
-  app.get('/v1/runs/:runId/trials/:trialId/workspace', async (context) => {
+  app.get('/v1/runs/:runId/workspace', async (context) => {
     try {
       return context.json(
-        await reports.listCandidateWorkspace(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-        ),
+        await reports.listCandidateWorkspace(context.req.param('runId')),
       );
     } catch (error) {
       return context.text(
@@ -411,49 +396,38 @@ function registerReportRoutes(
       );
     }
   });
-  app.get(
-    '/v1/runs/:runId/trials/:trialId/workspace/:path{.+}',
-    async (context) => {
-      try {
-        return await reports.candidateFile(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-          context.req.param('path'),
-        );
-      } catch (error) {
-        return context.text(
-          error instanceof Error
-            ? error.message
-            : 'Unable to read workspace file',
-          400,
-        );
-      }
-    },
-  );
-  app.get(
-    '/v1/runs/:runId/trials/:trialId/attachments/:name{.+}',
-    async (context) => {
-      try {
-        return await reports.attachmentFile(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-          context.req.param('name'),
-        );
-      } catch (error) {
-        return context.text(
-          error instanceof Error ? error.message : 'Unable to read attachment',
-          400,
-        );
-      }
-    },
-  );
-  app.get('/v1/runs/:runId/trials/:trialId/artifacts', async (context) => {
+  app.get('/v1/runs/:runId/workspace/:path{.+}', async (context) => {
+    try {
+      return await reports.candidateFile(
+        context.req.param('runId'),
+        context.req.param('path'),
+      );
+    } catch (error) {
+      return context.text(
+        error instanceof Error
+          ? error.message
+          : 'Unable to read workspace file',
+        400,
+      );
+    }
+  });
+  app.get('/v1/runs/:runId/attachments/:name{.+}', async (context) => {
+    try {
+      return await reports.attachmentFile(
+        context.req.param('runId'),
+        context.req.param('name'),
+      );
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : 'Unable to read attachment',
+        400,
+      );
+    }
+  });
+  app.get('/v1/runs/:runId/artifacts', async (context) => {
     try {
       return context.json({
-        artifacts: await reports.listArtifacts(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-        ),
+        artifacts: await reports.listArtifacts(context.req.param('runId')),
       });
     } catch (error) {
       return context.text(
@@ -462,13 +436,10 @@ function registerReportRoutes(
       );
     }
   });
-  app.get('/v1/runs/:runId/trials/:trialId/events', async (context) => {
+  app.get('/v1/runs/:runId/events', async (context) => {
     try {
       return context.json({
-        events: await reports.trajectory(
-          context.req.param('runId'),
-          context.req.param('trialId'),
-        ),
+        events: await reports.trajectory(context.req.param('runId')),
       });
     } catch (error) {
       return context.text(
@@ -568,17 +539,13 @@ async function serveDashboard({
     app,
     registry,
     dashboardMatrix,
-    project?.config.execution?.trials,
+    project?.config.execution?.repeat,
   );
-  registerReportRoutes(
-    app,
-    registry,
-    createDashboardReportReader(reportRoot, registry),
-  );
+  registerReportRoutes(app, registry, createDashboardReportReader(reportRoot));
   registerDashboardAssets(app, dashboardRoot);
   const server = await listen(app.fetch, port, 4317);
   const url = `http://localhost:${server.port}`;
-  const reader = createDashboardReportReader(reportRoot, registry);
+  const reader = createDashboardReportReader(reportRoot);
   const runs = (await reader.listRuns()).length;
   const legacy = reader.legacyRunIds().length;
   const matrixCells = dashboardMatrix?.count({ parameters: {} });
@@ -596,7 +563,7 @@ async function serveDashboard({
   );
   row(
     'Reports:',
-    `${relative(process.cwd(), reportRoot) || '.'} ${dim(`(${plural(runs, 'run')}${legacy ? `, ${legacy} from an older EvalKit hidden` : ''})`)}`,
+    `${relative(process.cwd(), reportRoot) || '.'} ${dim(`(${plural(runs, 'run')}${legacy ? `, ${legacy} from an older EvalKit hidden; run \`evalkit upgrade\`` : ''})`)}`,
   );
   console.log(
     `\n  ${dim('Runs started from the dashboard are logged below. Press Ctrl+C to stop.')}\n`,
@@ -684,7 +651,7 @@ async function loadProjectStep(configPath: string | undefined): Promise<void> {
 async function shouldRunEvals(run: boolean | undefined): Promise<boolean> {
   if (run !== undefined) return run;
   const runs = (
-    await createDashboardReportReader(reportRoot, project!.registry).listRuns()
+    await createDashboardReportReader(reportRoot).listRuns()
   ).filter((entry) => !entry.archived).length;
   if (!runs) {
     console.log(
@@ -739,7 +706,7 @@ async function tidyAction(options: { config?: string }): Promise<void> {
     (value) => {
       const keep = project!.config.keepSandboxes ?? 'failed';
       if (keep === 'all') return "all kept (keepSandboxes: 'all')";
-      return `${plural(value.removed, 'workspace')} of ${keep === 'none' ? 'finished' : 'passed'} trials removed`;
+      return `${plural(value.removed, 'workspace')} of ${keep === 'none' ? 'finished' : 'passed'} runs removed`;
     },
   );
   const byEval = (entries: { evalId: string }[]) =>
@@ -775,6 +742,42 @@ async function tidyAction(options: { config?: string }): Promise<void> {
     );
   console.log('');
 }
+async function upgradeAction(options: {
+  config?: string;
+  dryRun?: boolean;
+}): Promise<void> {
+  banner('upgrade', VERSION);
+  // Only the config: scenarios from an older EvalKit may not load yet.
+  const { root, config } = await loadConfig(projectRoot, options.config);
+  reportRoot = resolve(root, config.reportDir ?? '_evalkit-results');
+  const report = await step(
+    options.dryRun ? 'Checking results' : 'Upgrading results',
+    () => upgradeReports(reportRoot, { dryRun: options.dryRun }),
+    (value) =>
+      `${plural(value.upgraded, 'run')} from an older EvalKit ${options.dryRun ? 'found' : 'upgraded'}`,
+  );
+  console.log('');
+  if (!report.upgraded)
+    console.log(`  ${cyan('✓')} Every run is already in the current format.`);
+  else {
+    const into = `${plural(report.upgraded, 'run')} from older EvalKit versions into ${plural(report.runs, 'run')}`;
+    console.log(
+      options.dryRun
+        ? `  ${cyan('◆')} Would upgrade ${into}. Nothing was changed.`
+        : `  ${cyan('✓')} Upgraded ${into}.`,
+    );
+    if (report.batches)
+      console.log(
+        `  ${dim(`${plural(report.batches, 'run')} had more than one trial; each trial is now a run in a batch.`)}`,
+      );
+  }
+  if (report.running.length)
+    console.log(
+      `  ${yellow('◆')} Left ${plural(report.running.length, 'run')} still running alone; upgrade again when they finish.`,
+    );
+  console.log('');
+}
+
 async function shareServeAction(options: {
   dir: string;
   port?: number;
@@ -837,7 +840,7 @@ async function shareAction(options: {
     'Runs',
     async () =>
       selectRuns(
-        await createDashboardReportReader(reportRoot, registry).listRuns(),
+        await createDashboardReportReader(reportRoot).listRuns(),
         head,
         { all, allowDirty },
       ),
@@ -895,7 +898,6 @@ async function compareAction(options: {
   const say = options.json ? () => {} : (line = '') => console.log(line);
   if (!options.json) banner('compare', VERSION);
   await useProject(options.config);
-  const registry = project!.registry;
   const head = await detectSource(projectRoot, {
     outputDirs: [
       reportRoot,
@@ -908,7 +910,7 @@ async function compareAction(options: {
       'evalkit compare needs to know the commit: run it inside a git repository or set EVALKIT_SOURCE_REPO and EVALKIT_SOURCE_COMMIT.',
     );
   const headSide = headRuns(
-    await createDashboardReportReader(reportRoot, registry).listRuns(),
+    await createDashboardReportReader(reportRoot).listRuns(),
     head,
     { allowDirty: options.allowDirty },
   );
@@ -916,7 +918,6 @@ async function compareAction(options: {
   if (options.baseDir) {
     const runs = await baseRunsFromDirectory(
       resolve(process.cwd(), options.baseDir),
-      registry,
     );
     base = runs.length ? { label: options.baseDir, runs } : undefined;
   } else {
@@ -1004,6 +1005,7 @@ try {
     dev: devAction,
     build: buildAction,
     tidy: tidyAction,
+    upgrade: upgradeAction,
     share: shareAction,
     shareServe: shareServeAction,
     compare: compareAction,

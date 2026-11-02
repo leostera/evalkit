@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   DEFAULT_ARTIFACT_EXCLUDE,
   type ArtifactEntry,
-  type TrialWriter,
+  type RunWriter,
 } from '@evalkit/core';
 import { globMatcher } from '@evalkit/core/glob';
 
@@ -72,15 +72,15 @@ export function ignoreRules(patterns: readonly string[]) {
 }
 
 /**
- * Copies the candidate workspace's regular files into the trial report,
+ * Copies the candidate workspace's regular files into the run report,
  * leaving out ignored paths. Symbolic links and special files are skipped,
- * never followed, so a snapshot cannot read outside the trial. An ignored
+ * never followed, so a snapshot cannot read outside the run. An ignored
  * directory is walked only when a `!` pattern could re-include something in
  * it, and is listed only if it ends up containing a snapshotted file.
  */
 export async function snapshotCandidateWorkspace(
   candidateRoot: string,
-  writer: TrialWriter,
+  writer: RunWriter,
   ignore: readonly string[] = DEFAULT_ARTIFACT_EXCLUDE,
 ): Promise<ArtifactEntry[]> {
   const artifacts: ArtifactEntry[] = [];

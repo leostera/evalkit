@@ -169,17 +169,16 @@ function measured(
         }
       : { runs: 0 };
   }
-  let sum = 0;
-  let count = 0;
-  let contributing = 0;
-  for (const run of runs) {
-    const metric = run.metrics?.find(
+  const values = runs.flatMap((run) => {
+    const value = run.metrics?.find(
       (entry) => entry.name === measure.metric.name,
-    );
-    if (metric?.mean === undefined || !metric.count) continue;
-    sum += metric.mean * metric.count;
-    count += metric.count;
-    contributing += 1;
-  }
-  return count ? { value: sum / count, runs: contributing } : { runs: 0 };
+    )?.value;
+    return value === undefined ? [] : [value];
+  });
+  return values.length
+    ? {
+        value: values.reduce((sum, value) => sum + value, 0) / values.length,
+        runs: values.length,
+      }
+    : { runs: 0 };
 }

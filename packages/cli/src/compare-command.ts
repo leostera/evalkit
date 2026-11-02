@@ -1,5 +1,5 @@
 import { repoKey } from '@evalkit/share';
-import type { EvalRegistry, RunSource, ShareHeaders } from '@evalkit/core';
+import type { RunSource, ShareHeaders } from '@evalkit/core';
 import type { ComparedRun } from './compare.js';
 import {
   createDashboardReportReader,
@@ -27,12 +27,8 @@ export function headRuns(
 /** Base runs from a results directory, e.g. an artifact from the base pipeline. Dirty runs are never a base. */
 export async function baseRunsFromDirectory(
   directory: string,
-  registry: EvalRegistry,
 ): Promise<ComparedRun[]> {
-  const runs = await createDashboardReportReader(
-    directory,
-    registry,
-  ).listRuns();
+  const runs = await createDashboardReportReader(directory).listRuns();
   return runs.filter((run) => !run.source?.dirty && !run.archived);
 }
 

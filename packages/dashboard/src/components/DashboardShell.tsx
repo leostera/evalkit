@@ -9,7 +9,6 @@ import {
   DatabaseIcon,
   FolderOpenIcon,
   GavelIcon,
-  ListChecksIcon,
   RobotIcon,
   SquaresFourIcon,
   StackIcon,
@@ -37,9 +36,9 @@ const under = (prefix: string) => (pathname: string) =>
   pathname === prefix || pathname.startsWith(`${prefix}/`);
 
 /**
- * Evals are results, from the overview down: the scoreboard, then runs,
- * trials, and the workspaces trials ran in. Run and trial pages belong to
- * Runs and Trials. The library is what scenarios are built from, each item
+ * Evals are results, from the overview down: the scoreboard, then runs and
+ * the workspaces they ran in. A run's page belongs to Runs, its workspace to
+ * Workspaces. The library is what scenarios are built from, each item
  * with its own page.
  */
 const groups: ReadonlyArray<{ label: string; sections: readonly Section[] }> = [
@@ -58,16 +57,7 @@ const groups: ReadonlyArray<{ label: string; sections: readonly Section[] }> = [
         href: '/runs',
         icon: ClockCounterClockwiseIcon,
         matches: (pathname) =>
-          under('/runs')(pathname) && !/\/trials\//.test(pathname),
-      },
-      {
-        label: 'Trials',
-        href: '/trials',
-        icon: ListChecksIcon,
-        matches: (pathname) =>
-          under('/trials')(pathname) ||
-          (/^\/runs\/[^/]+\/trials\//.test(pathname) &&
-            !pathname.endsWith('/workspace')),
+          under('/runs')(pathname) && !pathname.endsWith('/workspace'),
       },
       {
         label: 'Workspaces',
@@ -109,7 +99,7 @@ const groups: ReadonlyArray<{ label: string; sections: readonly Section[] }> = [
   },
 ];
 
-const FILTERED_LISTS = new Set(['/runs', '/trials', '/workspaces']);
+const FILTERED_LISTS = new Set(['/runs', '/workspaces']);
 
 const sections = groups.flatMap((group) => group.sections);
 
@@ -118,9 +108,8 @@ function activeSection(pathname: string): Section {
 }
 
 export function screenTitle(pathname: string): string {
-  if (/^\/runs\/[^/]+\/trials\/[^/]+\/workspace$/.test(pathname))
-    return 'Candidate workspace';
-  if (/^\/runs\/[^/]+\/trials\//.test(pathname)) return 'Trial';
+  if (/^\/runs\/[^/]+\/workspace$/.test(pathname)) return 'Candidate workspace';
+  if (/^\/runs\/[^/]+\/attachments$/.test(pathname)) return 'Attachments';
   if (pathname.startsWith('/runs/')) return 'Run';
   return activeSection(pathname).label;
 }
@@ -166,7 +155,7 @@ export function DashboardShell({
 }) {
   const { pathname, search } = useLocation();
   const active = activeSection(pathname);
-  // Runs, Trials and Workspaces share one set of filters; moving between
+  // Runs and Workspaces share one set of filters; moving between
   // their lists keeps it.
   const hrefFor = (section: Section) =>
     FILTERED_LISTS.has(pathname) && FILTERED_LISTS.has(section.href)

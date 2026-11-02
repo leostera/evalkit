@@ -1,4 +1,11 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { ShareFiles } from './files.js';
 
@@ -27,6 +34,9 @@ export function directoryFiles(root: string): ShareFiles {
       const temporary = `${path}.${crypto.randomUUID()}.tmp`;
       await writeFile(temporary, data);
       await rename(temporary, path);
+    },
+    async delete(key) {
+      await rm(pathFor(key), { force: true });
     },
     async *list(prefix) {
       const trimmed = prefix.replace(/\/+$/, '');

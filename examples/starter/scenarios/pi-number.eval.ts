@@ -12,11 +12,11 @@ export const piNumberEval = defineEval({
   transcript: [
     user(
       ({ seed }) =>
-        `Choose a random integer from 0 to 10 using this per-trial random seed: ${seed}. Use the seed as entropy so different seeds produce different choices. Reply with only the number.`,
+        `Choose a random integer from 0 to 10 using this per-run random seed: ${seed}. Use the seed as entropy so different seeds produce different choices. Reply with only the number.`,
     ),
   ],
   scoring: [piNumberCloseToSevenJudge, piNumberCoolnessJudge],
-  policy: { trials: 10 },
+  repeat: 10,
 });
 
 export default piNumberEval;

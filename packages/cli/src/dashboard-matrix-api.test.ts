@@ -17,7 +17,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
   await mkdir(join(root, 'scenarios'));
   await writeFile(
     join(root, 'evalkit.config.js'),
-    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] }, exclude: [{ model: 'scout', mode: 'without-docs' }] }, execution: { trials: 3 } };\n",
+    "export default { matrix: { id: 'benchmark', parameters: { model: ['glm', 'scout'], mode: ['with-docs', 'without-docs'] }, exclude: [{ model: 'scout', mode: 'without-docs' }] }, execution: { repeat: 3 } };\n",
   );
   await writeFile(
     join(root, 'scenarios', 'echo.eval.js'),
@@ -70,7 +70,7 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
           mode: ['with-docs', 'without-docs'],
         },
         dimensions: ['model', 'mode'],
-        trials: 3,
+        repeat: 3,
         constrained: true,
       },
     });
@@ -110,30 +110,42 @@ test('dashboard rejects unselected matrix runs and persists one selected cell', 
         })
       ).status,
     ).toBe(202);
-    let manifests: string[] = [];
-    let manifestText: string | undefined;
-    const reportDir = join(root, '_evalkit-results');
-    for (let i = 0; i < 100; i++) {
-      manifests = await readdir(reportDir).catch(() => []);
-      if (manifests.length === 1)
-        manifestText = await readFile(
-          join(reportDir, manifests[0]!, 'manifest.json'),
-          'utf8',
-        ).catch(() => undefined);
-      if (manifestText) break;
-      await Bun.sleep(50);
-    }
-    expect(manifests).toHaveLength(1);
-    expect(manifestText).toBeDefined();
-    const manifest = JSON.parse(manifestText!) as {
+    // `execution.repeat: 3` starts three runs of the cell, as one batch.
+    let manifests: Array<{
       parameters: Record<string, unknown>;
       matrix?: { id: string };
-    };
-    expect(manifest.parameters).toMatchObject({
-      model: 'glm',
-      mode: 'with-docs',
-    });
-    expect(manifest.matrix?.id).toBe('benchmark');
+      batch?: { id: string; index: number; size: number };
+    }> = [];
+    const reportDir = join(root, '_evalkit-results');
+    for (let i = 0; i < 100; i++) {
+      const runs = await readdir(reportDir).catch(() => []);
+      const texts = await Promise.all(
+        runs.map((run) =>
+          readFile(join(reportDir, run, 'manifest.json'), 'utf8').catch(
+            () => undefined,
+          ),
+        ),
+      );
+      if (texts.length === 3 && texts.every(Boolean)) {
+        manifests = texts.map((text) => JSON.parse(text!));
+        break;
+      }
+      await Bun.sleep(50);
+    }
+    expect(manifests).toHaveLength(3);
+    for (const manifest of manifests) {
+      expect(manifest.parameters).toMatchObject({
+        model: 'glm',
+        mode: 'with-docs',
+      });
+      expect(manifest.matrix?.id).toBe('benchmark');
+    }
+    expect(new Set(manifests.map((manifest) => manifest.batch?.id)).size).toBe(
+      1,
+    );
+    expect(manifests.map((manifest) => manifest.batch?.index).sort()).toEqual([
+      0, 1, 2,
+    ]);
     const listed = (await (await fetch(`${url}/v1/runs`)).json()) as {
       runs: Array<{
         matrixId?: string;

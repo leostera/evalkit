@@ -10,8 +10,6 @@ import {
 const base = {
   evalId: 'api',
   status: 'passed',
-  completedTrials: 1,
-  requestedTrials: 1,
 } as const;
 const runs: RunSummary[] = [
   {

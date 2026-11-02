@@ -68,32 +68,19 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
     }
     expect(runs[0]?.status).toBe('failed');
     const runId = runs[0]!.id;
-    const trials = (
-      await (await fetch(`${base}/v1/runs/${runId}/trials`)).json()
-    ).trials;
-    expect(trials[0]).toMatchObject({
-      status: 'failed',
+    const detail = await (await fetch(`${base}/v1/runs/${runId}`)).json();
+    expect(detail).toMatchObject({
       checkpoints: [{ step: 1, status: 'failed', value: 0 }],
+      summary: { status: 'failed', scoring: { passed: false } },
     });
     const events = (
-      await (
-        await fetch(`${base}/v1/runs/${runId}/trials/${trials[0].id}/events`)
-      ).json()
+      await (await fetch(`${base}/v1/runs/${runId}/events`)).json()
     ).events;
     expect(
       events.some(
         (event: { kind: string }) => event.kind === 'transcript-step-skipped',
       ),
     ).toBe(true);
-    const detail = (
-      await (
-        await fetch(`${base}/v1/runs/${runId}/trials/${trials[0].id}`)
-      ).json()
-    ).summary;
-    expect(detail).toMatchObject({
-      status: 'completed',
-      scoring: { passed: false },
-    });
   } finally {
     child.kill();
     await child.exited;

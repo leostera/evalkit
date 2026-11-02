@@ -1,11 +1,5 @@
-import { canonicalParameters } from '@evalkit/core/canonical-json';
 import { useMemo } from 'react';
-import type {
-  CatalogEval,
-  RunSummary,
-  SuiteSummary,
-  TrialSummary,
-} from '../api.js';
+import type { CatalogEval, RunSummary, SuiteSummary } from '../api.js';
 import { RunFilters } from './RunFilters.js';
 import { filterRunFacets, runFacets, type RunFacet } from './run-facets.js';
 import { displayValue as display } from './run-columns.js';
@@ -29,6 +23,7 @@ export function filterRuns(
     );
     const haystack = [
       run.id,
+      run.batch?.id,
       run.evalId,
       evaluation?.name,
       run.suiteId,
@@ -52,9 +47,8 @@ export function filterRuns(
 }
 
 /**
- * The filters Runs, Trials and Workspaces share. They live in the URL, so the
- * same query carries over between the three pages. On trial pages the status
- * filter is the trial's own status rather than its run's.
+ * The filters Runs and Workspaces share. They live in the URL, so the same
+ * query carries over between the two pages.
  */
 export function useRunSelection({
   runs,
@@ -62,14 +56,12 @@ export function useRunSelection({
   suites,
   search,
   onSearchChange,
-  trialStatus = false,
 }: {
   runs: readonly RunSummary[];
   catalog: readonly CatalogEval[];
   suites: readonly SuiteSummary[];
   search?: URLSearchParams;
   onSearchChange?(next: URLSearchParams): void;
-  trialStatus?: boolean;
 }) {
   const filters = useRunFilters(search, onSearchChange);
   const { activeSearch, query } = filters;
@@ -81,56 +73,15 @@ export function useRunSelection({
     [runs, showArchived],
   );
   const facets = useMemo(() => runFacets(listed), [listed]);
-  const runSearch = useMemo(() => {
-    if (!trialStatus) return activeSearch;
-    const next = new URLSearchParams(activeSearch);
-    next.delete('status');
-    return next;
-  }, [activeSearch, trialStatus]);
   const filteredRuns = useMemo(
     () =>
-      filterRuns(filterRunFacets(listed, runSearch), query, suites, catalog),
-    [listed, runSearch, query, suites, catalog],
+      filterRuns(filterRunFacets(listed, activeSearch), query, suites, catalog),
+    [listed, activeSearch, query, suites, catalog],
   );
-  const statuses = activeSearch.getAll('status');
-  return {
-    ...filters,
-    listed,
-    facets,
-    filteredRuns,
-    archivedCount,
-    /** Whether a trial passes the status filter, on trial pages. */
-    keepTrial: (trial: TrialSummary) =>
-      !statuses.length || statuses.includes(canonicalParameters(trial.status)),
-  };
+  return { ...filters, listed, facets, filteredRuns, archivedCount };
 }
 
 export type RunSelection = ReturnType<typeof useRunSelection>;
-
-/** The status facet counted over trials instead of runs. */
-export function withTrialStatus(
-  facets: readonly RunFacet[],
-  trials: readonly TrialSummary[],
-): RunFacet[] {
-  const counts = new Map<string, number>();
-  for (const trial of trials)
-    counts.set(trial.status, (counts.get(trial.status) ?? 0) + 1);
-  return facets.map((facet) =>
-    facet.key === 'status'
-      ? {
-          ...facet,
-          label: 'Trial status',
-          values: [...counts]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([status, count]) => ({
-              key: canonicalParameters(status),
-              label: status,
-              count,
-            })),
-        }
-      : facet,
-  );
-}
 
 export function RunFilterBar({
   selection,

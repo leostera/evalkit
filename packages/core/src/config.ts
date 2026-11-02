@@ -15,9 +15,9 @@ export type EvalkitConfig = {
   registry?: EvalRegistry;
   /** Applied to every discovered eval. Values are forwarded, never provider-interpreted. */
   matrix?: Omit<EvalMatrixDefinition, 'evals' | 'id'> & { id?: string };
-  execution?: { concurrency?: number; trials?: number; maxCells?: number };
+  execution?: { concurrency?: number; repeat?: number; maxCells?: number };
   reportDir?: string;
-  /** The candidate files saved with each trial's results. */
+  /** The candidate files saved with each run's results. */
   artifacts?: {
     /**
      * Paths to leave out, as globs relative to the candidate workspace; a
@@ -29,9 +29,9 @@ export type EvalkitConfig = {
     /** Limits for files adapters `attach()`. */
     attachments?: AttachmentLimits;
   };
-  /** Where each trial's real workspace lives during a run. Default `_evalkit-sandbox`. */
+  /** Where each run's real workspace lives during a run. Default `_evalkit-sandbox`. */
   sandboxDir?: string;
-  /** Which trial workspaces to keep in `sandboxDir` afterwards. Default `'failed'`: only trials that did not pass. */
+  /** Which run workspaces to keep in `sandboxDir` afterwards. Default `'failed'`: only runs that did not pass. */
   keepSandboxes?: KeepSandboxes;
   share?: ShareConfig;
 };
@@ -41,13 +41,13 @@ export type KeepSandboxes = 'failed' | 'all' | 'none';
 export type AttachmentLimits = {
   /** A larger attachment keeps its last this-many bytes. Default 5 MB. */
   maxFileBytes?: number;
-  /** All of one trial's attachments; past it, `attach()` rejects. Default 20 MB. */
-  maxTrialBytes?: number;
+  /** All of one run's attachments; past it, `attach()` rejects. Default 20 MB. */
+  maxRunBytes?: number;
 };
 
 export const DEFAULT_ATTACHMENT_LIMITS: Required<AttachmentLimits> = {
   maxFileBytes: 5_000_000,
-  maxTrialBytes: 20_000_000,
+  maxRunBytes: 20_000_000,
 };
 
 /** Left out of candidate snapshots unless `artifacts.exclude` says otherwise. */

@@ -4,12 +4,14 @@ export type ShareFiles = {
   put(key: string, data: Uint8Array | string): Promise<void>;
   /** Every key below `prefix`, in no particular order. */
   list(prefix: string): AsyncIterable<string>;
+  delete(key: string): Promise<void>;
 };
 
 /** The subset of the Workers R2 binding used here. */
 export type R2BucketLike = {
   get(key: string): Promise<{ body: ReadableStream<Uint8Array> } | null>;
   put(key: string, value: Uint8Array | string): Promise<unknown>;
+  delete(key: string): Promise<unknown>;
   list(options: { prefix: string; cursor?: string }): Promise<{
     objects: { key: string }[];
     truncated: boolean;
@@ -24,6 +26,9 @@ export function r2Files(bucket: R2BucketLike): ShareFiles {
     },
     async put(key, data) {
       await bucket.put(key, data);
+    },
+    async delete(key) {
+      await bucket.delete(key);
     },
     async *list(prefix) {
       let cursor: string | undefined;

@@ -23,26 +23,31 @@ import { Pager } from './Pager.js';
 import { RunFilterBar, useRunSelection } from './RunFilterBar.js';
 import { SortableHeader, useSort, useSortedRows } from './SortableTable.js';
 import { StatusBadge } from './StatusBadge.js';
-import { runHref, scenarioHref } from './links.js';
+import { runHref, scenarioHref, workspaceHref } from './links.js';
 import { rowLinkProps } from './row-link.js';
 
 const PAGE_SIZE = 50;
 /** Run, status, scenario, score, started, commit; parameters follow, so outcomes never scroll away. */
 const FIXED_RUN_COLUMNS = 6;
 
-/** Every run of every scenario, filterable; each run opens its own page. */
+/**
+ * Every run of every scenario, filterable; each run opens its own page, or
+ * its candidate workspace on the Workspaces page.
+ */
 export function RunTable({
   runs,
   suites,
   catalog,
   search,
   onSearchChange,
+  workspaces = false,
 }: {
   runs: RunSummary[];
   suites: SuiteSummary[];
   catalog: CatalogEval[];
   search?: URLSearchParams;
   onSearchChange?(next: URLSearchParams): void;
+  workspaces?: boolean;
 }) {
   const selection = useRunSelection({
     runs,
@@ -91,9 +96,15 @@ export function RunTable({
     );
   return (
     <div className="flex min-w-0 flex-col gap-2">
+      {workspaces ? (
+        <p className="text-[13px] text-kumo-subtle">
+          Each run worked in its own workspace; open one to browse the files the
+          agent left.
+        </p>
+      ) : null}
       <RunFilterBar
         selection={selection}
-        label="Filter runs"
+        label={workspaces ? 'Filter workspaces' : 'Filter runs'}
         count={`${sortedRuns.length} of ${listed.length} runs`}
       />
       {layout.constant.length ? (
@@ -136,6 +147,8 @@ export function RunTable({
               evaluation={evalFor(run)}
               suiteName={suiteName(run)}
               layout={layout}
+              href={workspaces ? workspaceHref(run.id) : runHref(run.id)}
+              onBatch={(batch) => selection.setField('batch', batch)}
             />
           ))}
           {!sortedRuns.length ? (
@@ -184,7 +197,6 @@ function runSortValue(
       agent:
         evaluation?.agent.name ?? evaluation?.agent.kind ?? 'Unnamed agent',
       status: run.status,
-      trials: run.completedTrials,
       score: run.score,
       runtime: run.durationMs,
       started: run.startedAt,
@@ -198,25 +210,40 @@ function RunRow({
   evaluation,
   suiteName,
   layout,
+  href,
+  onBatch,
 }: {
   run: RunSummary;
   evaluation?: CatalogEval;
   suiteName?: string;
   layout: ParameterLayout;
+  href: string;
+  /** Narrows the list to the runs launched together with this one. */
+  onBatch(batchId: string): void;
 }) {
   const name = evaluation?.name ?? run.evalId;
   const suite = suiteName ?? run.suiteId;
   return (
     <Table.Row {...rowLinkProps}>
-      <Table.Cell sticky="left">
+      <Table.Cell sticky="left" className="whitespace-nowrap">
         <Link
-          to={runHref(run.id)}
+          to={href}
           data-row-link
           className={`${tableLinkClass} ${monoClass}`}
           title={run.id}
         >
           {run.id.slice(0, 8)}
         </Link>
+        {run.batch ? (
+          <button
+            type="button"
+            className="batch-label ml-2 rounded border border-kumo-line px-1 text-[11px] text-kumo-subtle tabular-nums hover:text-kumo-default"
+            title={`Run ${run.batch.index + 1} of ${run.batch.size} launched together; show them all`}
+            onClick={() => onBatch(run.batch!.id)}
+          >
+            {run.batch.index + 1}/{run.batch.size}
+          </button>
+        ) : null}
       </Table.Cell>
       <Table.Cell
         title={

@@ -248,7 +248,7 @@ function ScenarioDefinition({
               'none'
             ),
           ],
-          ['Trials per run', policy?.trials ?? scenario.trialCount],
+          ['Runs per launch', scenario.repeat ?? 1],
           ...(policy?.timeoutMs !== undefined
             ? ([['Timeout', `${policy.timeoutMs / 1000}s`]] as const)
             : []),
@@ -326,8 +326,8 @@ function StepBody({
           {label('User says')}
           {step.message === undefined ? (
             <span className="text-kumo-subtle">
-              Computed for each trial from its parameters and datasets; each
-              trial's trajectory shows the message it was sent.
+              Computed for each run from its parameters and datasets; each run's
+              trajectory shows the message it was sent.
             </span>
           ) : (
             <span className="whitespace-pre-wrap">{step.message}</span>

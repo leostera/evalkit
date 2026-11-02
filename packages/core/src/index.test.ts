@@ -119,6 +119,16 @@ describe('core definitions', () => {
         scoring: [],
       } as never),
     ).toThrow('replaced by datasets');
+    // Scenarios from before 0.9 repeated with policy.trials; now `repeat`.
+    expect(() =>
+      defineEval({
+        id: 'old',
+        agent: aut,
+        policy: { trials: 3 },
+        transcript: [],
+        scoring: [],
+      } as never),
+    ).toThrow('policy.trials, which was replaced by repeat: 3');
   });
 
   test('checks metadata is JSON when the eval is defined', () => {
@@ -342,7 +352,8 @@ describe('library catalog', () => {
       agent: greeter,
       transcript: [user('hi'), says, user(({ seed }) => `again ${seed}`)],
       scoring: [says],
-      policy: { trials: 3, failfast: true },
+      repeat: 3,
+      policy: { failfast: true },
     });
     const root = new URL('.', import.meta.url).pathname;
     const [entry] = registerEvals([evaluation]).catalog({ root });
@@ -364,7 +375,8 @@ describe('library catalog', () => {
       // A computed message has no fixed text to show.
       { kind: 'user' },
     ]);
-    expect(entry?.policy).toEqual({ trials: 3, failfast: true });
+    expect(entry?.policy).toEqual({ failfast: true });
+    expect(entry?.repeat).toBe(3);
     // Without a root, no paths at all: never absolute ones.
     expect(registerEvals([evaluation]).catalog()[0]?.definedAt).toBeUndefined();
   });

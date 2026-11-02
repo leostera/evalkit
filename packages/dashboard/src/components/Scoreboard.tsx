@@ -47,7 +47,7 @@ export type ScoreboardRow = {
   passRate?: number;
   /** Mean score over the history's scored runs. */
   meanScore?: number;
-  /** Each metric's mean over the history, weighted by trials measured. */
+  /** Each metric's mean over the runs in the history that measured it. */
   metrics: Record<string, MetricMean>;
   /** Finished runs in the history: what `MetricMean.runs` is out of. */
   finished: number;
@@ -74,7 +74,7 @@ export function metricColumns(runs: readonly RunSummary[]): MetricColumn[] {
   const columns = new Map<string, MetricColumn>();
   for (const run of runs)
     for (const metric of run.metrics ?? [])
-      if (metric.mean !== undefined && !columns.has(metric.name))
+      if (metric.value !== undefined && !columns.has(metric.name))
         columns.set(metric.name, {
           name: metric.name,
           ...(metric.unit ? { unit: metric.unit } : {}),
@@ -92,20 +92,20 @@ export function metricColumns(runs: readonly RunSummary[]): MetricColumn[] {
 export function historyMetrics(
   runs: readonly RunSummary[],
 ): Record<string, MetricMean> {
-  const sums = new Map<string, { sum: number; count: number; runs: number }>();
+  const sums = new Map<string, { sum: number; runs: number }>();
   for (const run of runs)
     for (const metric of run.metrics ?? []) {
-      if (metric.mean === undefined || !metric.count) continue;
-      const entry = sums.get(metric.name) ?? { sum: 0, count: 0, runs: 0 };
-      entry.sum += metric.mean * metric.count;
-      entry.count += metric.count;
+      // A run that did not measure it is left out, never counted as zero.
+      if (metric.value === undefined) continue;
+      const entry = sums.get(metric.name) ?? { sum: 0, runs: 0 };
+      entry.sum += metric.value;
       entry.runs += 1;
       sums.set(metric.name, entry);
     }
   return Object.fromEntries(
-    [...sums].map(([name, { sum, count, runs }]) => [
+    [...sums].map(([name, { sum, runs }]) => [
       name,
-      { mean: sum / count, runs },
+      { mean: sum / runs, runs },
     ]),
   );
 }

@@ -1,23 +1,22 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { DashboardApi } from '../api.js';
+import type { AttachmentEntry, DashboardApi } from '../api.js';
 import { FileTree, formatBytes } from './FileTree.js';
-import type { SelectedTrial } from './types.js';
 
-/** Files the agent or scorers attached to a trial; the open file is `?file=`. */
+/** Files the agent or scorers attached to a run; the open file is `?file=`. */
 export function AttachmentsDetail({
   api,
-  selected,
+  runId,
+  attachments,
 }: {
   api: DashboardApi;
-  selected: SelectedTrial;
+  runId: string;
+  attachments: readonly AttachmentEntry[];
 }) {
   const [search, setSearch] = useSearchParams();
-  const attachments = selected.trial.attachments ?? [];
-  const { run, trial } = selected;
   const readFile = useCallback(
-    (name: string) => api.getAttachment(run.id, trial.id, name),
-    [api, run.id, trial.id],
+    (name: string) => api.getAttachment(runId, name),
+    [api, runId],
   );
   const truncated = attachments.filter((entry) => entry.truncatedFrom);
   return (
@@ -47,7 +46,7 @@ export function AttachmentsDetail({
           next.set('file', file);
           setSearch(next, { replace: true });
         }}
-        emptyMessage="Nothing was attached to this trial."
+        emptyMessage="Nothing was attached to this run."
       />
     </section>
   );

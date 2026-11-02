@@ -7,7 +7,7 @@ stylesheet beyond `src/app.css`, which loads Kumo's theme before Tailwind.
 
 ## Principles
 
-- **Evidence first.** Run identity, status, scores and the trial evidence behind
+- **Evidence first.** Run identity, status, scores and the run evidence behind
   them get the space. No invented metrics or decorative summaries.
 - **Dense, not cramped.** 13px table text with compact rows; data grids keep one
   line per row and scroll horizontally instead of wrapping or hiding columns.
@@ -29,7 +29,7 @@ re-created per view:
 | `SortableHeader`, `useSort`, `useSortedRows` | Sortable column headers with `aria-sort`                      |
 | `SearchField`                                | Table search with a visible/total count                       |
 | `Pager`                                      | Kumo `Pagination` for client- or server-paged tables          |
-| `StatusBadge`                                | Run, trial, checkpoint and scorer status                      |
+| `StatusBadge`                                | Run, run, checkpoint and scorer status                        |
 | `ErrorBanner`, `Empty`, `DetailList`         | Errors, empty states and key/value metadata                   |
 | `MatrixCellHeader`                           | Shared header for Cartesian and planner-paged matrix tables   |
 
@@ -41,10 +41,11 @@ and breadcrumb navigation stays client-side.
 - The shell fills the viewport; the main column scrolls under a sticky header.
 - Runs: facet filters (collapsible, closed by default on phones) beside the run
   table. The run ID column is sticky during horizontal scrolling.
-- Trial evidence opens in a right-side native `<dialog>` over the run table, so
-  the run's URL filters stay in place. Breadcrumbs lead from suite (or Runs)
-  through eval, run, trial and candidate workspace; Escape closes the panel.
-  Direct `/trials/:id` and `/workspaces/:id` links remain valid.
+- A run's page shows its trajectory beside its details and scores, with its
+  candidate workspace and attachments one level down. Breadcrumbs lead from
+  Runs through the run to its workspace. A run in a batch shows `2/3` in the
+  run table, which filters the list to that batch (`?batch=`). Run links
+  from before 0.9 (`/runs/:old/runs/:id`) redirect to the run.
 
 ## Build
 

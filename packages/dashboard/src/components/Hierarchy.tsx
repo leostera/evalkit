@@ -1,35 +1,23 @@
 import { Breadcrumbs } from '@cloudflare/kumo';
 import { Fragment, type ReactNode } from 'react';
 import type { RunSummary } from '../api.js';
-import { runHref, runsListHref, trialHref } from './links.js';
+import { runHref, runsListHref } from './links.js';
 
 /**
- * Where a result page sits: Runs › Run › Trial › Workspace (or Attachments). Every level above
- * the current one links back up; the scenario is linked from the run itself.
+ * Where a result page sits: Runs › Run › Workspace (or Attachments). Every
+ * level above the current one links back up.
  */
 export function HierarchyBreadcrumbs({
   run,
-  trial,
   view,
 }: {
   run: RunSummary;
-  /** `index` is unknown while the trial loads. */
-  trial?: { id: string; index?: number };
-  /** A page below the trial. */
+  /** A page below the run. */
   view?: 'Workspace' | 'Attachments';
 }) {
   const levels: Array<{ label: ReactNode; href?: string }> = [
     { label: 'Runs', href: runsListHref },
     { label: `Run ${run.id.slice(0, 8)}`, href: runHref(run.id) },
-    ...(trial
-      ? [
-          {
-            label:
-              trial.index === undefined ? 'Trial' : `Trial ${trial.index + 1}`,
-            href: trialHref(run.id, trial.id),
-          },
-        ]
-      : []),
     ...(view ? [{ label: view }] : []),
   ];
   // Kumo's breadcrumbs grow to fill a flex column; the wrapper keeps them one line tall.

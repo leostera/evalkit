@@ -1,5 +1,5 @@
 import { authorId } from './identity.js';
-import type { JsonObject } from './index.js';
+import type { Batch, JsonObject } from './index.js';
 import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);
@@ -11,15 +11,15 @@ export type DatasetVisibility = 'candidate' | 'evaluator';
 export type DatasetFileSource = string | Uint8Array | { file: string };
 
 /**
- * Files for the trial workspace: a directory relative to the project root, or
+ * Files for the run workspace: a directory relative to the project root, or
  * a map from workspace path (below the dataset's mount) to its content.
  */
 export type DatasetFiles = string | Readonly<Record<string, DatasetFileSource>>;
 
-/** What one trial receives from a dataset. */
+/** What one run receives from a dataset. */
 export type DatasetContent = {
   files?: DatasetFiles;
-  /** Any JSON-convertible value; converted once when the trial starts. */
+  /** Any JSON-convertible value; converted once when the run starts. */
   value?: unknown;
 };
 
@@ -29,12 +29,12 @@ export type DatasetLoadContext = {
   signal: AbortSignal;
 };
 
-export type DatasetTrialContext = {
+export type DatasetRunContext = {
   evalId: string;
   runId: string;
-  trialId: string;
-  trialIndex: number;
-  /** Per-trial random seed, so repeated trials can choose different data. */
+  /** Set when the run is one of several repeats launched together. */
+  batch?: Batch;
+  /** Per-run random seed, so repeated runs can choose different data. */
   seed: number;
   /** The matrix cell's parameters, or `{}`. */
   parameters: JsonObject;
@@ -62,12 +62,12 @@ export type StaticDatasetDefinition = DatasetCommon & {
 
 export type ComputedDatasetDefinition<TLoaded extends DatasetContent> =
   DatasetCommon & {
-    /** Once per process; the successful result is cached and shared by every trial. */
+    /** Once per process; the successful result is cached and shared by every run. */
     onLoad: (load: DatasetLoadContext) => TLoaded | Promise<TLoaded>;
-    /** Once per trial; defaults to using the loaded content as is. */
+    /** Once per run; defaults to using the loaded content as is. */
     onRun?: (
       loaded: TLoaded,
-      trial: DatasetTrialContext,
+      run: DatasetRunContext,
     ) => DatasetContent | Promise<DatasetContent>;
     files?: never;
     value?: never;
@@ -88,7 +88,7 @@ export type DatasetSource =
       ) => DatasetContent | Promise<DatasetContent>;
       onRun?: (
         loaded: DatasetContent,
-        trial: DatasetTrialContext,
+        run: DatasetRunContext,
       ) => DatasetContent | Promise<DatasetContent>;
     };
 
@@ -122,10 +122,10 @@ export function relativeDatasetPath(value: string, label: string): string {
 }
 
 /**
- * Declares named data that scenarios use: files placed in each trial's
+ * Declares named data that scenarios use: files placed in each run's
  * workspace, a value for the agent and scorers, or both. Static datasets give
  * `files`, `value` or `valueFile`; computed datasets give `onLoad` (cached per
- * process) and optionally `onRun` (per trial).
+ * process) and optionally `onRun` (per run).
  */
 export function defineDataset<TLoaded extends DatasetContent>(
   definition: StaticDatasetDefinition | ComputedDatasetDefinition<TLoaded>,

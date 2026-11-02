@@ -53,7 +53,7 @@ export function readShareContext(
 
 /**
  * Where the version picker goes for another commit: the same page, except
- * run/trial pages (their IDs belong to one commit) fall back to the runs list.
+ * run pages (their IDs belong to one commit) fall back to the runs list.
  */
 export function versionHref(
   repo: string,
@@ -61,7 +61,7 @@ export function versionHref(
   pathname: string,
   search: string,
 ): string {
-  const commitScoped = /^\/(runs|trials|workspaces)\/./.test(pathname);
+  const commitScoped = /^\/(runs|workspaces)\/./.test(pathname);
   const path = commitScoped ? '/runs' : pathname === '/' ? '/' : pathname;
   return `/${repo}/-/${commit}${path}${commitScoped ? '' : search}`;
 }

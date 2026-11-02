@@ -18,6 +18,7 @@ type DurableObjectNamespaceLike = {
 const METHODS = [
   'hasRun',
   'recordRun',
+  'forgetRun',
   'repos',
   'commits',
   'runs',

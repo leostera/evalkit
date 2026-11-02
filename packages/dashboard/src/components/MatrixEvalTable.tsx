@@ -171,7 +171,7 @@ function CartesianMatrixEvalTable({
         evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ??
         'default'
       );
-    if (key === 'trials') return matrix?.trials ?? evaluation?.trialCount ?? 0;
+    if (key === 'repeat') return matrix?.repeat ?? evaluation?.repeat ?? 1;
     if (key === 'status') return statusFor(row) ?? 'not run';
     return '';
   });
@@ -209,7 +209,7 @@ function CartesianMatrixEvalTable({
                   id={row.id}
                   evaluation={evaluation}
                   parameters={row.values}
-                  trials={matrix?.trials}
+                  repeat={matrix?.repeat}
                   latestRun={latestFor(row)}
                   cellParameters={row.parameters}
                   onRun={

@@ -23,7 +23,7 @@ const catalog: CatalogEval[] = [
     id: 'greeting',
     name: 'Greeting',
     path: 'greeting',
-    trialCount: 1,
+    repeat: 1,
     agent: { kind: 'in-process', name: 'Greeter', runtimes: [] },
     datasets: [],
     scorers: [],
@@ -41,8 +41,6 @@ const runs: RunSummary[] = [
     parameters: { model: 'scout', retries: 2, options: { docs: true } },
     status: 'passed',
     startedAt: '2026-01-01T00:00:00Z',
-    completedTrials: 1,
-    requestedTrials: 1,
     score: 1,
   },
   {
@@ -52,8 +50,6 @@ const runs: RunSummary[] = [
     parameters: { model: 'glm', enabled: false },
     status: 'failed',
     startedAt: '2026-01-02T00:00:00Z',
-    completedTrials: 1,
-    requestedTrials: 1,
     score: 0,
   },
   {
@@ -61,8 +57,6 @@ const runs: RunSummary[] = [
     evalId: 'greeting',
     status: 'running',
     startedAt: '2026-01-03T00:00:00Z',
-    completedTrials: 0,
-    requestedTrials: 1,
   },
 ];
 

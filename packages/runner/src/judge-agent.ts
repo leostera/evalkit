@@ -59,7 +59,7 @@ export function runJudgeAgent(
         try: () =>
           agent.start({
             context,
-            // A judge's files are the trial's attachments too.
+            // A judge's files are the run's attachments too.
             attach: input.attach,
             onEvent: (event) => {
               // Validate normalized judge observations before persisting them separately.

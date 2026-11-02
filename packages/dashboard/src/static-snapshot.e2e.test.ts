@@ -61,7 +61,7 @@ beforeAll(async () => {
         workspaceRoot: join(root, '_evalkit-sandbox'),
       }),
     )
-  ).runId;
+  )[0]!.runId;
   const outDir = join(root, 'public', 'share');
   await buildDashboard({
     registry: registerEvals([evaluation]),
@@ -139,7 +139,7 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
 
   // Library pages load directly and link to each other.
   await page.goto(`${origin}/share/library/scenarios/snapshot-greeting`);
-  await text('Trials per run');
+  await text('Runs per launch');
   expect(await hrefs()).toContain('/share/library/agents/snapshot-agent');
   expect(await hrefs()).toContain('/share/library/datasets/snapshot-notes');
 
@@ -161,14 +161,9 @@ test('serves a read-only snapshot from a sub-path with clean URLs', async () => 
   });
   expect(new URL(page.url()).pathname).toBe(`/share/runs/${runId}`);
 
-  // Down the hierarchy to a trial, whose page also loads directly.
-  await page.click('.nested tbody tr td:nth-child(2)');
-  await page.waitForSelector('.trajectory');
-  const trialPath = new URL(page.url()).pathname;
-  expect(trialPath).toMatch(new RegExp(`^/share/runs/${runId}/trials/[^/]+$`));
-  await page.goto(`${origin}${trialPath}`);
   await page.waitForSelector('.trajectory', { timeout: 10_000 });
-  await page.goto(`${origin}${trialPath}/workspace`);
+  // Its workspace also loads directly.
+  await page.goto(`${origin}/share/runs/${runId}/workspace`);
   await page.waitForSelector('.file-explorer button[title="reply.txt"]');
   await page.click('.file-explorer button[title="reply.txt"]');
   await text('Ada');

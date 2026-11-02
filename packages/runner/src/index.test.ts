@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import type { RunResult } from '@evalkit/core';
 import * as Schema from 'effect/Schema';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -15,14 +16,27 @@ import {
   user,
   parseTrajectoryJsonl,
   RunManifestSchema,
+  RunScoringSchema,
   RunSummarySchema,
-  TrialManifestSchema,
-  TrialScoringSchema,
-  TrialSummarySchema,
 } from '@evalkit/core';
 import { localReportStore, ownerIsGone, runEval } from './index';
 
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
+
 const execute = (
+  definition: Parameters<typeof runEval>[0],
+  options: Parameters<typeof runEval>[1],
+) => runOne(runEval(definition, options));
+
+/** Runs a scenario and returns every run it started. */
+const executeAll = (
   definition: Parameters<typeof runEval>[0],
   options: Parameters<typeof runEval>[1],
 ) => Effect.runPromise(runEval(definition, options));
@@ -103,54 +117,34 @@ describe('runEval', () => {
     const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
     });
 
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('passed');
     expect(result.scoring?.overall).toBe(1);
     expect(result.scoring?.passed).toBe(true);
-    const runManifest = JSON.parse(
-      await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
+    const runDirectory = path.join(
+      root,
+      '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
     );
-    const trialManifest = JSON.parse(
-      await readFile(
-        path.join(
-          root,
-          result.runId,
-          'trials',
-          result.trialId!,
-          'manifest.json',
-        ),
-        'utf8',
-      ),
+    const manifest = JSON.parse(
+      await readFile(path.join(runDirectory, 'manifest.json'), 'utf8'),
     );
-    expect(runManifest).toMatchObject({
+    expect(manifest).toMatchObject({
+      schemaVersion: 6,
       evalId: 'eval-01',
-      status: 'completed',
+      status: 'passed',
     });
-    expect(trialManifest).toMatchObject({
-      evalId: 'eval-01',
-      status: 'completed',
-    });
-    expect(
-      Schema.decodeUnknownSync(RunManifestSchema)(runManifest).status,
-    ).toBe('completed');
-    expect(
-      Schema.decodeUnknownSync(TrialManifestSchema)(trialManifest).status,
-    ).toBe('completed');
+    expect(manifest.batch).toBeUndefined();
+    expect(Schema.decodeUnknownSync(RunManifestSchema)(manifest).status).toBe(
+      'passed',
+    );
 
     const trajectory = await readFile(
-      path.join(
-        root,
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
-        'trials',
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
-        'trajectory.jsonl',
-      ),
+      path.join(runDirectory, 'trajectory.jsonl'),
       'utf8',
     );
     expect(trajectory).toContain('"role":"assistant"');
-    expect(trajectory).toContain('"kind":"scorer-completed"');
+    expect(trajectory).toContain('"kind":"run-started"');
     expect(
       parseTrajectoryJsonl(trajectory).some(
         (event) => event.kind === 'scorer-completed',
@@ -158,82 +152,68 @@ describe('runEval', () => {
     ).toBe(true);
 
     const scoring = JSON.parse(
-      await readFile(
-        path.join(
-          root,
-          '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
-          'trials',
-          '0197f17c-4d89-7f81-9d42-6c497e6f6b31',
-          'scoring.json',
-        ),
-        'utf8',
-      ),
+      await readFile(path.join(runDirectory, 'scoring.json'), 'utf8'),
     );
     expect(scoring.results[0]).toMatchObject({
       name: 'responded',
       value: 1,
       passed: true,
     });
-    expect(Schema.decodeUnknownSync(TrialScoringSchema)(scoring).passed).toBe(
+    expect(Schema.decodeUnknownSync(RunScoringSchema)(scoring).passed).toBe(
       true,
     );
-    const trialSummary = JSON.parse(
-      await readFile(
-        path.join(
-          root,
-          result.runId,
-          'trials',
-          result.trialId!,
-          'summary.json',
-        ),
-        'utf8',
-      ),
+    const summary = JSON.parse(
+      await readFile(path.join(runDirectory, 'summary.json'), 'utf8'),
     );
-    expect(
-      Schema.decodeUnknownSync(TrialSummarySchema)(trialSummary).status,
-    ).toBe('completed');
+    expect(Schema.decodeUnknownSync(RunSummarySchema)(summary)).toMatchObject({
+      status: 'passed',
+      scoring: { passed: true },
+    });
   });
 
-  test('groups requested independent trials beneath one aggregate run', async () => {
+  test('repeat starts independent runs that share a batch', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
       id: 'eval-07',
       agent: testAgent('Aye!'),
       transcript: [user('Hello')],
       scoring: [predicate('responded', () => 1)],
-      policy: { trials: 3 },
+      repeat: 3,
     });
 
-    const result = await execute(evaluation, {
+    const runs = await executeAll(evaluation, {
       report: localReportStore(root),
-      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
     });
 
-    expect(result.runId).toBe('0197f17c-4d89-7f81-9d42-6c497e6f6b32');
-    expect(result.trialCount).toBe(3);
-    expect(result.passed).toBe(3);
-    expect(result.trials?.map((trial) => trial.trialId)).toHaveLength(3);
-    expect(
-      result.trials?.every((trial) => /^[0-9a-f-]{36}$/.test(trial.trialId)),
-    ).toBe(true);
-    for (const trial of result.trials ?? []) {
-      await access(
-        path.join(
-          root,
-          '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
-          'trials',
-          trial.trialId,
-          'summary.json',
-        ),
+    expect(runs).toHaveLength(3);
+    expect(new Set(runs.map((run) => run.runId)).size).toBe(3);
+    expect(runs.every((run) => run.status === 'passed')).toBe(true);
+    const batchId = runs[0]!.batch!.id;
+    expect(runs.map((run) => run.batch)).toEqual([
+      { id: batchId, index: 0, size: 3 },
+      { id: batchId, index: 1, size: 3 },
+      { id: batchId, index: 2, size: 3 },
+    ]);
+    for (const run of runs) {
+      const manifest = JSON.parse(
+        await readFile(path.join(root, run.runId, 'manifest.json'), 'utf8'),
       );
+      expect(manifest.batch).toEqual(run.batch);
+      await access(path.join(root, run.runId, 'summary.json'));
     }
-    const summary = JSON.parse(
-      await readFile(
-        path.join(root, '0197f17c-4d89-7f81-9d42-6c497e6f6b32', 'summary.json'),
-        'utf8',
-      ),
-    );
-    expect(summary).toMatchObject({ trialCount: 3, passed: 3, failed: 0 });
+    // The option overrides the scenario, and one run has no batch.
+    const [single, ...rest] = await executeAll(evaluation, {
+      report: localReportStore(root),
+      repeat: 1,
+    });
+    expect(rest).toHaveLength(0);
+    expect(single?.batch).toBeUndefined();
+    await expect(
+      executeAll(evaluation, {
+        report: localReportStore(root),
+        runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
+      }),
+    ).rejects.toThrow('cannot be used with repeat');
   });
 
   test('selects a declared AUT runtime', async () => {
@@ -265,10 +245,9 @@ describe('runEval', () => {
       report: localReportStore(root),
       runtime: 'local',
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b33',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3e',
     });
 
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('passed');
     expect(selectedRuntime).toBe('local');
   });
 
@@ -374,26 +353,20 @@ describe('runEval', () => {
     const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b34',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('passed');
     expect(result.scoring?.passed).toBe(true);
     expect(candidateSawEvaluatorData).toBe(false);
     expect(agentData).toEqual({ project: { goal: 'upper' } });
     await expect(access(candidateRoot)).rejects.toThrow();
 
-    const trialRoot = path.join(
-      root,
-      '0197f17c-4d89-7f81-9d42-6c497e6f6b34',
-      'trials',
-      '0197f17c-4d89-7f81-9d42-6c497e6f6b35',
+    const runRoot = path.join(root, '0197f17c-4d89-7f81-9d42-6c497e6f6b34');
+    const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
+      JSON.parse(await readFile(path.join(runRoot, 'manifest.json'), 'utf8')),
     );
-    const manifest = Schema.decodeUnknownSync(TrialManifestSchema)(
-      JSON.parse(await readFile(path.join(trialRoot, 'manifest.json'), 'utf8')),
-    );
-    expect(manifest.schemaVersion).toBe(5);
+    expect(manifest.schemaVersion).toBe(6);
     expect(
       manifest.datasets?.map(({ id, visibility }) => [id, visibility]),
     ).toEqual([
@@ -403,15 +376,15 @@ describe('runEval', () => {
     expect(manifest.datasets?.[0]?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(
       await readFile(
-        path.join(trialRoot, 'artifacts', 'candidate', 'agent-output.txt'),
+        path.join(runRoot, 'artifacts', 'candidate', 'agent-output.txt'),
         'utf8',
       ),
     ).toBe('CANDIDATE DATASET');
     await expect(
-      access(path.join(trialRoot, 'artifacts', 'evaluator')),
+      access(path.join(runRoot, 'artifacts', 'evaluator')),
     ).rejects.toThrow();
     const trajectory = parseTrajectoryJsonl(
-      await readFile(path.join(trialRoot, 'trajectory.jsonl'), 'utf8'),
+      await readFile(path.join(runRoot, 'trajectory.jsonl'), 'utf8'),
     );
     expect(
       trajectory.some(
@@ -423,7 +396,7 @@ describe('runEval', () => {
     ).toBe(true);
   });
 
-  test('loads computed datasets once and derives each trial with onRun', async () => {
+  test('loads computed datasets once and derives each run with onRun', async () => {
     const root = await reportDirectory();
     let loads = 0;
     const seen: unknown[] = [];
@@ -433,9 +406,9 @@ describe('runEval', () => {
         loads++;
         return { value: ['a', 'b', 'c'] };
       },
-      onRun: ({ value }, trial) => ({
-        value: (value as string[])[trial.trialIndex],
-        files: { 'account.txt': `account ${trial.trialIndex}` },
+      onRun: ({ value }, run) => ({
+        value: (value as string[])[run.batch?.index ?? 0],
+        files: { 'account.txt': `account ${run.batch?.index ?? 0}` },
       }),
     });
     const evaluation = defineEval({
@@ -447,13 +420,13 @@ describe('runEval', () => {
         },
       }),
       datasets: [accounts],
-      policy: { trials: 3 },
+      repeat: 3,
       transcript: [user('hi')],
       scoring: [],
     });
     const options = { report: localReportStore(root), concurrency: 1 };
-    await execute(evaluation, options);
-    await execute(evaluation, options);
+    await executeAll(evaluation, options);
+    await executeAll(evaluation, options);
     expect(loads).toBe(1);
     expect(seen).toEqual(['a', 'b', 'c', 'a', 'b', 'c']);
   });
@@ -494,18 +467,13 @@ describe('runEval', () => {
       report: localReportStore(root),
       parameters: { toolchain: 'riot' },
     });
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('passed');
     expect(sent).toEqual([
       'Use Riot (riot.ml) (seed number, answers undefined)',
     ]);
     const trajectory = parseTrajectoryJsonl(
       await readFile(
-        path.join(
-          result.reportLocation,
-          'trials',
-          result.trialId,
-          'trajectory.jsonl',
-        ),
+        path.join(result.reportLocation, 'trajectory.jsonl'),
         'utf8',
       ),
     );
@@ -521,7 +489,7 @@ describe('runEval', () => {
       }),
       { report: localReportStore(root) },
     );
-    expect(empty.status).toBe('failed');
+    expect(empty.status).toBe('errored');
     expect(empty.error?.message).toContain(
       'The user message at step 1 must compute a non-empty string',
     );
@@ -675,7 +643,7 @@ describe('runEval', () => {
     ).toThrow('more than one metric named tokens');
   });
 
-  test('retries a failed dataset load and fails only the trial', async () => {
+  test('retries a failed dataset load and fails only the run', async () => {
     const root = await reportDirectory();
     let attempts = 0;
     const flaky = defineDataset({
@@ -694,12 +662,12 @@ describe('runEval', () => {
       scoring: [],
     });
     const first = await execute(evaluation, { report: localReportStore(root) });
-    expect(first.status).toBe('failed');
+    expect(first.status).toBe('errored');
     expect(first.error?.message).toContain('service unavailable');
     const second = await execute(evaluation, {
       report: localReportStore(root),
     });
-    expect(second.status).toBe('completed');
+    expect(second.status).toBe('passed');
     expect(attempts).toBe(2);
   });
 
@@ -760,7 +728,7 @@ describe('runEval', () => {
       }),
       { report: localReportStore(root) },
     );
-    expect(escaping.status).toBe('failed');
+    expect(escaping.status).toBe('errored');
     expect(escaping.error?.message).toContain('escapes its workspace');
 
     const colliding = await execute(
@@ -784,7 +752,7 @@ describe('runEval', () => {
       }),
       { report: localReportStore(root) },
     );
-    expect(colliding.status).toBe('failed');
+    expect(colliding.status).toBe('errored');
     expect(colliding.error?.message).toContain(
       'Dataset second would overwrite same.txt',
     );
@@ -861,16 +829,11 @@ describe('runEval', () => {
       }),
       { report: localReportStore(root) },
     );
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('passed');
     expect(result.scoring?.passed).toBe(true);
     const trajectory = parseTrajectoryJsonl(
       await readFile(
-        path.join(
-          result.reportLocation,
-          'trials',
-          result.trialId,
-          'trajectory.jsonl',
-        ),
+        path.join(result.reportLocation, 'trajectory.jsonl'),
         'utf8',
       ),
     );
@@ -890,7 +853,7 @@ describe('runEval', () => {
     ).not.toHaveProperty('message');
   });
 
-  test('cancellation stops new trials and finalizes running ones as cancelled', async () => {
+  test('cancellation stops new runs and finalizes running ones as cancelled', async () => {
     const root = await reportDirectory();
     const controller = new AbortController();
     let started = 0;
@@ -909,48 +872,41 @@ describe('runEval', () => {
           };
         },
       }),
-      policy: { trials: 4 },
+      repeat: 4,
       transcript: [user('hang'), user('never sent')],
       scoring: [predicate('never runs', () => 1, { supportsPartial: true })],
     });
     const seen: string[] = [];
-    const running = execute(evaluation, {
+    const runs = await executeAll(evaluation, {
       report: localReportStore(root),
       concurrency: 2,
       signal: controller.signal,
-      onEvent: (trial, event) => {
-        seen.push(`${trial.trialIndex}:${event.kind}`);
+      onEvent: (run, event) => {
+        seen.push(`${run.batch?.index}:${event.kind}`);
         if (event.kind === 'transcript-step-started') controller.abort();
       },
     });
-    const result = await running;
-    expect(result.status).toBe('cancelled');
+    // Runs that never started are not created at all.
+    expect(runs).toHaveLength(started);
     expect(started).toBeLessThanOrEqual(2);
     expect(closed).toBe(started);
-    expect(result.trials?.every((trial) => trial.status === 'cancelled')).toBe(
-      true,
-    );
-    expect(
-      result.trials?.every((trial) => trial.scoring?.results.length === 0),
-    ).toBe(true);
-    expect(seen).toContain('0:trial-started');
-    const summary = Schema.decodeUnknownSync(RunSummarySchema)(
-      JSON.parse(
-        await readFile(path.join(root, result.runId, 'summary.json'), 'utf8'),
-      ),
-    );
-    expect(summary).toMatchObject({
-      status: 'cancelled',
-      passed: 0,
-      failed: 0,
-      cancelled: started,
-    });
-    const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
-      JSON.parse(
-        await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
-      ),
-    );
-    expect(manifest.process?.pid).toBe(process.pid);
+    expect(runs.every((run) => run.status === 'cancelled')).toBe(true);
+    expect(runs.every((run) => run.scoring?.results.length === 0)).toBe(true);
+    expect(seen).toContain('0:run-started');
+    for (const run of runs) {
+      const summary = Schema.decodeUnknownSync(RunSummarySchema)(
+        JSON.parse(
+          await readFile(path.join(root, run.runId, 'summary.json'), 'utf8'),
+        ),
+      );
+      expect(summary.status).toBe('cancelled');
+      const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
+        JSON.parse(
+          await readFile(path.join(root, run.runId, 'manifest.json'), 'utf8'),
+        ),
+      );
+      expect(manifest.process?.pid).toBe(process.pid);
+    }
   });
 
   test('judges a running run interrupted only when its local owner is gone', () => {
@@ -977,39 +933,19 @@ describe('runEval', () => {
     const result = await execute(evaluation, {
       report: localReportStore(root),
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3a',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3b',
     });
 
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('errored');
     expect(result.error).toMatchObject({
       name: 'AutExecutionError',
       message: 'boom',
     });
-    const runManifest = JSON.parse(
+    const manifest = JSON.parse(
       await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
     );
-    const trialManifest = JSON.parse(
-      await readFile(
-        path.join(
-          root,
-          result.runId,
-          'trials',
-          result.trialId!,
-          'manifest.json',
-        ),
-        'utf8',
-      ),
-    );
-    expect(runManifest.status).toBe('failed');
-    expect(trialManifest.status).toBe('failed');
+    expect(manifest.status).toBe('errored');
     const trajectory = await readFile(
-      path.join(
-        root,
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b3a',
-        'trials',
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b3b',
-        'trajectory.jsonl',
-      ),
+      path.join(root, result.runId, 'trajectory.jsonl'),
       'utf8',
     );
     expect(trajectory).toContain('"role":"user"');

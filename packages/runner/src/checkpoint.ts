@@ -51,7 +51,6 @@ export function evaluateCheckpoint(
   const annotations = {
     evalId: input.context.evalId,
     runId: input.context.runId,
-    trialId: input.context.trialId,
     step: index,
     checkpoint: step.name,
   };

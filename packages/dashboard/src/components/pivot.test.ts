@@ -15,8 +15,6 @@ function run(
     parameters,
     status,
     startedAt: new Date(Date.UTC(2025, 0, 1, 0, minute)).toISOString(),
-    completedTrials: 1,
-    requestedTrials: 1,
     ...extra,
   };
 }
@@ -27,10 +25,10 @@ const runs = [
   run({ model: 'glm', toolchain: 'opam', trials: 1 }, 'passed', { score: 1 }),
   run({ model: 'kimi', toolchain: 'dune', trials: 1 }, 'failed', {
     score: 0.5,
-    metrics: [{ name: 'tokens', mean: 300, count: 3 }],
+    metrics: [{ name: 'tokens', value: 400 }],
   }),
   run({ model: 'kimi', toolchain: 'dune', trials: 1 }, 'passed', {
-    metrics: [{ name: 'tokens', mean: 100, count: 1 }],
+    metrics: [{ name: 'tokens', value: 100 }],
   }),
   run({ model: 'kimi', toolchain: 'opam', trials: 1 }, 'running'),
 ];
@@ -59,7 +57,7 @@ test('cells aggregate finished runs by one axis down and another across', () => 
   expect(cell('kimi', 'opam')).toEqual({ runs: 0, measured: 0 });
 });
 
-test('without a column axis each row is one cell; metrics weight by trials measured', () => {
+test('without a column axis each row is one cell; metrics average the runs that measured them', () => {
   const table = pivot(runs, 'model', undefined, {
     kind: 'metric',
     metric: { name: 'tokens', better: 'lower' },

@@ -4,15 +4,13 @@ import { join } from 'node:path';
 import * as Schema from 'effect/Schema';
 import {
   RunManifestSchema,
+  RunScoringSchema,
   RunSummarySchema,
-  TrialManifestSchema,
-  TrialSummarySchema,
-  TrialScoringSchema,
   parseTrajectoryJsonl,
   type RunProcess,
 } from '@evalkit/core';
 
-/** Shared v2/v3 local report boundary for CLI, dashboard, and CI consumers. */
+/** The local report boundary for CLI, dashboard, and CI consumers (schema version 6). */
 async function decode<A, I>(
   file: string,
   schema: Schema.Schema<A, I>,
@@ -26,43 +24,11 @@ export const readRunManifest = (root: string, runId: string) =>
   decode(join(root, runId, 'manifest.json'), RunManifestSchema);
 export const readRunSummary = (root: string, runId: string) =>
   decode(join(root, runId, 'summary.json'), RunSummarySchema);
-export const readTrialManifest = (
-  root: string,
-  runId: string,
-  trialId: string,
-) =>
-  decode(
-    join(root, runId, 'trials', trialId, 'manifest.json'),
-    TrialManifestSchema,
-  );
-export const readTrialSummary = (
-  root: string,
-  runId: string,
-  trialId: string,
-) =>
-  decode(
-    join(root, runId, 'trials', trialId, 'summary.json'),
-    TrialSummarySchema,
-  );
-export const readTrialScoring = (
-  root: string,
-  runId: string,
-  trialId: string,
-) =>
-  decode(
-    join(root, runId, 'trials', trialId, 'scoring.json'),
-    TrialScoringSchema,
-  );
-export async function readTrialEvents(
-  root: string,
-  runId: string,
-  trialId: string,
-) {
+export const readRunScoring = (root: string, runId: string) =>
+  decode(join(root, runId, 'scoring.json'), RunScoringSchema);
+export async function readRunEvents(root: string, runId: string) {
   return parseTrajectoryJsonl(
-    await readFile(
-      join(root, runId, 'trials', trialId, 'trajectory.jsonl'),
-      'utf8',
-    ),
+    await readFile(join(root, runId, 'trajectory.jsonl'), 'utf8'),
   );
 }
 

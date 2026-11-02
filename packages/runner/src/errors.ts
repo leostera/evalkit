@@ -35,7 +35,7 @@ export class CheckpointExecutionError extends Data.TaggedError(
   cause: unknown;
 }> {}
 
-/** The run was cancelled (Ctrl+C); the trial stops and is finalized as cancelled. */
+/** The run was cancelled (Ctrl+C); the run stops and is finalized as cancelled. */
 export class CancelledError extends Data.TaggedError('CancelledError')<{
   message: string;
 }> {}

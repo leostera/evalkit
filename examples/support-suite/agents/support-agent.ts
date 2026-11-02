@@ -77,5 +77,5 @@ function customerName(data: JsonObject): string {
     typeof customer.name === 'string'
   )
     return customer.name;
-  throw new Error('The customers dataset gives each trial a customer');
+  throw new Error('The customers dataset gives each run a customer');
 }

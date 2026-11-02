@@ -8,19 +8,19 @@ web
 
 ## Users
 
-Developers and evaluation authors inspecting agent runs, trial outcomes, scorers, trajectories, and artifacts in a local project.
+Developers and evaluation authors inspecting agent runs, run outcomes, scorers, trajectories, and artifacts in a local project.
 
 ## Product Purpose
 
-Help users operate evaluation campaigns at scale: launch evals, scan potentially tens of thousands of runs and trials, narrow results by saved parameters, compare outcomes, and inspect the evidence behind each score without mistaking execution status for scoring success.
+Help users operate evaluation campaigns at scale: launch evals, scan potentially tens of thousands of runs and runs, narrow results by saved parameters, compare outcomes, and inspect the evidence behind each score without mistaking execution status for scoring success.
 
 ## Operating Context
 
-The dashboard runs from an EvalKit project through `dev`. It reads local reports and catalog definitions. The working views are Suites & Evals, Agents, Fixtures, Runs, Trial detail, and Candidate workspace. Trial evidence and candidate workspace open in a contextual panel from a run, with a URL-preserved investigation path.
+The dashboard runs from an EvalKit project through `dev`. It reads local reports and catalog definitions. The working views are the Scoreboard, Runs, a run's page, its candidate workspace, and the Library (agents, judges, scenarios, datasets), each with a URL-preserved investigation path.
 
 ## Capabilities and Constraints
 
-Keep the existing workflows, deep links, functionality, and information density. Trial and workspace deep links remain valid; the in-run investigation stays in a side panel instead of discarding the results view. Matrix cells and saved runs are inspectable; saved reports can include sensitive data. Report outputs are local, not automatically published. Dense tables need accessible keyboard and touch paths, clear run/scorer status, and responsive overflow.
+Keep the existing workflows, deep links, functionality, and information density. Run and workspace deep links remain valid, including run links from before 0.9. Matrix cells and saved runs are inspectable; saved reports can include sensitive data. Report outputs are local, not automatically published. Dense tables need accessible keyboard and touch paths, clear run/scorer status, and responsive overflow.
 
 ## Brand Commitments
 

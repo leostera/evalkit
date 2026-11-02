@@ -25,6 +25,7 @@ export type Actions = {
     run?: boolean;
   }): Promise<void>;
   tidy(options: { config?: string }): Promise<void>;
+  upgrade(options: { config?: string; dryRun?: boolean }): Promise<void>;
   share(options: {
     config?: string;
     server?: string;
@@ -141,8 +142,8 @@ export function createProgram(actions: Actions): Command {
       collect,
     )
     .option(
-      '-n, --trials <n>',
-      'trials per scenario, overriding config and policy',
+      '-n, --repeat <n>',
+      'runs of each scenario, as one batch; overrides config and scenario',
     )
     .option('-j, --concurrency <n>', 'matrix cells to run at once (default: 4)')
     .option(
@@ -237,6 +238,17 @@ export function createProgram(actions: Actions): Command {
     )
     .addOption(configOption())
     .action((options: { config?: string }) => actions.tidy(options));
+
+  program
+    .command('upgrade')
+    .description(
+      'convert results saved by an older EvalKit to the current format, in place',
+    )
+    .addOption(configOption())
+    .option('--dry-run', 'show what would change without changing anything')
+    .action((options: { config?: string; dryRun?: boolean }) =>
+      actions.upgrade(options),
+    );
 
   const share = program
     .command('share')
@@ -341,7 +353,7 @@ type RunFlags = {
   mode?: string[];
   select?: string[];
   param?: string[];
-  trials?: string;
+  repeat?: string;
   concurrency?: string;
   maxTokens?: string;
   turnBudget?: string;
@@ -371,7 +383,7 @@ function runInput(evalIds: string[], flags: RunFlags): RunInput {
       'chat-timeout-ms': flags.chatTimeoutMs,
       'turn-budget': flags.turnBudget,
       concurrency: flags.concurrency,
-      trials: flags.trials,
+      repeat: flags.repeat,
       json: flags.json,
       'dry-run': flags.dryRun,
       all: flags.all,

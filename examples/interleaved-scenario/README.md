@@ -8,7 +8,7 @@ From the repository root, install dependencies; then run from this directory:
 bun run evalkit run write-revise   # verifies 2112, requests a revision, verifies 2113
 bun run evalkit run judged-reply   # same judge runs inline and after session close
 bun run evalkit run failfast-file  # intentional failed assertion; CLI exits nonzero
-bun run evalkit dev                # inspect trial checkpoints, skipped steps, and final scorers
+bun run evalkit dev                # inspect run checkpoints, skipped steps, and final scorers
 bun run test       # provider-free integration test with isolated reports
 ```
 
@@ -18,4 +18,4 @@ bun run test       # provider-free integration test with isolated reports
 
 `scenarios/failfast-file.eval.ts` deliberately emits the expected `write_file` call but writes the wrong content; the tool result reports `{ ok: false }`. The call expectation still passes—it does not assert tool success—while the live file check fails. `policy.failfast` skips the revision and the final-file predicate, but a `supportsPartial` predicate runs and the report still fails overall. Run this eval separately because its CLI exit code is intentionally nonzero.
 
-Each eval file declares its complete transcript, rules, and final scoring in place. The file-writing evals intentionally repeat the scenario so you can read either example without following a shared factory. Both evals are discovered from default exports without a config. Reports are local under `_evalkit-results/` (v3 manifests and checkpoint results); trial workspaces remain under `_evalkit-sandbox/`, both ignored by Git. `src/run.test.ts` runs each eval in a temporary project report root and verifies evidence, skipped steps, and the combined pass gate. Checkpoints do **not** provide enforced timeouts, cancellation, or a process-wide egress guard.
+Each eval file declares its complete transcript, rules, and final scoring in place. The file-writing evals intentionally repeat the scenario so you can read either example without following a shared factory. Both evals are discovered from default exports without a config. Reports are local under `_evalkit-results/` (v3 manifests and checkpoint results); run workspaces remain under `_evalkit-sandbox/`, both ignored by Git. `src/run.test.ts` runs each eval in a temporary project report root and verifies evidence, skipped steps, and the combined pass gate. Checkpoints do **not** provide enforced timeouts, cancellation, or a process-wide egress guard.

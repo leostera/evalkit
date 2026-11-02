@@ -403,15 +403,15 @@ export function JudgePage({
             [
               'Kind',
               scorer.kind === 'judge'
-                ? 'LLM judge: the scenario’s judge agent grades the trial against the rubric'
-                : 'Predicate: a function scores the trial from 0 to 1',
+                ? 'LLM judge: the scenario’s judge agent grades the run against the rubric'
+                : 'Predicate: a function scores the run from 0 to 1',
             ],
             ['Passes at', threshold(scorer)],
             [
-              'Partial trials',
+              'Partial runs',
               scorer.supportsPartial
-                ? 'Also scores trials that stopped early or failed'
-                : 'Only scores trials that ran to the end',
+                ? 'Also scores runs that stopped early or failed'
+                : 'Only scores runs that ran to the end',
             ],
             ['Defined in', <DefinedAt key="at" at={scorer.definedAt} />],
           ]}
@@ -443,7 +443,7 @@ export function JudgePage({
 function datasetContents(dataset: CatalogDataset): string {
   if (dataset.source === 'computed')
     return dataset.hooks?.onRun
-      ? 'built by onLoad, adapted per trial by onRun'
+      ? 'built by onLoad, adapted per run by onRun'
       : 'built by onLoad';
   const parts: string[] = [];
   if (dataset.files)
@@ -563,7 +563,7 @@ export function DatasetPage({
                     <span key="hooks" className="flex gap-1">
                       <Pill>onLoad · once per process</Pill>
                       {dataset.hooks.onRun ? (
-                        <Pill>onRun · once per trial</Pill>
+                        <Pill>onRun · once per run</Pill>
                       ) : null}
                     </span>,
                   ],
@@ -596,10 +596,10 @@ export function DatasetPage({
                       'directory' in files ? (
                         <span key="files">
                           <span className={monoClass}>{files.directory}/</span>,
-                          copied into each trial&apos;s workspace
+                          copied into each run&apos;s workspace
                         </span>
                       ) : (
-                        `${files.paths.length} declared inline, written into each trial's workspace`
+                        `${files.paths.length} declared inline, written into each run's workspace`
                       ),
                     ],
                   ] as const)

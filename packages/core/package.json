@@ -6,6 +6,7 @@
     ".": "./src/index.ts",
     "./canonical-json": "./src/canonical-json.ts",
     "./glob": "./src/glob.ts",
+    "./upgrade": "./src/upgrade.ts",
     "./usage": "./src/usage.ts"
   },
   "dependencies": {

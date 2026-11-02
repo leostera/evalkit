@@ -21,8 +21,6 @@ const run = (id: string, extra: Partial<LocalRun> = {}): LocalRun => ({
   evalId: 'greeting',
   status: 'passed',
   startedAt: '2026-10-28T00:00:00Z',
-  completedTrials: 1,
-  requestedTrials: 1,
   source: head,
   ...extra,
 });

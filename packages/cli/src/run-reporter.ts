@@ -5,10 +5,9 @@ import type {
   RunResult,
   ScoreResult,
   TrajectoryEvent,
-  TrialResult,
 } from '@evalkit/core';
 import { authoringId } from '@evalkit/core';
-import type { TrialRef } from '@evalkit/runner';
+import type { RunRef } from '@evalkit/runner';
 import {
   bold,
   cyan,
@@ -20,16 +19,17 @@ import {
   yellow,
 } from './terminal.js';
 
-/** How one finished scenario (matrix cell) ended. */
-export type ScenarioOutcome = 'passed' | 'failed' | 'cancelled';
+/** How one finished run ended; a run that errored counts as failed. */
+export type RunOutcome = 'passed' | 'failed' | 'cancelled';
 
-export type ScenarioResult = {
+/** One finished run, as the CLI prints and counts it. */
+export type RunReport = {
   /** `suite/eval`, or the eval ID when it has no suite. */
   label: string;
   evalId: string;
   suiteId?: string;
   parameters: Record<string, unknown>;
-  outcome: ScenarioOutcome;
+  outcome: RunOutcome;
   durationMs?: number;
   result: RunResult;
   /** Short reasons, one per failing score or checkpoint, e.g. `correct 0.0 (passes at 0.5)`. */
@@ -38,25 +38,19 @@ export type ScenarioResult = {
   skipped: string[];
 };
 
+/** Runs by outcome, and how many scenarios (with their parameters) they covered. */
 export type RunTotals = {
   passed: number;
   failed: number;
   cancelled: number;
+  runs: number;
   scenarios: number;
   durationMs: number;
 };
 
-export function scenarioOutcome(result: RunResult): ScenarioOutcome {
+export function runOutcome(result: RunResult): RunOutcome {
   if (result.status === 'cancelled') return 'cancelled';
-  const passed =
-    result.status === 'completed' &&
-    (result.trials
-      ? result.trials.length > 0 &&
-        result.trials.every(
-          (trial) => trial.status === 'completed' && trial.scoring?.passed,
-        )
-      : Boolean(result.scoring?.passed));
-  return passed ? 'passed' : 'failed';
+  return result.status === 'passed' ? 'passed' : 'failed';
 }
 
 function passAtFor(
@@ -89,47 +83,44 @@ function checkpointReason(
   return `step ${checkpoint.step} ${checkpoint.name} ${checkpoint.value === undefined ? checkpoint.status : value(checkpoint)}${passAt === undefined ? '' : ` (passes at ${passAt})`}`;
 }
 
-/** What went wrong in a scenario, deduplicated across its trials. */
+/** What went wrong in a run. */
 function reasonsFor(
   definition: EvalDefinition,
-  trials: readonly TrialResult[],
+  run: RunResult,
 ): { reasons: string[]; skipped: string[] } {
   const reasons = new Set<string>();
   const skipped = new Set<string>();
-  for (const trial of trials) {
-    if (trial.status === 'failed' && trial.error)
-      reasons.add(`error: ${trial.error.message}`);
-    for (const checkpoint of trial.scoring?.checkpoints ?? [])
-      if (checkpoint.status === 'failed' || checkpoint.status === 'error')
-        reasons.add(checkpointReason(definition, checkpoint));
-    for (const score of trial.scoring?.results ?? []) {
-      if (score.skipped) skipped.add(score.name);
-      else if (!score.passed) reasons.add(scoreReason(definition, score));
-    }
-    for (const name of trial.scoring?.skippedScorers ?? [])
-      if (trial.status !== 'cancelled') reasons.add(`${name} not run`);
+  if (run.status === 'errored' && run.error)
+    reasons.add(`error: ${run.error.message}`);
+  for (const checkpoint of run.scoring?.checkpoints ?? [])
+    if (checkpoint.status === 'failed' || checkpoint.status === 'error')
+      reasons.add(checkpointReason(definition, checkpoint));
+  for (const score of run.scoring?.results ?? []) {
+    if (score.skipped) skipped.add(score.name);
+    else if (!score.passed) reasons.add(scoreReason(definition, score));
   }
+  for (const name of run.scoring?.skippedScorers ?? [])
+    if (run.status !== 'cancelled') reasons.add(`${name} not run`);
   return { reasons: [...reasons], skipped: [...skipped] };
 }
 
-export function scenarioResult(
+export function runReport(
   cell: EvalMatrixCell,
   result: RunResult,
   suiteId: string | undefined,
-): ScenarioResult {
+): RunReport {
   const evalId = authoringId(cell.eval);
-  const trials = result.trials ?? [result];
   return {
     label: suiteId ? `${suiteId}/${evalId}` : evalId,
     evalId,
     ...(suiteId ? { suiteId } : {}),
     parameters: cell.parameters,
-    outcome: scenarioOutcome(result),
+    outcome: runOutcome(result),
     ...(result.durationMs !== undefined
       ? { durationMs: result.durationMs }
       : {}),
     result,
-    ...reasonsFor(cell.eval, trials),
+    ...reasonsFor(cell.eval, result),
   };
 }
 
@@ -142,8 +133,8 @@ export function parameterLabel(parameters: Record<string, unknown>): string {
     .join(' ');
 }
 
-/** One printed line for a finished scenario; failing reasons on the same line. */
-export function scenarioLine(scenario: ScenarioResult): string {
+/** One printed line for a finished run; failing reasons on the same line. */
+export function runLine(scenario: RunReport): string {
   const mark =
     scenario.outcome === 'passed'
       ? green('✓')
@@ -151,19 +142,14 @@ export function scenarioLine(scenario: ScenarioResult): string {
         ? yellow('◌')
         : red('✗');
   const parameters = parameterLabel(scenario.parameters);
-  const trials = scenario.result.trials;
-  const trialCount =
-    trials && trials.length > 1
-      ? dim(
-          ` ${trials.filter((trial) => trial.status === 'completed' && trial.scoring?.passed).length}/${trials.length} trials`,
-        )
-      : '';
+  const batch = scenario.result.batch;
+  const position = batch ? dim(` #${batch.index + 1}/${batch.size}`) : '';
   const details = [
     ...(scenario.outcome === 'failed' ? scenario.reasons : []),
     ...(scenario.outcome === 'cancelled' ? ['cancelled'] : []),
     ...scenario.skipped.map((name) => `${name} skipped`),
   ];
-  return `  ${mark} ${bold(scenario.label)}${parameters ? ` ${dim(parameters)}` : ''}${trialCount}${details.length ? `   ${dim(details.join(' · '))}` : ''}`;
+  return `  ${mark} ${bold(scenario.label)}${parameters ? ` ${dim(parameters)}` : ''}${position}${details.length ? `   ${dim(details.join(' · '))}` : ''}`;
 }
 
 type Activity = { label: string; startedAt: number; doing?: string };
@@ -177,14 +163,14 @@ export function createRunReporter(options: {
   interactive: boolean;
   verbose: boolean;
   total: number;
-  labelFor: (trial: TrialRef) => string;
+  labelFor: (run: RunRef) => string;
   write?: (text: string) => void;
   now?: () => number;
 }) {
   const write = options.write ?? ((text: string) => process.stdout.write(text));
   const now = options.now ?? (() => performance.now());
   const running = new Map<string, Activity>();
-  const scenarios: ScenarioResult[] = [];
+  const scenarios: RunReport[] = [];
   let liveShown = false;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -226,21 +212,21 @@ export function createRunReporter(options: {
         timer.unref?.();
       }
     },
-    onEvent(trial: TrialRef, event: TrajectoryEvent) {
-      if (event.source === 'runner' && event.kind === 'trial-started') {
-        running.set(trial.trialId, {
-          label: options.labelFor(trial),
+    onEvent(run: RunRef, event: TrajectoryEvent) {
+      if (event.source === 'runner' && event.kind === 'run-started') {
+        running.set(run.runId, {
+          label: options.labelFor(run),
           startedAt: now(),
         });
         return;
       }
-      const activity = running.get(trial.trialId);
+      const activity = running.get(run.runId);
       if (!activity) return;
       if (
         event.source === 'runner' &&
-        (event.kind === 'trial-completed' || event.kind === 'error')
+        (event.kind === 'run-completed' || event.kind === 'error')
       ) {
-        running.delete(trial.trialId);
+        running.delete(run.runId);
       } else if (event.source === 'aut' && event.kind === 'tool-call')
         activity.doing = `tool ${event.name}`;
       else if (event.source === 'runner' && event.kind === 'scorer-started')
@@ -248,21 +234,20 @@ export function createRunReporter(options: {
       else if (event.source === 'runner' && event.kind === 'checkpoint-started')
         activity.doing = `check ${event.name}`;
     },
-    onScenario(scenario: ScenarioResult) {
+    onRun(scenario: RunReport) {
       scenarios.push(scenario);
-      for (const trial of scenario.result.trials ?? [scenario.result])
-        running.delete(trial.trialId);
+      running.delete(scenario.result.runId);
       if (
         !options.interactive ||
         options.verbose ||
         scenario.outcome !== 'passed'
       )
-        print(scenarioLine(scenario));
+        print(runLine(scenario));
     },
     /** Called on the first Ctrl+C. */
     cancelling() {
       print(
-        `\n  ${yellow('◌')} Cancelling: finishing running trials. Press Ctrl+C again to exit now.`,
+        `\n  ${yellow('◌')} Cancelling: finishing running runs. Press Ctrl+C again to exit now.`,
       );
     },
     finish(durationMs: number): RunTotals {
@@ -272,12 +257,15 @@ export function createRunReporter(options: {
         passed: scenarios.filter((s) => s.outcome === 'passed').length,
         failed: scenarios.filter((s) => s.outcome === 'failed').length,
         cancelled: scenarios.filter((s) => s.outcome === 'cancelled').length,
-        scenarios: scenarios.length,
+        runs: scenarios.length,
+        scenarios: new Set(
+          scenarios.map((s) => `${s.label} ${parameterLabel(s.parameters)}`),
+        ).size,
         durationMs,
       };
       return totals;
     },
-    scenarios: () => scenarios,
+    runs: () => scenarios,
   };
 }
 
@@ -287,5 +275,9 @@ export function totalsLine(totals: RunTotals): string {
     totals.failed ? red(`${totals.failed} failed`) : '',
     totals.cancelled ? yellow(`${totals.cancelled} cancelled`) : '',
   ].filter(Boolean);
-  return `  ${bold(parts.join(' · '))} ${dim(`· ${plural(totals.scenarios, 'scenario')} in ${duration(totals.durationMs)}`)}`;
+  const coverage =
+    totals.runs === totals.scenarios
+      ? plural(totals.runs, 'run')
+      : `${plural(totals.runs, 'run')} of ${plural(totals.scenarios, 'scenario')}`;
+  return `  ${bold(parts.join(' · '))} ${dim(`· ${coverage} in ${duration(totals.durationMs)}`)}`;
 }

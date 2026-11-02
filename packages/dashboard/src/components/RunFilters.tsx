@@ -206,6 +206,7 @@ export function activeChips(
     from: 'From',
     to: 'To',
     archived: 'Archived',
+    batch: 'Batch',
   };
   return [...search.entries()].flatMap(([field, value]): Chip[] => {
     if (field === 'q') return [];
@@ -227,7 +228,8 @@ export function activeChips(
         field,
         value,
         label: fields[field] ?? field,
-        choice: value,
+        // Batch IDs are UUIDs; the first 8 characters tell them apart.
+        choice: field === 'batch' ? value.slice(0, 8) : value,
         facet: false,
       },
     ];

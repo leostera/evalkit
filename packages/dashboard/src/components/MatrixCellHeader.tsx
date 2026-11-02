@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { DataTable, NestedTable } from './DataTable.js';
 import { SortableHeader, type SortState } from './SortableTable.js';
 
-/** Column count beyond the matrix axes: eval, agent, runtime, trials, latest run, actions. */
+/** Column count beyond the matrix axes: eval, agent, runtime, repeat, latest run, actions. */
 export const fixedCellColumns = 6;
 
 export function MatrixCellFrame({
@@ -57,7 +57,7 @@ export function MatrixCellHeader({
         ) : (
           sortable('Runtime', 'runtime')
         )}
-        {sortable('Trials', 'trials')}
+        {sortable('Repeat', 'repeat')}
         {planned ? (
           <Table.Head>Latest run</Table.Head>
         ) : (

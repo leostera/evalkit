@@ -8,9 +8,9 @@ import {
   type Dataset,
   type DatasetContent,
   type DatasetFileSource,
-  type DatasetTrialContext,
+  type DatasetRunContext,
   type JsonValue,
-  type TrialDataset,
+  type RunDataset,
 } from '@evalkit/core';
 
 /** A workspace file, by its path below the dataset's mount. */
@@ -18,7 +18,7 @@ export type PreparedFile =
   | { path: string; kind: 'bytes'; data: Uint8Array }
   | { path: string; kind: 'file'; source: string };
 
-/** One trial's copy of a dataset, with relative paths resolved and its value converted to JSON. */
+/** One run's copy of a dataset, with relative paths resolved and its value converted to JSON. */
 export type PreparedDataset = {
   dataset: Dataset;
   files:
@@ -34,7 +34,7 @@ const loads = new WeakMap<Dataset, Map<string, Promise<DatasetContent>>>();
 
 /**
  * Loads a dataset at most once per process and project root. A failed load is
- * forgotten, so the next trial that needs the dataset tries again.
+ * forgotten, so the next run that needs the dataset tries again.
  */
 export function loadDataset(
   dataset: Dataset,
@@ -116,18 +116,18 @@ async function readValueFile(id: string, file: string): Promise<unknown> {
   );
 }
 
-/** Loads (cached), derives this trial's content with `onRun`, and resolves it. */
+/** Loads (cached), derives this run's content with `onRun`, and resolves it. */
 export async function prepareDatasets(
   datasets: readonly Dataset[],
   root: string,
-  trial: DatasetTrialContext,
+  run: DatasetRunContext,
 ): Promise<PreparedDataset[]> {
   const prepared: PreparedDataset[] = [];
   for (const dataset of datasets) {
-    const loaded = await loadDataset(dataset, root, trial.signal);
+    const loaded = await loadDataset(dataset, root, run.signal);
     const content =
       dataset.source.kind === 'computed' && dataset.source.onRun
-        ? await dataset.source.onRun(loaded, trial)
+        ? await dataset.source.onRun(loaded, run)
         : loaded;
     if (typeof content !== 'object' || content === null)
       throw new Error(
@@ -250,9 +250,9 @@ async function digest(
   return `sha256:${hash.digest('hex')}`;
 }
 
-export function trialDatasets(
+export function runDatasets(
   prepared: readonly PreparedDataset[],
-): TrialDataset[] {
+): RunDataset[] {
   return prepared.map(({ dataset, digest }) => ({
     id: dataset.id,
     visibility: dataset.visibility,

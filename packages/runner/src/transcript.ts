@@ -25,7 +25,7 @@ import {
   unlessAborted,
 } from './errors.js';
 import { turnView } from './turn.js';
-import type { TrialWorkspace } from './workspace.js';
+import type { RunWorkspace } from './workspace.js';
 
 /** Progress survives a failed step so partial scoring can see completed turns and checkpoints. */
 export type TranscriptProgress = {
@@ -36,7 +36,7 @@ export type TranscriptProgress = {
 
 type TranscriptExecution = {
   context: AutContext;
-  artifacts: TrialWorkspace['artifacts'];
+  artifacts: RunWorkspace['artifacts'];
   events: TrajectoryEvent[];
   now: () => Date;
   randomSeed: number;
@@ -127,7 +127,7 @@ function userMessage(
     parameters: context.parameters ?? {},
     data: context.data,
     seed: randomSeed,
-    trialIndex: context.trialIndex,
+    ...(context.batch ? { batch: context.batch } : {}),
   });
   if (typeof message !== 'string' || !message.trim())
     throw new Error(

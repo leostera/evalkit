@@ -27,7 +27,13 @@ test('discovers a configured matrix and records both selected parameter cells', 
         concurrency: 2,
       }),
     );
-    expect(result).toEqual({ cells: 2, passed: 2, failed: 0, cancelled: 0 });
+    expect(result).toEqual({
+      cells: 2,
+      runs: 2,
+      passed: 2,
+      failed: 0,
+      cancelled: 0,
+    });
     const styles: string[] = [];
     for (const runId of await readdir(reports)) {
       const manifest = JSON.parse(
@@ -36,12 +42,8 @@ test('discovers a configured matrix and records both selected parameter cells', 
       expect(manifest.evalId).toBe('case-transform');
       expect(manifest.matrix.id).toBe('letter-case');
       styles.push(manifest.parameters.style);
-      const trialId = (await readdir(join(reports, runId, 'trials')))[0]!;
       const scoring = JSON.parse(
-        await readFile(
-          join(reports, runId, 'trials', trialId, 'scoring.json'),
-          'utf8',
-        ),
+        await readFile(join(reports, runId, 'scoring.json'), 'utf8'),
       );
       expect(scoring.passed).toBe(true);
     }

@@ -10,7 +10,7 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 - `defineEval(definition: EvalDefinition): EvalDefinition`  
   Checks a scenario and records where it is defined. Default-export the result from a `.eval.ts` file.
 - `user(message: string | ((input: UserMessageInput) => string))`  
-  A user message step. A function computes the message per trial from `{ parameters, data, seed, trialIndex }`; `data` holds only candidate datasets.
+  A user message step. A function computes the message per run from `{ parameters, data, seed, batch? }`; `data` holds only candidate datasets.
 - `expectToolCall({ name, arguments? })`  
   A checkpoint that passes when the preceding turn called that tool (with matching arguments, when given). It observes; it never calls a tool.
 - `agent(expectation: JsonObject)`  
@@ -18,19 +18,20 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 `EvalDefinition` fields:
 
-| Field        | Meaning                                                                                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                     |
-| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                       |
-| `agent`      | `AutAdapter`: the agent under test.                                                                                                                        |
-| `judge`      | `AutAdapter?`: A separate agent for `judge()` rules; required when there are any, and never the same as `agent`.                                           |
-| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                      |
-| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                   |
-| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                     |
-| `metrics`    | `Metric[]?`: numbers recorded per trial with `metric()`. They never affect pass or fail.                                                                   |
-| `policy`     | `EvalPolicy?`: `{ trials?, timeoutMs?, failfast? }`. `failfast` stops later steps after a failed checkpoint.                                               |
-| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                                                   |
-| `workspace`  | `EvalWorkspace?`: `{ ignore? }`. Gitignore-style globs left out of the trial's snapshot, after the project's `artifacts.exclude`; `!pattern` keeps a path. |
+| Field        | Meaning                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                   |
+| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                     |
+| `agent`      | `AutAdapter`: the agent under test.                                                                                                                      |
+| `judge`      | `AutAdapter?`: A separate agent for `judge()` rules; required when there are any, and never the same as `agent`.                                         |
+| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                    |
+| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                 |
+| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                   |
+| `metrics`    | `Metric[]?`: numbers recorded per run with `metric()`. They never affect pass or fail.                                                                   |
+| `repeat`     | `number?`: how many runs to start each time the scenario runs, as one batch. Default 1.                                                                  |
+| `policy`     | `EvalPolicy?`: `{ timeoutMs?, failfast? }`. `failfast` stops later steps after a failed checkpoint.                                                      |
+| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                                                 |
+| `workspace`  | `EvalWorkspace?`: `{ ignore? }`. Gitignore-style globs left out of the run's snapshot, after the project's `artifacts.exclude`; `!pattern` keeps a path. |
 
 ## Scoring
 
@@ -39,11 +40,11 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 - `judge(name, { rubric, supportsPartial? })`  
   A scorer graded by the scenario's `judge` agent against the rubric.
 - `metric(name, run: (ctx: ScoringContext) => number | undefined, { unit?, better? })`  
-  A number measured for every trial. `unit: 'ms'` formats as a duration; `better: 'lower' | 'higher'` colours comparisons.
+  A number measured for every run. `unit: 'ms'` formats as a duration; `better: 'lower' | 'higher'` colours comparisons.
 - `skip(reason: string)`  
-  Returned by a scorer that does not apply to this trial; it neither passes nor fails and is left out of averages.
+  Returned by a scorer that does not apply to this run; it neither passes nor fails and is left out of averages.
 - `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'tool calls']`  
-  Recorded for every trial; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string.
+  Recorded for every run; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string.
 - `turnTokens(usage: Usage): number | undefined`  
   What a turn counts toward `tokens`: `inputTokens + outputTokens` (cached input included), or `totalTokens` when neither is reported.
 
@@ -51,14 +52,14 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 | Field         | Meaning                                                                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `context`     | The trial's `AutContext`: IDs, `parameters`, candidate `data`, and the workspaces.                                                          |
+| `context`     | The run's `AutContext`: IDs, `parameters`, candidate `data`, and the workspaces.                                                            |
 | `trajectory`  | `{ events }`: everything recorded so far, agent and runner events.                                                                          |
 | `turn`        | The most recent turn: its `assistantMessages`, `toolCalls` (with results when observed) and `lastAssistantText`.                            |
 | `output`      | The content of the turn's last assistant message.                                                                                           |
-| `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the trial's two workspaces.                                               |
+| `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the run's two workspaces.                                                 |
 | `data`        | Values of **all** the scenario's datasets, candidate and evaluator, by dataset ID.                                                          |
 | `checkpoints` | Results of the checkpoints so far, in order (all of them for final scorers and metrics).                                                    |
-| `attach`      | `attach(name, content)`: save a file with the trial's results, as adapters do.                                                              |
+| `attach`      | `attach(name, content)`: save a file with the run's results, as adapters do.                                                                |
 | `checkpoint`  | `checkpoint(rule)`: the latest result of that transcript step, with a predicate's evidence typed; throws for a rule outside the transcript. |
 
 ## Agents
@@ -66,7 +67,7 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 - `defineAgent(adapter: AutAdapter)`  
   Checks an adapter and records where it is defined. See [Agents under test](/docs/manual/agents/).
 - `piAgent({ command?, args? })`  
-  A ready-made adapter that runs `pi --print --no-session --no-tools [args] <message>` in the trial's workspace for each user message. It needs Bun, and Pi gets no tools or memory between turns.
+  A ready-made adapter that runs `pi --print --no-session --no-tools [args] <message>` in the run's workspace for each user message. It needs Bun, and Pi gets no tools or memory between turns.
 - `agentRuntimes(adapter): AgentRuntimes`  
   The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
 - `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  
@@ -76,12 +77,12 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 - `turnResultEvents(result: TurnResult, turn, now)`  
   The events a `send()` return value stands for: tool calls and results, the reply, then `turn-completed` with usage.
 
-An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, onEvent, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage? }`, instead of emitting events with `onEvent`. `attach(name, content)` saves a file such as the agent's log with the trial's results; see [Attaching files](/docs/manual/agents/#attaching-files).
+An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, onEvent, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage? }`, instead of emitting events with `onEvent`. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files).
 
 ## Datasets
 
 - `defineDataset({ id, files?, value?, valueFile?, visibility?, mount? })` or `defineDataset({ id, onLoad, onRun?, ... })`  
-  Static data, or computed data: `onLoad` runs once per process, `onRun` once per trial. See [Datasets](/docs/manual/datasets/).
+  Static data, or computed data: `onLoad` runs once per process, `onRun` once per run. See [Datasets](/docs/manual/datasets/).
 - `isDataset(value): value is Dataset`  
   True for values returned by `defineDataset`.
 - `relativeDatasetPath(value, label): string`  
@@ -93,7 +94,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
   Types an `evalkit.config.ts`. Settings are listed in [Project structure](/docs/manual/project-structure/#configuration-and-precedence).
 - `DEFAULT_ARTIFACT_EXCLUDE`: `readonly string[]`  
   What candidate snapshots leave out by default; spread it into `artifacts.exclude` to extend the list.
-- `DEFAULT_ATTACHMENT_LIMITS`: `{ maxFileBytes: 5_000_000, maxTrialBytes: 20_000_000 }`  
+- `DEFAULT_ATTACHMENT_LIMITS`: `{ maxFileBytes: 5_000_000, maxRunBytes: 20_000_000 }`  
   The limits for `attach()` when `artifacts.attachments` does not set them.
 - `defineSuite({ id, name?, evals })`  
   Groups evals explicitly, for a registry.
@@ -119,31 +120,31 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 - `recordError(error): RecordedError`  
   `{ name, message, stack? }` for saving an error in a report.
 - `resourceUri(kind, uuid)`, `parseResourceUri(uri, kind?)`, `resourceUuid(value, kind?)`, `resourceUriSchema(kind)`  
-  Build and parse the `evalkit:run:<uuid>` URIs in manifests (kinds `run`, `trial`, `artifact`).
+  Build and parse the `evalkit:run:<uuid>` URIs in manifests (kinds `run`, `artifact`).
 - `parseTrajectoryJsonl(contents): TrajectoryEvent[]`  
   Parse and check a `trajectory.jsonl` file.
 
-Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunSourceSchema`, `RunStatusSchema`, `TrialManifestSchema`, `TrialMetadataSchema`, `TrialSummarySchema`, `TrialScoringSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `TrajectoryEventSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`.
+Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `TrajectoryEventSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 6.
 
 ## Running and reading results (`@leostera/evalkit/runner`)
 
-- `runEval(eval, options: RunEvalOptions): Effect<RunResult>`  
-  Runs an eval's trials and saves the results. `options.report` is required; see [Run from code](/docs/manual/results/#run-from-code) for the rest.
+- `runEval(eval, options: RunEvalOptions): Effect<RunResult[]>`  
+  Runs a scenario once, or `repeat` times as one batch, and saves each run. Resolves to one `RunResult` per run. `options.report` is required; see [Run from code](/docs/manual/results/#run-from-code) for the rest.
 - `runMatrix(matrix, options & { selection?, onResult? })`  
-  Runs every selected matrix cell as its own run.
+  Runs every selected matrix cell (`repeat` times each) and resolves to `MatrixSummary`: `{ cells, runs, passed, failed, cancelled }`.
 - `localReportStore(directory): ReportStore`  
   Saves results in the `_evalkit-results` layout.
-- `readRunManifest(root, runId)`, `readRunSummary(root, runId)`  
-  Read and check a run's `manifest.json` (what ran) or `summary.json` (how it ended: trial, passed and failed counts).
-- `readTrialManifest(root, runId, trialId)`, and likewise `readTrialSummary`, `readTrialScoring`, `readTrialEvents`  
-  Read one trial's manifest, summary, **scores** (`scoring.json`) or trajectory.
+- `readRunManifest(root, runId)`, `readRunSummary(root, runId)`, `readRunScoring(root, runId)`, `readRunEvents(root, runId)`  
+  Read and check a run's `manifest.json` (what ran), `summary.json` (how it ended), **scores** (`scoring.json`) or trajectory.
+- `upgradeReports(root, { dryRun? }): Promise<UpgradeReport>`  
+  Converts results saved before EvalKit 0.9, as `evalkit upgrade` does: `{ upgraded, runs, batches, running }`.
 - `ownerIsGone(process?): boolean`  
   True when a run's owning process ran on this host and no longer exists, meaning the run was interrupted.
 - `staticDatasetFiles(dataset, root)`, `staticDatasetFile(dataset, root, file)`  
   List or read a static dataset's files without running any project code; computed datasets give `undefined`.
-- `trialWorkspacePath(sandboxDir, trialId): string`  
-  Where a trial's kept workspace lives.
+- `runWorkspacePath(sandboxDir, runId): string`  
+  Where a run's kept workspace lives.
 - `AutExecutionError`, `DatasetError`, `ReportError`, `ScoringError`, `CheckpointExecutionError`, `CancelledError`  
   The Effect tagged errors `runEval` can fail with, told apart by `_tag`.
 
-Scores are in each trial's `scoring.json` (`readTrialScoring`), repeated in the trial `summary.json`. Manifests describe what ran and its status, never scores. See [Files on disk](/docs/manual/results/#files-on-disk).
+Scores are in each run's `scoring.json` (`readRunScoring`), repeated in its `summary.json`. Manifests describe what ran and its status, never scores. See [Files on disk](/docs/manual/results/#files-on-disk).

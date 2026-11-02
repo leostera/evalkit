@@ -1,11 +1,21 @@
 import { afterEach, expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect } from 'effect';
 import { defineAgent, defineEval, predicate, user } from '@evalkit/core';
 import { attachmentName, attachmentStore } from './attachments.js';
-import { localReportStore, readTrialSummary, runEval } from './index.js';
+import { localReportStore, readRunSummary, runEval } from './index.js';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -42,11 +52,11 @@ test('names are relative paths of safe segments', () => {
     expect(() => attachmentName(name)).toThrow('is not allowed');
 });
 
-test('a file over the limit keeps its end, on a whole character; the trial total is enforced', async () => {
+test('a file over the limit keeps its end, on a whole character; the run total is enforced', async () => {
   const writer = memoryWriter();
   const store = attachmentStore(writer, {
     maxFileBytes: 10,
-    maxTrialBytes: 20,
+    maxRunBytes: 20,
   });
   // "é" is two bytes; the cut must not start in the middle of one.
   await store.attach('agent.log', 'start…é error: boom');
@@ -70,7 +80,7 @@ test('a file over the limit keeps its end, on a whole character; the trial total
     { name: 'bytes.bin', size: 3 },
   ]);
   await expect(store.attach('late.log', 'x')).rejects.toThrow(
-    'the trial has finished',
+    'the run has finished',
   );
 });
 
@@ -102,7 +112,7 @@ test('an adapter attaches its log; it is kept with the results when the passing 
     ],
     scoring: [predicate('ok', ({ output }) => output === 'ok')],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, {
       report: localReportStore(join(root, 'results')),
       workspaceRoot: join(root, 'sandbox'),
@@ -110,24 +120,14 @@ test('an adapter attaches its log; it is kept with the results when the passing 
   );
   expect(result.scoring?.passed).toBe(true);
   expect(await readdir(join(root, 'sandbox'))).toEqual([]);
-  const trialDir = join(
-    root,
-    'results',
-    result.runId,
-    'trials',
-    result.trialId,
-  );
+  const runDir = join(root, 'results', result.runId);
   expect(
     await readFile(
-      join(trialDir, 'artifacts/attachments/logs/agent.log'),
+      join(runDir, 'artifacts/attachments/logs/agent.log'),
       'utf8',
     ),
   ).toBe('> go\n< ok');
-  const summary = await readTrialSummary(
-    join(root, 'results'),
-    result.runId,
-    result.trialId,
-  );
+  const summary = await readRunSummary(join(root, 'results'), result.runId);
   expect(summary.attachments).toEqual([
     { name: 'checkpoint.txt', size: 21 },
     { name: 'logs/agent.log', size: 9 },

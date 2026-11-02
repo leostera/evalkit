@@ -4,7 +4,7 @@
 - Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-11-01`
-- Updated: `2026-11-01`
+- Updated: `2026-11-02`
 - Discussion PR: `TBD`
 - Tracking Issue: `TBD`
 
@@ -39,7 +39,7 @@ The batch still has one real use: repeated attempts under identical conditions (
 - Every count and rate is over runs, so the same attempts give the same numbers however they were launched.
 - `evalkit upgrade` turns results from report schema versions 2 to 5 into version 6, in place, losslessly.
 - The share server shows runs stored or uploaded by older versions, by upgrading them to the new snapshot format.
-- Links to old trial pages keep working, since trial IDs become run IDs.
+- Links to old run and trial pages keep working: a run of one trial keeps its ID, and the runs a run of several trials becomes keep the trials' IDs.
 
 ## Non-goals
 
@@ -102,7 +102,7 @@ A run that was part of a batch says so in its manifest: `"batch": { "id": "…",
 - The **Trials** page goes away; **Workspaces** lists runs whose sandbox was kept.
 - The **scoreboard**, **Compare** and **pass rates** count the last 10 runs of each configuration, which are now executions.
 
-Old links redirect: `/runs/<old run>/trials/<trial>` goes to `/runs/<trial>`, and `/runs/<old run>` goes to the Runs list filtered to that batch.
+Old links redirect: `/runs/<old run>/trials/<trial>` goes to the run the trial became, and `/runs/<old run>` is that run, or, for a run of several trials, the Runs list filtered to its batch.
 
 ### Upgrading
 
@@ -180,7 +180,7 @@ evalkit upgrade [--dry-run]
 It works on the project's results folder (the config's `reportDir`, `_evalkit-results` by default). For each directory in it whose manifest has `schemaVersion` 2 to 5:
 
 1. **Skip it if it is still running**: no `summary.json`, and its owning process is alive (the same check `tidy` uses). It is reported as skipped.
-2. **Plan one new run per trial directory**: run ID = trial ID, so trial links stay valid. Manifest = the old run manifest's fields (`suiteId`, `source`, `process`, `aut`, `parameters`, `matrix`), then the trial manifest's (`startedAt`, `datasets`, `workspaceIgnore`), then `batch: { id: <old run id>, index: trialIndex, size: <trial count> }` when the old run had more than one trial. Status comes from the trial's summary as above. `trajectory.jsonl`, `scoring.json` and `artifacts/` move unchanged; `catalog.json` is copied into each new run.
+2. **Plan one new run per trial directory**: an old run of one trial keeps the run's ID (the ID `evalkit share` printed and most links use), replaced in place by setting the old directory aside, moving the new one in, then deleting the old; an old run of several trials becomes runs with the trials' IDs. Manifest = the old run manifest's fields (`suiteId`, `source`, `process`, `aut`, `parameters`, `matrix`), then the trial manifest's (`startedAt`, `datasets`, `workspaceIgnore`), then `batch: { id: <old run id>, index: trialIndex, size: <trial count> }` when the old run had more than one trial. Status comes from the trial's summary as above. `trajectory.jsonl`, `scoring.json` and `artifacts/` move unchanged; `catalog.json` is copied into each new run.
 3. **Write each new run under a temporary name, then rename it into place**, and only then remove the old directory. A crash leaves either the old run or complete new runs, never a half-written run. A temporary directory left by a crash is removed on the next upgrade.
 4. **Old runs without trials** (cancelled before any started) become one `cancelled` run with the old run's ID.
 
@@ -210,7 +210,7 @@ This is a breaking change:
 - **Results:** version 2 to 5 results are hidden until `evalkit upgrade` runs. Nothing is deleted without being rewritten first.
 - **Share server:** must be redeployed with this version before CLIs on this version upload; version 6 bundles are rejected by older servers (they lack `trials.json`). Older CLIs keep working against the new server.
 - **Code:** adapters are unaffected. Code calling `runEval` or the readers, or setting `policy.trials`, `execution.trials` or `maxTrialBytes`, needs the renames above. The release's changelog has a migration section.
-- **Links:** old dashboard trial URLs redirect, since trial IDs become run IDs. Old run IDs become batch IDs and redirect to the filtered Runs list.
+- **Links:** old dashboard run and trial URLs keep working. A trial URL goes to the trial's run if it has its own ID, otherwise to the old run's ID, which a run of one trial kept; an old run of several trials redirects to its batch.
 
 ## Rollout
 

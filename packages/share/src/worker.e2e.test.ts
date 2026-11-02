@@ -48,6 +48,7 @@ afterAll(async () => {
 test('uploads are stored in R2, indexed in the Durable Object, and served', async () => {
   const id = crypto.randomUUID();
   const summary = {
+    snapshotVersion: 2,
     id,
     evalId: 'greeting',
     status: 'passed',
@@ -62,7 +63,7 @@ test('uploads are stored in R2, indexed in the Durable Object, and served', asyn
       path: 'catalog.json',
       data: encode({ catalog: [], evals: [], suites: [] }),
     },
-    { path: 'trials.json', data: encode({ trials: [] }) },
+    { path: 'detail.json', data: encode({ scores: [], checkpoints: [] }) },
   ]);
   const created = await miniflare.dispatchFetch(
     'http://share.test/api/v1/uploads',
@@ -91,6 +92,13 @@ test('uploads are stored in R2, indexed in the Durable Object, and served', asyn
   expect(
     await bucket.get(`repos/${REPO}/commits/${SHA}/runs/${id}/run.json`),
   ).not.toBeNull();
+
+  // Nothing stored from before 0.9: the upgrade has nothing to do.
+  const upgrade = await miniflare.dispatchFetch(
+    'http://share.test/api/v1/upgrade',
+    { method: 'POST' },
+  );
+  expect(await upgrade.json()).toEqual({ upgraded: 0, runs: 0, remaining: 0 });
 
   const redirect = await miniflare.dispatchFetch(`http://share.test/${REPO}`, {
     redirect: 'manual',

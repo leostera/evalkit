@@ -2,6 +2,11 @@ import { Hono, type Context } from 'hono';
 import { BundleError, decodeBundle } from './bundle.js';
 import type { ShareFiles } from './files.js';
 import { dashboardIndex } from './html.js';
+import {
+  isLegacyRun,
+  upgradeCatalogFile,
+  upgradeSnapshotRun,
+} from './legacy.js';
 import type { ShareIndex } from './index-db.js';
 import { isSha, isUuid, safeSegment, validRepoKey } from './paths.js';
 import {
@@ -33,6 +38,12 @@ export type ShareEvent =
     }
   | { event: 'share.upload'; outcome: 'rejected'; reason: string }
   | { event: 'share.reindex'; runs: number; indexed: number }
+  | {
+      event: 'share.upgrade';
+      upgraded: number;
+      runs: number;
+      remaining: number;
+    }
   | { event: 'share.error'; method: string; path: string; error: string };
 
 export type ShareAppOptions = {
@@ -65,6 +76,7 @@ const jsonLine = (event: ShareEvent) => console.log(JSON.stringify(event));
  *
  *   POST /api/v1/uploads                         one run bundle
  *   POST /api/v1/reindex                         rebuild the index from stored run.json files
+ *   POST /api/v1/upgrade                         convert stored runs from before 0.9 (RFD0008)
  *   GET  /api/v1/repos                           indexed repositories
  *   GET  /api/v1/repos/<repo>/-/commits          commits, newest first
  *   GET  /api/v1/repos/<repo>/-/<sha>/data/…     snapshot data
@@ -92,12 +104,14 @@ export function createShareApp(options: ShareAppOptions) {
   });
 
   app.post('/api/v1/uploads', async (context) => {
-    let upload: RunUpload;
+    let uploads: RunUpload[];
     try {
       const body = new Uint8Array(await context.req.arrayBuffer());
-      upload = parseUpload(
+      uploads = parseUpload(
         await decodeBundle(body, { maxBytes: maxBundleBytes }),
       );
+      if (!uploads.length)
+        throw new Rejected('The bundle has no finished runs');
     } catch (error) {
       if (!(error instanceof BundleError || error instanceof Rejected))
         throw error;
@@ -108,28 +122,125 @@ export function createShareApp(options: ShareAppOptions) {
       });
       return context.json({ error: error.message }, 400);
     }
-    const { run } = upload;
+    // An upload from an older CLI can hold several runs (one per trial).
+    let created = false;
+    for (const upload of uploads) {
+      const { run } = upload;
+      const exists = await index.hasRun(run.id);
+      if (!exists) await storeRun(upload);
+      created ||= !exists;
+      log({
+        event: 'share.upload',
+        outcome: exists ? 'exists' : 'created',
+        repo: run.repoKey,
+        commit: run.source.commit,
+        runId: run.id,
+        files: upload.files.length,
+        bytes: upload.files.reduce(
+          (sum, file) => sum + file.data.byteLength,
+          0,
+        ),
+      });
+    }
+    const { run } = uploads[0]!;
     const url = new URL(
       `/${run.repoKey}/-/${run.source.commit}/runs/${run.id}`,
       context.req.url,
     ).href;
-    const exists = await index.hasRun(run.id);
-    if (!exists) await storeRun(upload);
-    const outcome = exists ? 'exists' : 'created';
-    log({
-      event: 'share.upload',
-      outcome,
-      repo: run.repoKey,
-      commit: run.source.commit,
-      runId: run.id,
-      files: upload.files.length,
-      bytes: upload.files.reduce((sum, file) => sum + file.data.byteLength, 0),
-    });
     return context.json(
-      { status: outcome, url },
-      outcome === 'created' ? 201 : 200,
+      { status: created ? 'created' : 'exists', url },
+      created ? 201 : 200,
     );
   });
+
+  /**
+   * Converts stored runs from before 0.9 (snapshot format version 1, a run of
+   * trials) into one run per trial, `limit` old runs per request (default
+   * 20), so it fits a Worker's limits. Call it until `remaining` is 0. New
+   * objects and index rows are written before old ones are removed, so an
+   * interrupted upgrade is finished by calling it again.
+   */
+  app.post('/api/v1/upgrade', async (context) => {
+    const limit = Math.min(
+      Math.max(Number(context.req.query('limit') ?? 20) || 20, 1),
+      200,
+    );
+    const legacy: string[] = [];
+    for await (const key of files.list('repos/')) {
+      if (!RUN_FILE.test(key)) continue;
+      const data = await readBytes(await files.get(key));
+      if (!data) continue;
+      let value: unknown;
+      try {
+        value = JSON.parse(new TextDecoder().decode(data));
+      } catch {
+        continue;
+      }
+      if (isLegacyRun(value)) legacy.push(key);
+    }
+    let runs = 0;
+    const batch = legacy.slice(0, limit);
+    for (const key of batch) runs += await upgradeStoredRun(key);
+    const result = {
+      upgraded: batch.length,
+      runs,
+      remaining: legacy.length - batch.length,
+    };
+    log({ event: 'share.upgrade', ...result });
+    return context.json(result);
+  });
+
+  /** One stored version 1 run → version 2 runs; returns how many. */
+  async function upgradeStoredRun(runJsonKey: string): Promise<number> {
+    const [, repo, sha, oldRunId] = RUN_FILE.exec(runJsonKey)!;
+    const commitBase = `repos/${repo}/commits/${sha}`;
+    const runBase = `${commitBase}/runs/${oldRunId}`;
+    const stored = new Map<string, Uint8Array>();
+    const keys: string[] = [];
+    for await (const key of files.list(`${runBase}/`)) keys.push(key);
+    for (const key of keys) {
+      const data = await readBytes(await files.get(key));
+      if (data) stored.set(key.slice(runBase.length + 1), data);
+    }
+    let count = 0;
+    const written = new Set<string>();
+    let newRunJson: Uint8Array | undefined;
+    for (const upgraded of upgradeSnapshotRun(stored)) {
+      const runJson = upgraded.files.get('run.json')!;
+      const run = storedRun(runJson);
+      if (!run) continue; // cancelled or unfinished: not a shareable run
+      count += 1;
+      // A run of one trial keeps its ID: its new files replace the old ones.
+      const inPlace = run.id === oldRunId;
+      if (!inPlace && (await index.hasRun(run.id))) continue; // done before a crash
+      const base = `${commitBase}/runs/${run.id}`;
+      for (const [path, data] of upgraded.files) {
+        if (path === 'run.json') continue;
+        await files.put(`${base}/${path}`, data);
+        written.add(`${base}/${path}`);
+      }
+      if (inPlace) {
+        await index.forgetRun(run.id); // the old row, replaced below
+        newRunJson = runJson;
+      } else await files.put(`${base}/run.json`, runJson);
+      await index.recordRun(run);
+    }
+    const catalog = await readBytes(
+      await files.get(`${commitBase}/catalog.json`),
+    );
+    if (catalog)
+      await files.put(
+        `${commitBase}/catalog.json`,
+        upgradeCatalogFile(catalog),
+      );
+    if (!newRunJson) await index.forgetRun(oldRunId!);
+    for (const key of keys)
+      if (key !== runJsonKey && !written.has(key)) await files.delete(key);
+    // run.json last: until it changes, the next call retries this run.
+    if (newRunJson) await files.put(runJsonKey, newRunJson);
+    else await files.delete(runJsonKey);
+    return count;
+  }
 
   /** Files first, index last: a run becomes visible only once it is indexed. */
   async function storeRun({
@@ -283,7 +394,10 @@ export function createShareApp(options: ShareAppOptions) {
         NO_CACHE,
       );
     }
-    const runFile = /^runs\/([^/]+)\/(trials\.json|trials\/.+)$/.exec(path);
+    const runFile =
+      /^runs\/([^/]+)\/((?:detail|events|artifacts|workspace)\.json|(?:workspace|attachments)\/.+)$/.exec(
+        path,
+      );
     if (!runFile || !isUuid(runFile[1]!)) return context.notFound();
     const body = await files.get(`${commitBase}/${path}`);
     if (!body) return context.notFound();

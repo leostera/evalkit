@@ -59,7 +59,7 @@ Learn more: [Project structure and discovery](/docs/manual/project-structure/) �
 
 ## Connect an agent
 
-The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each trial, EvalKit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
+The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each run, EvalKit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
 
 An adapter implements `start()`, returning a session with `send(message)`. `send()` resolves when the turn finishes and may return the reply; EvalKit records it. Return `{ reply, toolCalls, usage }` to record tool calls and token usage too, or call `onEvent` to stream events as they happen.
 
@@ -91,7 +91,7 @@ Learn more: [Agents under test](/docs/manual/agents/).
 
 ## Add datasets
 
-A dataset is named data a scenario uses: files copied into each trial's workspace, a value given to the agent and scorers, or both. Define it once in `datasets/` and import it from every scenario that needs it.
+A dataset is named data a scenario uses: files copied into each run's workspace, a value given to the agent and scorers, or both. Define it once in `datasets/` and import it from every scenario that needs it.
 
 ```ts
 // datasets/greeting.dataset.ts
@@ -99,15 +99,15 @@ import { defineDataset } from '@leostera/evalkit';
 
 export const greeting = defineDataset({
   id: 'greeting',
-  files: 'datasets/greeting', // copied to greeting/ in each trial's workspace
+  files: 'datasets/greeting', // copied to greeting/ in each run's workspace
 });
 ```
 
-Candidate datasets (the default) are visible to the agent; `visibility: 'evaluator'` keeps expected answers for the scorers only. Inputs that are expensive to build can be computed with `onLoad`, called once per process and cached, and varied per trial with `onRun`.
+Candidate datasets (the default) are visible to the agent; `visibility: 'evaluator'` keeps expected answers for the scorers only. Inputs that are expensive to build can be computed with `onLoad`, called once per process and cached, and varied per run with `onRun`.
 
 Learn more: [Datasets](/docs/manual/datasets/).
 
-## Score a trial
+## Score a run
 
 A reusable `predicate(...)` is an executable judge. It runs after the session closes, with the final reply as `output`, the dataset values as `data`, and the full trajectory and files. A numeric score passes only at `1` unless you give `passAt`; return `skip(reason)` when a check does not apply.
 
@@ -134,12 +134,12 @@ Learn more: [Scorers and evals](/docs/manual/scoring-and-evals/).
 
 ## Read results
 
-Keep scenario definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`; read its `summary.json` for passed and failed trial counts. Under `trials/<trial-id>/`, inspect `trajectory.jsonl`, `scoring.json`, `summary.json`, and candidate artifacts.
+Keep scenario definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`: its `summary.json` says whether it passed, and beside it are `trajectory.jsonl`, `scoring.json`, and the candidate artifacts.
 
 ```sh
 RUN="_evalkit-results/<run-id>"
-jq '{trialCount, passed, failed}' "$RUN/summary.json"
-jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN"/trials/*/scoring.json
+jq '{status, error}' "$RUN/summary.json"
+jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN/scoring.json"
 ```
 
 > **Important:** Execution status `completed` does not mean the scores passed. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Local `_evalkit-sandbox/` directories retain _both_ candidate and evaluator workspaces; review them for sensitive data before sharing.

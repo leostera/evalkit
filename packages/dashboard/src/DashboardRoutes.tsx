@@ -2,6 +2,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
@@ -21,13 +22,11 @@ import {
   JudgesPage,
   LibraryBreadcrumbs,
 } from './components/Library.js';
-import { RunPage } from './components/RunPage.js';
+import { RunPage, type RunView } from './components/RunPage.js';
 import { RunTable } from './components/RunTable.js';
 import { ScenarioPage } from './components/ScenarioPage.js';
 import { ScenarioTable } from './components/ScenarioTable.js';
 import { Scoreboard } from './components/Scoreboard.js';
-import { TrialPage, type TrialView } from './components/TrialPage.js';
-import { TrialsPage } from './components/TrialsPage.js';
 
 type Data = {
   api: DashboardApi;
@@ -38,9 +37,10 @@ type Data = {
 };
 
 /**
- * Evals (results): `/scoreboard`, `/runs`, `/runs/:id`, `/runs/:id/trials/:id`
- * and its `/workspace`, `/trials`, `/workspaces`. Library (definitions):
+ * Evals (results): `/scoreboard`, `/runs`, `/runs/:id` and its `/workspace`
+ * and `/attachments`, `/workspaces`. Library (definitions):
  * `/library/{agents,judges,scenarios,datasets}` and `/library/…/:id`.
+ * Trial URLs from before 0.9 redirect to the run the trial became.
  */
 export function DashboardRoutes(data: Data) {
   return (
@@ -50,22 +50,19 @@ export function DashboardRoutes(data: Data) {
       <Route path="/runs" element={<RunsRoute {...data} />} />
       <Route path="/runs/:runId" element={<RunRoute {...data} />} />
       <Route
-        path="/runs/:runId/trials/:trialId"
-        element={<TrialRoute {...data} />}
+        path="/runs/:runId/workspace"
+        element={<RunRoute {...data} view="workspace" />}
       />
       <Route
-        path="/runs/:runId/trials/:trialId/workspace"
-        element={<TrialRoute {...data} view="workspace" />}
+        path="/runs/:runId/attachments"
+        element={<RunRoute {...data} view="attachments" />}
       />
       <Route
-        path="/runs/:runId/trials/:trialId/attachments"
-        element={<TrialRoute {...data} view="attachments" />}
+        path="/runs/:runId/trials/:trialId/*"
+        element={<TrialRedirect runs={data.runs} />}
       />
-      <Route path="/trials" element={<TrialsRoute {...data} />} />
-      <Route
-        path="/workspaces"
-        element={<TrialsRoute {...data} workspaces />}
-      />
+      <Route path="/trials" element={<Redirect to="/runs" />} />
+      <Route path="/workspaces" element={<RunsRoute {...data} workspaces />} />
       <Route path="/library/agents" element={<AgentsPage {...data} />} />
       <Route path="/library/agents/:id" element={<AgentRoute {...data} />} />
       <Route path="/library/judges" element={<JudgesPage {...data} />} />
@@ -117,27 +114,18 @@ function DatasetRoute(data: Data) {
   return <DatasetPage {...data} datasetId={id} />;
 }
 
-function RunsRoute({ catalog, suites, runs }: Data) {
+function RunsRoute({
+  catalog,
+  suites,
+  runs,
+  workspaces = false,
+}: Data & { workspaces?: boolean }) {
   const [search, setSearch] = useSearchParams();
   return (
     <RunTable
       catalog={catalog}
       suites={suites}
       runs={runs}
-      search={search}
-      onSearchChange={(next) => setSearch(next, { replace: true })}
-    />
-  );
-}
-
-function TrialsRoute({
-  workspaces = false,
-  ...data
-}: Data & { workspaces?: boolean }) {
-  const [search, setSearch] = useSearchParams();
-  return (
-    <TrialsPage
-      {...data}
       workspaces={workspaces}
       search={search}
       onSearchChange={(next) => setSearch(next, { replace: true })}
@@ -145,12 +133,27 @@ function TrialsRoute({
   );
 }
 
-function RunRoute(data: Data) {
+function RunRoute({ view = 'run', ...data }: Data & { view?: RunView }) {
   const { runId = '' } = useParams();
-  return <RunPage {...data} runId={runId} />;
+  return <RunPage {...data} runId={runId} view={view} />;
 }
 
-function TrialRoute({ view = 'trial', ...data }: Data & { view?: TrialView }) {
-  const { runId = '', trialId = '' } = useParams();
-  return <TrialPage {...data} runId={runId} trialId={trialId} view={view} />;
+/** Moves to `to`, keeping the query (filters, the open file). */
+function Redirect({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
+
+/**
+ * `/runs/<old run>/trials/<trial>[/workspace|/attachments]` from before 0.9.
+ * A trial of several became the run with its ID; a run of one trial kept the
+ * run's ID, so go to whichever exists.
+ */
+function TrialRedirect({ runs }: { runs: RunSummary[] }) {
+  const { runId = '', trialId = '', '*': rest = '' } = useParams();
+  if (!runs.length) return <output className="text-[13px]">Loading…</output>;
+  const id = runs.some((run) => run.id === trialId) ? trialId : runId;
+  return (
+    <Redirect to={`/runs/${encodeURIComponent(id)}${rest ? `/${rest}` : ''}`} />
+  );
 }

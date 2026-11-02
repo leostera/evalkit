@@ -8,7 +8,7 @@ export const piGreetingEval = defineEval({
   agent: localPiAgent,
   transcript: [user('Reply with a friendly greeting for Nami.')],
   scoring: [piGreetingJudge],
-  policy: { trials: 10 },
+  repeat: 10,
 });
 
 export default piGreetingEval;

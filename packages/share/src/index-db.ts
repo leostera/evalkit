@@ -38,6 +38,8 @@ export type CommitRow = {
 export type ShareIndex = {
   hasRun(runId: string): Promise<boolean>;
   recordRun(run: SharedRun): Promise<void>;
+  /** Removes a run from listings and its commit's counts; idempotent. */
+  forgetRun(runId: string): Promise<void>;
   repos(): Promise<RepoRow[]>;
   commits(repo: string): Promise<CommitRow[]>;
   runs(repo: string, sha: string): Promise<unknown[]>;
@@ -156,6 +158,29 @@ export class ShareIndexDb {
     });
   }
 
+  forgetRun(runId: string): void {
+    this.sql.transaction(() => {
+      const [row] = this.sql.all<{
+        repo: string;
+        sha: string;
+        status: string;
+        dirty: number;
+      }>('SELECT repo, sha, status, dirty FROM runs WHERE id = ?', runId);
+      if (!row) return;
+      this.sql.run('DELETE FROM runs WHERE id = ?', runId);
+      if (!row.dirty)
+        this.sql.run(
+          `UPDATE commits SET runs = runs - 1,
+             passed = passed - ?, failed = failed - ?
+           WHERE repo = ? AND sha = ?`,
+          row.status === 'passed' ? 1 : 0,
+          row.status === 'failed' || row.status === 'errored' ? 1 : 0,
+          row.repo,
+          row.sha,
+        );
+    });
+  }
+
   repos(): RepoRow[] {
     return this.sql.all<RepoRow>(
       `SELECT key, url, project, first_seen_at AS firstSeenAt,
@@ -220,6 +245,7 @@ export function asyncIndex(db: ShareIndexDb): ShareIndex {
   return {
     hasRun: async (runId) => db.hasRun(runId),
     recordRun: async (run) => db.recordRun(run),
+    forgetRun: async (runId) => db.forgetRun(runId),
     repos: async () => db.repos(),
     commits: async (repo) => db.commits(repo),
     runs: async (repo, sha) => db.runs(repo, sha),

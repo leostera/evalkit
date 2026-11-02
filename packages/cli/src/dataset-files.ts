@@ -7,9 +7,9 @@ import {
 
 /** What the dashboard can browse of one dataset. */
 export type DatasetListing =
-  /** Files placed below `mount` in every trial workspace. */
+  /** Files placed below `mount` in every run's workspace. */
   | { kind: 'static'; mount: string; files: DatasetFileEntry[] }
-  /** Files come from `onLoad`/`onRun`; browse a trial's workspace instead. */
+  /** Files come from `onLoad`/`onRun`; browse a run's workspace instead. */
   | { kind: 'computed'; mount: string };
 
 /** The project's datasets by ID; the first definition wins when IDs repeat. */

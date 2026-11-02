@@ -7,12 +7,10 @@ const run = (overrides: Partial<RunSummary>): RunSummary => ({
   evalId: 'zero-to-ocaml',
   status: 'passed',
   startedAt: '2026-10-30T10:00:00Z',
-  completedTrials: 1,
-  requestedTrials: 1,
   ...overrides,
 });
 
-test('rows average score and metrics over finished runs, weighted by trials measured', () => {
+test('rows average score and metrics over finished runs', () => {
   const runs = [
     run({
       score: 1,
@@ -22,10 +20,9 @@ test('rows average score and metrics over finished runs, weighted by trials meas
           unit: 'ms',
           better: 'lower',
           builtIn: true,
-          mean: 100,
-          count: 1,
+          value: 100,
         },
-        { name: 'web searches', better: 'lower', mean: 2, count: 1 },
+        { name: 'web searches', better: 'lower', value: 2 },
       ],
     }),
     run({
@@ -37,8 +34,7 @@ test('rows average score and metrics over finished runs, weighted by trials meas
           unit: 'ms',
           better: 'lower',
           builtIn: true,
-          mean: 400,
-          count: 3,
+          value: 400,
         },
       ],
     }),
@@ -46,7 +42,7 @@ test('rows average score and metrics over finished runs, weighted by trials meas
     run({
       status: 'running',
       startedAt: '2026-10-30T12:00:00Z',
-      metrics: [{ name: 'agent time', unit: 'ms', mean: 9999, count: 1 }],
+      metrics: [{ name: 'agent time', unit: 'ms', value: 9999 }],
     }),
   ];
   const [row] = scoreboardRows([], [], runs);
@@ -54,7 +50,7 @@ test('rows average score and metrics over finished runs, weighted by trials meas
   expect(row?.finished).toBe(2);
   // web searches is new: the older run did not measure it, so it is "1 of 2", not a zero.
   expect(row?.metrics).toEqual({
-    'agent time': { mean: 325, runs: 2 },
+    'agent time': { mean: 250, runs: 2 },
     'web searches': { mean: 2, runs: 1 },
   });
   expect(metricColumns(runs).map((column) => column.name)).toEqual([
@@ -69,7 +65,7 @@ test('runs from before metrics existed are not measured, not zero', () => {
     run({ startedAt: '2026-10-02T10:00:00Z', metrics: [] }),
     run({
       startedAt: '2026-10-03T10:00:00Z',
-      metrics: [{ name: 'tool calls', mean: 4, count: 2, trials: 2 }],
+      metrics: [{ name: 'tool calls', value: 4 }, { name: 'tokens' }],
     }),
   ];
   const [row] = scoreboardRows([], [], runs);

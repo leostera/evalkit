@@ -136,7 +136,7 @@ export default defineEval({
     projectRoot,
   );
   const output = run(
-    ['bun', 'run', 'evalkit', 'run', 'hello', '--trials', '1', '--local'],
+    ['bun', 'run', 'evalkit', 'run', 'hello', '--repeat', '1', '--local'],
     projectRoot,
   );
   if (!output.includes('✓ hello') || !output.includes('1 passed'))
@@ -149,8 +149,9 @@ export default defineEval({
       join(projectRoot, '_evalkit-results', runs[0]!, 'summary.json'),
       'utf8',
     ),
-  ) as { failed: number };
-  if (summary.failed !== 0) throw new Error('The external eval failed');
+  ) as { status: string };
+  if (summary.status !== 'passed')
+    throw new Error(`The external eval did not pass: ${summary.status}`);
   await checkStaticDashboard(projectRoot, runs[0]!);
   // The share server entry points resolve from the installed package.
   const share = run(
@@ -257,7 +258,7 @@ async function checkStaticDashboard(
   ) as { runs: { id: string }[] };
   if (runs.runs.map((entry) => entry.id).join() !== runId)
     throw new Error('Static dashboard is missing the completed run');
-  await readFile(join(out, 'data', 'runs', runId, 'trials.json'), 'utf8');
+  await readFile(join(out, 'data', 'runs', runId, 'detail.json'), 'utf8');
   // Clean /runs/<id> URLs are served from per-route pages.
   await readFile(join(out, 'runs', `${runId}.html`), 'utf8');
 }

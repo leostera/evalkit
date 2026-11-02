@@ -12,7 +12,7 @@ This is a Bun workspace whose `new` CLI command generates standalone projects. `
 Each sibling directory is a separately discoverable skill. Read its `SKILL.md` when relevant (resolve paths relative to this skill directory):
 
 - `../evalkit-agents/SKILL.md` — add or change an Agent Under Test (AUT) adapter.
-- `../evalkit-datasets/SKILL.md` — files and values for scenarios, expected answers, computed inputs, and per-trial workspaces.
+- `../evalkit-datasets/SKILL.md` — files and values for scenarios, expected answers, computed inputs, and per-run workspaces.
 - `../evalkit-evals/SKILL.md` — author scenarios: transcripts, policies, suites, and registries.
 - `../evalkit-judges/SKILL.md` — write executable predicate scorers and evaluate outcomes.
 - `../evalkit-matrices/SKILL.md` — parameter sweeps and matrix registration.
@@ -24,9 +24,9 @@ For a cross-cutting change, use all relevant subskills; for a focused task, load
 
 - Work from the eval project's directory (for the included project, `examples/starter`). By default the CLI discovers default-exported `scenarios/**/*.eval.ts` without a config or registry, and each directory directly below `scenarios/` is a suite. The starter demonstrates this zero-config discovery path; `examples/configured-matrix` demonstrates optional config and a runnable sweep. An optional `evalkit.config.js`/`.ts` customizes discovery and execution, or can supply an explicit registry/eval list. Dataset paths and `_evalkit-results` / `_evalkit-sandbox` resolve relative to the config directory or project root.
 - A scenario is one concrete conversation in its own small file. Share agents (`agents/`), judges (`judges/`) and datasets (`datasets/`) by importing them; never generate scenarios in loops or from datasets.
-- Authored suites, scenarios, datasets, agents, and matrices use stable lowercase kebab-case IDs. Only runs and trials receive generated runtime URIs.
+- Authored suites, scenarios, datasets, agents, and matrices use stable lowercase kebab-case IDs. Only runs and runs receive generated runtime URIs.
 - Keep evaluator datasets/answers private from the AUT and model unless a trusted adapter deliberately reads them and includes selected content in its prompt. Such inclusion is a deliberate treatment (for example, a memory-on condition), not a live retrieval test. Local sandboxes retain evaluator files; review reports and sandboxes before sharing.
 - Executable transcript steps are `user(...)`, `predicate(...)`, `judge(...)`, and `expectToolCall(...)`. Final scoring supports both `predicate(...)` and `judge(...)`; `judge(...)` requires a separate eval-level judge adapter. `agent(...)` transcript steps are not executable. `agentsSdk()` is unimplemented, `judgeScorer(...)` is not part of the current API, and `policy.timeoutMs` is not enforced. Verify current code/docs before proposing capabilities.
 - The built-in `piAgent()` invokes Pi with `--no-tools`, once per user message, and does not preserve conversational state. It cannot test live MCP retrieval/tool use. For that, implement a custom AUT adapter that explicitly enables the desired tools and emits observed `tool-call`/`tool-result` events; do not claim a tool was used unless the adapter records it.
-- For an intervention/A-B eval, hold task, model, and other settings constant; vary only the intervention parameter, use repeated trials and a negative control, and report exactly what was varied. A memory snapshot injected into the prompt tests memory-content usefulness, not retrieval quality. Start with a dry run and narrow smoke test; Pi-backed evaluations can incur provider costs.
+- For an intervention/A-B eval, hold task, model, and other settings constant; vary only the intervention parameter, use repeated runs and a negative control, and report exactly what was varied. A memory snapshot injected into the prompt tests memory-content usefulness, not retrieval quality. Start with a dry run and narrow smoke test; Pi-backed evaluations can incur provider costs.
 - Run `bun run check` and relevant `bun test` suites when changing code. Check `git status --short` first and preserve unrelated changes.

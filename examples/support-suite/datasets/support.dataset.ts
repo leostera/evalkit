@@ -11,7 +11,7 @@ type Customer = { name: string; plan: 'free' | 'pro' };
 
 /**
  * Customers, built once per process (as an expensive fetch would be) and
- * cached; each trial gets one, chosen by its seed.
+ * cached; each run gets one, chosen by its seed.
  */
 export const customers = defineDataset({
   id: 'customers',
@@ -24,9 +24,9 @@ export const customers = defineDataset({
     }));
     return { value: all };
   },
-  onRun(loaded, trial) {
+  onRun(loaded, run) {
     const all = loaded.value;
-    const customer = all[Math.abs(trial.seed) % all.length]!;
+    const customer = all[Math.abs(run.seed) % all.length]!;
     return {
       value: customer,
       files: { 'customer.json': JSON.stringify(customer) },

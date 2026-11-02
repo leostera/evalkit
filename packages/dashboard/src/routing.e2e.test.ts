@@ -64,7 +64,7 @@ afterAll(async () => {
 });
 
 describe('dashboard URL routing', () => {
-  test('walks scenario, run, trial and workspace pages and back up', async () => {
+  test('walks scenario, run and workspace pages and back up; old links redirect', async () => {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
     page.on('request', (request) => {
@@ -77,7 +77,7 @@ describe('dashboard URL routing', () => {
               id: 'greeting',
               path: 'starter#greeting',
               name: 'Greeting',
-              trialCount: 2,
+              repeat: 2,
               agent: { kind: 'test', runtimes: [] },
               datasets: [],
               scorers: [],
@@ -108,13 +108,27 @@ describe('dashboard URL routing', () => {
               id: 'run-123',
               evalId: 'greeting',
               suiteId: 'starter',
-              status: 'completed',
+              status: 'passed',
               startedAt: new Date().toISOString(),
-              completedTrials: 1,
-              requestedTrials: 1,
+              batch: { id: 'batch-1', index: 0, size: 2 },
               score: 1,
             },
+            {
+              id: 'run-456',
+              evalId: 'greeting',
+              suiteId: 'starter',
+              status: 'failed',
+              startedAt: new Date(Date.now() - 1000).toISOString(),
+              batch: { id: 'batch-1', index: 1, size: 2 },
+              score: 0,
+            },
           ],
+        },
+        '/v1/runs/run-123': {
+          scores: [],
+          checkpoints: [],
+          manifest: {},
+          summary: {},
         },
       };
       const body = responses[url.pathname];
@@ -124,22 +138,14 @@ describe('dashboard URL routing', () => {
           contentType: 'application/json',
           body: JSON.stringify(body),
         });
-      } else if (url.pathname === '/v1/runs/run-123/trials') {
+      } else if (
+        url.pathname.startsWith('/v1/') &&
+        url.pathname.endsWith('/workspace')
+      ) {
         void request.respond({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            trials: [
-              {
-                id: '0197f17c-4d89-7f81-9d42-6c497e6f6b22',
-                index: 0,
-                status: 'completed',
-                startedAt: new Date().toISOString(),
-                score: 1,
-                scores: [],
-              },
-            ],
-          }),
+          body: JSON.stringify([]),
         });
       } else if (url.pathname.endsWith('/artifacts')) {
         void request.respond({
@@ -152,15 +158,6 @@ describe('dashboard URL routing', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ events: [] }),
-        });
-      } else if (
-        url.pathname ===
-        '/v1/runs/run-123/trials/0197f17c-4d89-7f81-9d42-6c497e6f6b22'
-      ) {
-        void request.respond({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ manifest: {}, summary: {} }),
         });
       } else {
         void request.continue();
@@ -205,36 +202,29 @@ describe('dashboard URL routing', () => {
 
     // Scenario: its runs; open one.
     // The whole row opens the run, not only its ID link.
-    await page.click('section[aria-label="Runs"] tbody tr td:nth-child(2)');
+    await page.click(
+      'section[aria-label="Runs"] tbody tr:first-child td:nth-child(2)',
+    );
     await waitForPath(page, '/runs/run-123');
     await page.waitForSelector('.run-overview');
-    expect(await crumbs()).toContain('Run run-123');
-
-    // Run: its trials; open one, then reload the trial page.
-    const trial = '0197f17c-4d89-7f81-9d42-6c497e6f6b22';
-    await page.waitForSelector('.nested tbody tr td:nth-child(2)');
-    await page.click('.nested tbody tr td:nth-child(2)');
-    await waitForPath(page, `/runs/run-123/trials/${trial}`);
     await page.waitForSelector('.trajectory');
+    expect(await crumbs()).toContain('Run run-123');
+    expect(
+      await page.$eval('.run-overview', (node) => node.textContent),
+    ).toContain('Run 1 of 2');
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.trajectory');
-    expect(await crumbs()).toContain('Run run-123');
 
-    // Trial: its workspace, then back up through the breadcrumbs.
+    // Run: its workspace, then back up through the breadcrumbs.
     await page.click('.open-workspace');
-    await waitForPath(page, `/runs/run-123/trials/${trial}/workspace`);
+    await waitForPath(page, '/runs/run-123/workspace');
     await page.waitForSelector('.workspace-inspector');
-    await clickVisible(
-      page,
-      `.hierarchy-breadcrumbs a[href="/runs/run-123/trials/${trial}"]`,
-    );
-    await waitForPath(page, `/runs/run-123/trials/${trial}`);
     await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs/run-123"]');
     await waitForPath(page, '/runs/run-123');
     await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs"]');
     await waitForPath(page, '/runs');
 
-    // Runs, Trials and Workspaces share their filters, kept in the URL.
+    // Runs and Workspaces share their filters, kept in the URL.
     await page.waitForSelector('.data-table > table > tbody > tr');
     await page.type('input[aria-label="Filter runs"]', 'greeting');
     await page.waitForFunction(
@@ -246,21 +236,48 @@ describe('dashboard URL routing', () => {
     await waitForPath(page, '/runs/run-123');
     await page.goBack({ waitUntil: 'networkidle0' });
     expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
-    await page.click('nav a[href^="/trials"]');
-    await waitForPath(page, '/trials');
-    expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
-    await page.waitForSelector('input[aria-label="Filter trials"]');
-    expect(
-      await page.$eval(
-        'input[aria-label="Filter trials"]',
-        (input) => (input as HTMLInputElement).value,
-      ),
-    ).toBe('greeting');
     await page.click('nav a[href^="/workspaces"]');
     await waitForPath(page, '/workspaces');
     expect(new URL(page.url()).searchParams.get('q')).toBe('greeting');
     await page.waitForSelector(
-      `.data-table tbody tr a[href="/runs/run-123/trials/${trial}/workspace"]`,
+      '.data-table tbody tr a[href="/runs/run-123/workspace"]',
+    );
+
+    // A batch label narrows the list to the runs launched with it.
+    await page.goto(`${baseUrl}/runs`, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('.batch-label');
+    await page.click('.batch-label');
+    await page.waitForFunction(
+      () => new URLSearchParams(location.search).get('batch') === 'batch-1',
+    );
+    expect(
+      await page.$$eval(
+        '.data-table > table > tbody > tr',
+        (rows) => rows.length,
+      ),
+    ).toBe(2);
+
+    // Links from before 0.9: a trial's ID is its run's, an old run's its batch.
+    await page.goto(`${baseUrl}/runs/old-run/trials/run-123/workspace`, {
+      waitUntil: 'networkidle0',
+    });
+    await waitForPath(page, '/runs/run-123/workspace');
+    // A run of one trial kept the run's ID.
+    await page.goto(`${baseUrl}/runs/run-123/trials/gone-trial`, {
+      waitUntil: 'networkidle0',
+    });
+    await waitForPath(page, '/runs/run-123');
+    await page.goto(`${baseUrl}/runs/batch-1`, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(
+      () =>
+        location.pathname === '/runs' &&
+        new URLSearchParams(location.search).get('batch') === 'batch-1',
+    );
+    await page.goto(`${baseUrl}/trials?q=greeting`, {
+      waitUntil: 'networkidle0',
+    });
+    await page.waitForFunction(
+      () => location.pathname === '/runs' && location.search === '?q=greeting',
     );
   }, 30_000);
 
@@ -300,7 +317,7 @@ describe('dashboard URL routing', () => {
                 id: 'echo',
                 path: 'echo',
                 name: 'Echo Worker',
-                trialCount: 1,
+                repeat: 1,
                 agent: { kind: 'worker', runtimes: [] },
                 datasets: [],
                 scorers: [],
@@ -318,8 +335,6 @@ describe('dashboard URL routing', () => {
                     parameters: { model: 'glm', mode: 'with-docs' },
                     status: 'running',
                     startedAt: new Date().toISOString(),
-                    completedTrials: 0,
-                    requestedTrials: 1,
                   },
                 ]
               : [],
@@ -449,7 +464,7 @@ describe('dashboard URL routing', () => {
               {
                 id: 'echo',
                 path: 'echo',
-                trialCount: 3,
+                repeat: 3,
                 agent: { kind: 'worker', runtimes: [] },
                 datasets: [],
                 scorers: [],
@@ -466,8 +481,6 @@ describe('dashboard URL routing', () => {
                 parameters: { model: 'model-50', mode: 'with-docs' },
                 status: 'passed',
                 startedAt: '2026-01-01T00:00:00Z',
-                completedTrials: 1,
-                requestedTrials: 1,
               },
             ],
           },
@@ -566,7 +579,7 @@ describe('dashboard URL routing', () => {
               {
                 id: 'echo',
                 path: 'echo',
-                trialCount: 1,
+                repeat: 1,
                 agent: { kind: 'worker', runtimes: [] },
                 datasets: [],
                 scorers: [],
@@ -583,8 +596,6 @@ describe('dashboard URL routing', () => {
                 parameters: { model: 'scout', retries: 2 },
                 status: 'passed',
                 startedAt: '2026-01-01',
-                completedTrials: 1,
-                requestedTrials: 1,
               },
               {
                 id: 'run-high',
@@ -593,16 +604,12 @@ describe('dashboard URL routing', () => {
                 parameters: { model: 'glm', retries: 10 },
                 status: 'failed',
                 startedAt: '2026-01-02',
-                completedTrials: 1,
-                requestedTrials: 1,
               },
               {
                 id: 'run-plain',
                 evalId: 'echo',
                 status: 'running',
                 startedAt: '2026-01-03',
-                completedTrials: 0,
-                requestedTrials: 1,
               },
             ],
           },

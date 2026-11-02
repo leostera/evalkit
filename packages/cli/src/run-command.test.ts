@@ -65,7 +65,7 @@ test('prints one line per scenario, a summary, and a JUnit report', async () => 
   expect(result.out).toContain('Running 3 scenarios');
   expect(result.out).toContain('✗ support/bad   says ok 0.0 (passes at 0.5)');
   expect(result.out).toContain('✓ support/good');
-  expect(result.out).toContain('2 passed · 1 failed · 3 scenarios in');
+  expect(result.out).toContain('2 passed · 1 failed · 3 runs in');
   expect(result.out).not.toContain('{}');
   const junit = await readFile(join(root, 'reports/junit.xml'), 'utf8');
   expect(junit).toContain('<testsuite name="support" tests="2" failures="1"');
@@ -81,6 +81,19 @@ test('prints one line per scenario, a summary, and a JUnit report', async () => 
     summary: { passed: 1, failed: 1, cancelled: 0, scenarios: 2 },
   });
   expect(lines[0].outcome).toBeDefined();
+
+  // --repeat starts several runs of each scenario, reported one by one.
+  const repeated = await run(root, ['good', '--repeat', '2', '--json']);
+  const reported = repeated.out
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  expect(reported.at(-1)).toMatchObject({
+    summary: { passed: 2, failed: 0, runs: 2, scenarios: 1 },
+  });
+  const batches = reported.slice(0, -1).map((line) => line.result.batch);
+  expect(batches.map((batch) => batch.index).sort()).toEqual([0, 1]);
+  expect(new Set(batches.map((batch) => batch.id)).size).toBe(1);
 });
 
 test('a broken file only blocks the selections that include it', async () => {
@@ -110,7 +123,7 @@ test('a broken file only blocks the selections that include it', async () => {
   expect(dry.err).toContain('failed to load');
 });
 
-test('Ctrl+C finalizes running trials as cancelled and exits 130', async () => {
+test('Ctrl+C finalizes running runs as cancelled and exits 130', async () => {
   const root = await project({
     'scenarios/hang.eval.js': `
 const agent = { async start() { return { send: () => new Promise(() => {}) }; } };
@@ -118,15 +131,15 @@ export default { id: 'hang', agent, transcript: [{ kind: 'user', message: 'hi' }
   });
   const child = spawn(root, []);
   const reports = join(root, '_evalkit-results');
-  // Wait until the trial has started before interrupting.
+  // Wait until the run has started before interrupting.
   for (let attempt = 0; attempt < 200; attempt++) {
     const runs = await readdir(reports).catch(() => []);
-    if (runs.length) {
-      const trials = await readdir(join(reports, runs[0]!, 'trials')).catch(
-        () => [],
-      );
-      if (trials.length) break;
-    }
+    const started =
+      runs[0] &&
+      (
+        await readdir(join(reports, runs[0])).catch(() => [] as string[])
+      ).includes('manifest.json');
+    if (started) break;
     await Bun.sleep(25);
   }
   child.kill('SIGINT');

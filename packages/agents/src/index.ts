@@ -4,7 +4,11 @@ export type AgentsSdkAutOptions = {
   endpoint: string;
   agent: string;
   getToken?: () => Promise<string | undefined> | string | undefined;
-  instanceName?: (context: { runId: string; trialId: string }) => string;
+  /** One instance per run by default; a batch's runs can share one by its ID. */
+  instanceName?: (context: {
+    runId: string;
+    batch?: { id: string; index: number; size: number };
+  }) => string;
 };
 
 /** Deferred remote Agents SDK transport. */

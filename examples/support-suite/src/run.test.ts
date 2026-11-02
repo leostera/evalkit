@@ -57,31 +57,29 @@ test('every scenario passes in both tones, in suites from its directory', async 
         workspaceRoot: join(temporaryRoot, 'sandbox'),
         runtime: 'local',
         concurrency: 8,
-        trials: 2,
+        repeat: 2,
       }),
     );
+    // Two cells per scenario, each run twice.
     expect(result).toEqual({
       cells: files.length * 2,
-      passed: files.length * 2,
+      runs: files.length * 4,
+      passed: files.length * 4,
       failed: 0,
       cancelled: 0,
     });
-    // One digest for the static help center; customers vary by trial seed.
+    // One digest for the static help center; customers vary by run seed.
     const helpCenter = new Set<string>();
     const customers = new Set<string>();
-    for (const runId of await readdir(reports))
-      for (const trialId of await readdir(join(reports, runId, 'trials'))) {
-        const manifest = JSON.parse(
-          await readFile(
-            join(reports, runId, 'trials', trialId, 'manifest.json'),
-            'utf8',
-          ),
-        ) as { datasets: Array<{ id: string; digest: string }> };
-        for (const dataset of manifest.datasets)
-          (dataset.id === 'help-center' ? helpCenter : customers).add(
-            dataset.digest,
-          );
-      }
+    for (const runId of await readdir(reports)) {
+      const manifest = JSON.parse(
+        await readFile(join(reports, runId, 'manifest.json'), 'utf8'),
+      ) as { datasets: Array<{ id: string; digest: string }> };
+      for (const dataset of manifest.datasets)
+        (dataset.id === 'help-center' ? helpCenter : customers).add(
+          dataset.digest,
+        );
+    }
     expect(helpCenter.size).toBe(1);
     expect(customers.size).toBeGreaterThan(1);
   } finally {

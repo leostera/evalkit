@@ -31,7 +31,7 @@ const aut = (
 describe('trajectoryView', () => {
   test('groups a turn under its prompt and folds bookkeeping away', () => {
     const view = trajectoryView([
-      runner(0, 'trial-started'),
+      runner(0, 'run-started'),
       aut(1, 'started'),
       runner(2, 'transcript-step-started', { step: 0, message: 'Write 2112' }),
       aut(3, 'turn-started', { turn: 1 }),
@@ -50,7 +50,7 @@ describe('trajectoryView', () => {
       }),
       runner(12, 'transcript-step-completed', { step: 0 }),
       aut(13, 'completed', { output: 'Done' }),
-      runner(14, 'trial-completed'),
+      runner(14, 'run-completed'),
     ]);
     expect(view.preamble).toEqual([]);
     expect(view.durationMs).toBe(14);

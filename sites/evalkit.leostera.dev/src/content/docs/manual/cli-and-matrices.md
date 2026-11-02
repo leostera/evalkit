@@ -3,13 +3,13 @@ title: CLI and matrices
 description: Select scenarios and suites, sweep parameter axes, report to CI, compare against a base, and use the dashboard.
 ---
 
-Run the CLI **from the eval project's directory**. `evalkit --help` lists the commands and `evalkit <command> --help` their flags and examples; common flags have short forms (`-c` config, `-e` eval, `-s` suite, `-m` matrix, `-n` trials, `-j` concurrency, `-v` verbose, `-p` port, `-o` out, `-b` base). In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
+Run the CLI **from the eval project's directory**. `evalkit --help` lists the commands and `evalkit <command> --help` their flags and examples; common flags have short forms (`-c` config, `-e` eval, `-s` suite, `-m` matrix, `-n` repeat, `-j` concurrency, `-v` verbose, `-p` port, `-o` out, `-b` base). In this repository, `bun run evalkit ...` resolves the workspace-installed command in each example; a generated project installs `@leostera/evalkit` from npm and uses the same command. Use `--config <path>` to select a config elsewhere; the config's directory becomes the project root.
 
 ## Run commands
 
 ```sh
 # In examples/starter: the only provider-free scenario is greeting.
-bun run evalkit run greeting --trials 1
+bun run evalkit run greeting --repeat 1
 bun run evalkit run greeting --dry-run
 bun run evalkit run greeting --json
 bun run evalkit dev
@@ -34,7 +34,7 @@ bun run evalkit run --suite billing
 
 Running every eval in the starter also starts Pi-backed examples. They need an installed/configured `pi` and can incur model costs; select `greeting` to run without a provider. Suites come from directories below `scenarios/`; see [Project structure](/docs/manual/project-structure/#suites).
 
-`--dry-run` prints a JSON plan (`matrix`, selected `evals`, cell count, axis selection, overrides, and trial override) **without creating reports, workspaces, or agent sessions**. It does not calculate the total trial count when evals have different `policy.trials`. The CLI refuses more than `execution.maxCells` cells (default **100**) unless you pass `--all`; inspect the dry run and narrow your selection before bypassing the limit. Unknown eval IDs, axes, and axis values fail before dispatch. If any executed cell fails its execution or scoring gate, the CLI exits nonzero.
+`--dry-run` prints a JSON plan (`matrix`, selected `evals`, cell count, axis selection, overrides, and `repeat` override) **without creating reports, workspaces, or agent sessions**. It counts cells, not runs: multiply by each scenario's `repeat`. The CLI refuses more than `execution.maxCells` cells (default **100**) unless you pass `--all`; inspect the dry run and narrow your selection before bypassing the limit. Unknown eval IDs, axes, and axis values fail before dispatch. If any executed cell fails its execution or scoring gate, the CLI exits nonzero.
 
 ## Matrix definitions and selection
 
@@ -54,7 +54,7 @@ export default defineConfig({
 });
 ```
 
-With one discovered eval and two styles this plans **two cells**. Axis names are sorted for stable expansion; each `cellKey` is a canonical JSON key of the matrix ID, eval ID, and **effective** parameters. Defaults are merged with CLI non-axis overrides, then each axis supplies its selected value. Duplicate axis values or empty axes fail configuration; axis selections must be among the configured choices. Cell parameters and matrix provenance are written to every run/trial manifest.
+With one discovered eval and two styles this plans **two cells**. Axis names are sorted for stable expansion; each `cellKey` is a canonical JSON key of the matrix ID, eval ID, and **effective** parameters. Defaults are merged with CLI non-axis overrides, then each axis supplies its selected value. Duplicate axis values or empty axes fail configuration; axis selections must be among the configured choices. Cell parameters and matrix provenance are written to every run's manifest.
 
 To avoid combinations you cannot run, add a partial exclusion: `exclude: [{ os: 'windows', arch: 'arm64' }]` removes Windows ARM across every other axis. To correlate choices, use `cases: [{ language: 'ruby', framework: 'rails' }, { language: 'go', framework: 'gin' }]`; each complete case crosses with the independent `parameters` axes. Case keys must be consistent, must not overlap axis or default keys, and can be selected with `--select language=ruby`. Exclusions match declared dimensions, not non-axis overrides. `--dry-run` and `maxCells` count only eligible cells; selecting an excluded combination produces a zero-cell error. For details and future comparison work, see [RFD0005](https://github.com/leostera/evalkit/blob/main/docs/rfds/RFD0005-constrained-matrices-and-comparisons.md).
 
@@ -86,18 +86,18 @@ An AUT only responds to these choices if its adapter reads `context.parameters`.
 
 ## Execution options
 
-| Flag                                                             | Effect                                                                                                                                                                            |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--concurrency <n>`                                              | Maximum concurrent **cells** for CLI matrix runs; default is `execution.concurrency` or 4. Trials within one CLI cell run with concurrency 1.                                     |
-| `--trials <n>`                                                   | Override `execution.trials` and each eval's `policy.trials` for this invocation. Otherwise `execution.trials` overrides the policy; absent both, the policy or one trial applies. |
-| `--local`                                                        | Require a declared `local` AUT runtime rather than auto-selecting the first declared runtime (`local`, then `remote`, then `sandbox`).                                            |
-| `--max-tokens <n>`, `--turn-budget <n>`, `--chat-timeout-ms <n>` | Positive-integer values forwarded as `maxTokens`, `turnBudget`, `chatTimeoutMs` in `context.parameters`. EvalKit does **not** enforce these budgets/timeouts.                     |
-| `--json`                                                         | Print one JSON object **per completed cell** containing the cell key, eval ID, effective parameters, and run result; not a single JSON array.                                     |
-| `--junit <file>`                                                 | Write a JUnit XML report with one test case per scenario and matrix cell. See [Running in CI](#running-in-ci).                                                                    |
-| `--skip-broken`                                                  | Run the healthy scenarios when some files fail to load, then exit 1. See [load errors](/docs/manual/project-structure/#load-errors).                                              |
-| `--config <file>`, `--dry-run`, `--all`                          | Choose a config, inspect a no-execution plan, or lift the cell-count limit.                                                                                                       |
+| Flag                                                             | Effect                                                                                                                                                                     |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--concurrency <n>`                                              | Maximum concurrent **cells** for CLI matrix runs; default is `execution.concurrency` or 4. The repeats of one cell run one at a time.                                      |
+| `-n, --repeat <n>`                                               | Run each selected cell `n` times, as one batch. Overrides `execution.repeat` and each scenario's `repeat`; otherwise `execution.repeat` overrides the scenario; default 1. |
+| `--local`                                                        | Require a declared `local` AUT runtime rather than auto-selecting the first declared runtime (`local`, then `remote`, then `sandbox`).                                     |
+| `--max-tokens <n>`, `--turn-budget <n>`, `--chat-timeout-ms <n>` | Positive-integer values forwarded as `maxTokens`, `turnBudget`, `chatTimeoutMs` in `context.parameters`. EvalKit does **not** enforce these budgets/timeouts.              |
+| `--json`                                                         | Print one JSON object **per completed cell** containing the cell key, eval ID, effective parameters, and run result; not a single JSON array.                              |
+| `--junit <file>`                                                 | Write a JUnit XML report with one test case per scenario and matrix cell. See [Running in CI](#running-in-ci).                                                             |
+| `--skip-broken`                                                  | Run the healthy scenarios when some files fail to load, then exit 1. See [load errors](/docs/manual/project-structure/#load-errors).                                       |
+| `--config <file>`, `--dry-run`, `--all`                          | Choose a config, inspect a no-execution plan, or lift the cell-count limit.                                                                                                |
 
-CLI flags expecting positive integers reject zero, fractions, and negative numbers. Cell count does **not** include trial repetitions; a plan of two cells at ten trials per eval can perform twenty trials. Factor that into provider costs and rate limits. `--local` does not magically run a remote-only adapter locally; it fails if `local` is undeclared.
+CLI flags expecting positive integers reject zero, fractions, and negative numbers. Cell count does **not** include repeats; a plan of two cells with `repeat: 10` performs twenty runs. Factor that into provider costs and rate limits. `--local` does not magically run a remote-only adapter locally; it fails if `local` is undeclared.
 
 ## Comparing an intervention against a baseline
 
@@ -112,7 +112,7 @@ export default defineConfig({
     id: 'memory-ablation',
     parameters: { memory: ['off', 'on'] },
   },
-  execution: { trials: 3, concurrency: 1 },
+  execution: { repeat: 3, concurrency: 1 },
 });
 ```
 
@@ -123,7 +123,7 @@ bun run evalkit run --matrix memory-ablation --dry-run
 bun run evalkit run --matrix memory-ablation --local
 ```
 
-Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat trials and inspect every cell's run summary and trial scores; a three-trial pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use a tool-enabled custom AUT that records actual tool events; the built-in `piAgent()` disables tools. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
+Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat runs and inspect every run's scores; a three-run pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use a tool-enabled custom AUT that records actual tool events; the built-in `piAgent()` disables tools. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
 
 ## Running in CI
 
@@ -135,7 +135,7 @@ bun run evalkit run --junit _evalkit-results/junit.xml
 
 `--junit <file>` writes one JUnit test case per scenario and matrix cell, grouped by suite, so CI systems show failures as test results. Upload the file as a test report artifact.
 
-Ctrl+C (or `SIGINT` from CI) cancels a run cleanly: running trials are stopped, their runs are saved as `cancelled`, and the summary and JUnit file are still written. A second Ctrl+C exits at once; those runs are shown as cancelled (interrupted) later. Cancelled runs never count as failures and are never shared.
+Ctrl+C (or `SIGINT` from CI) cancels a run cleanly: running runs are stopped and saved as `cancelled`, and the summary and JUnit file are still written. A second Ctrl+C exits at once; those runs are shown as cancelled (interrupted) later. Cancelled runs never count as failures and are never shared.
 
 ## Comparing against a base
 
@@ -164,7 +164,7 @@ Each scenario is **regressed** (passed on base, failed now), **fixed**, **new**,
 
 ## Dashboard runs and inspection
 
-`bun run evalkit dev` serves the bundled local UI on `http://localhost:4317`, or the next free port when that one is taken (so several projects can run at once); it prints the address it chose. Pass `--port <n>` (`-p`) to require a specific port, or `--no-open` to skip its best-effort browser launch. The sidebar has two groups. **Evals** holds results: the **Scoreboard** (one row per scenario and matrix cell with its latest result, recent history and pass rate, coloured green, yellow and red), and **Runs**, **Trials** and **Workspaces**, which share one set of filters kept in the URL. A run page lists its trials; a trial page shows its trajectory beside its scores, datasets and artifacts; its workspace page browses the files the agent left. **Library** holds what scenarios are built from: **Agents**, **Judges**, **Scenarios** and **Datasets**, each with a page showing how it is defined, where (file and line), and which scenarios use it. A scenario that ran with different parameters also gets a **Compare** table: pick one parameter for rows and optionally another for columns, and each cell shows the pass rate, mean score or a metric's mean over those runs (for example, model × toolchain). The choice is kept in the URL. A static dataset's page browses its files. Every page has a stable URL (`/scoreboard`, `/runs/:id`, `/runs/:id/trials/:id`, `…/workspace`, `/library/scenarios/:id`, `/library/datasets/:id`), and the header shows the repository and commit being viewed. Data comes from [local reports](/docs/manual/results/). The terminal logs each run launched from the dashboard with its pass/fail result, trial count, duration, and report path. Reports written by an older EvalKit report format are hidden and counted rather than breaking the run list.
+`bun run evalkit dev` serves the bundled local UI on `http://localhost:4317`, or the next free port when that one is taken (so several projects can run at once); it prints the address it chose. Pass `--port <n>` (`-p`) to require a specific port, or `--no-open` to skip its best-effort browser launch. The sidebar has two groups. **Evals** holds results: the **Scoreboard** (one row per scenario and matrix cell with its latest result, recent history and pass rate, coloured green, yellow and red), and **Runs** and **Workspaces**, which share one set of filters kept in the URL. A run's page shows its trajectory beside what it ran (scenario, agent, parameters, commit, batch) and its scores, metrics, datasets and artifacts; its workspace page browses the files the agent left. A run launched with others by `repeat` shows `2/3` beside its ID in the list; select it to list that batch. **Library** holds what scenarios are built from: **Agents**, **Judges**, **Scenarios** and **Datasets**, each with a page showing how it is defined, where (file and line), and which scenarios use it. A scenario that ran with different parameters also gets a **Compare** table: pick one parameter for rows and optionally another for columns, and each cell shows the pass rate, mean score or a metric's mean over those runs (for example, model × toolchain). The choice is kept in the URL. A static dataset's page browses its files. Every page has a stable URL (`/scoreboard`, `/runs/:id`, `/runs/:id/workspace`, `/runs?batch=:id`, `/library/scenarios/:id`, `/library/datasets/:id`); trial links from before 0.9 lead to the same run, and the header shows the repository and commit being viewed. Data comes from [local reports](/docs/manual/results/). The terminal logs each run launched from the dashboard with its pass/fail result, duration, and report path. Runs saved by EvalKit before 0.9 are hidden and counted rather than breaking the run list, until [`evalkit upgrade`](/docs/manual/results/#files-on-disk) converts them.
 
 The CLI prints its own summaries and hides the runner's structured info logs. Pass `--log-level info` (or `debug`) to `run`, `dev` or `build` to show them, including for runs launched from the dashboard.
 
@@ -174,11 +174,11 @@ To work on the dashboard UI itself, start `bun run evalkit dev` in an example pr
 
 ## Sharing a static snapshot
 
-`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, trials, scores, checkpoints, trajectories, and each trial's **candidate** artifact snapshot. It never copies `_evalkit-sandbox/` or evaluator workspaces. Runs of evals archived by [`evalkit tidy`](#archiving-removed-evals) are left out. Runs cannot be started from a snapshot.
+`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, scores, checkpoints, trajectories, attachments, and each run's **candidate** artifact snapshot. It never copies `_evalkit-sandbox/` or evaluator workspaces. Runs of evals archived by [`evalkit tidy`](#archiving-removed-evals) are left out. Runs cannot be started from a snapshot.
 
 Before building, `build` asks whether to run the evals first so the snapshot has fresh results. With no current results it runs them without asking. Pass `--run` to always run them first or `--no-run` to use existing results; without a terminal to answer (CI, pipes) it uses existing results. Failing evals do not stop the build; their results are included.
 
-The snapshot uses clean URLs such as `/runs/<id>`: it writes one small page per known route (`runs/<id>.html`, `trials/<id>.html`, and so on), each with a relative `<base href>`. Any static host that serves `/x` from `x.html` works under any mount path without SPA rewrite rules: `bunx serve _evalkit-dashboard`, Workers Static Assets, Cloudflare Pages, and GitHub Pages all do this. Opening `index.html` directly from disk does not work, because browsers block `fetch()` from `file://` pages.
+The snapshot uses clean URLs such as `/runs/<id>`: it writes one small page per known route (`runs/<id>.html`, `runs/<id>/workspace.html`, and so on), each with a relative `<base href>`. Any static host that serves `/x` from `x.html` works under any mount path without SPA rewrite rules: `bunx serve _evalkit-dashboard`, Workers Static Assets, Cloudflare Pages, and GitHub Pages all do this. Opening `index.html` directly from disk does not work, because browsers block `fetch()` from `file://` pages.
 
 Rebuilding replaces a directory that `evalkit build` created earlier; the command refuses to overwrite any other non-empty directory. A snapshot is not filtered or redacted: user and assistant messages, tool arguments and results, scorer evidence, judge events, and candidate files are all included. Review it, or build from a report directory that contains only the runs you intend to publish, before sharing it.
 
@@ -257,10 +257,16 @@ export { default, ShareIndex } from '@leostera/evalkit/share/worker';
 
 Create the bucket (`npx wrangler r2 bucket create evalkit-share`), then run `npx wrangler deploy`. The index can always be rebuilt from R2 with `POST /api/v1/reindex`.
 
+A share server from EvalKit 0.9 stores one run per execution. It converts uploads from older CLIs as they arrive, and runs it stored before the update with `POST /api/v1/upgrade`: each call converts up to `?limit=` stored runs (default 20) and answers `{ upgraded, runs, remaining }`, so call it until `remaining` is 0. Runs not yet converted are not shown. Like uploads, it has no authentication of its own: keep the server [behind your auth proxy](#behind-an-auth-proxy).
+
 To try it without Cloudflare, `bun run evalkit share serve` runs the same server on port 4318 (or the next free one), storing everything in `_evalkit-share/` (`--dir`, `--port`/`-p`).
 
 ## Archiving removed evals
 
 `bun run evalkit tidy` compares saved runs with the evals the project defines today (standalone, in suites, or only in matrices). Runs of evals that no longer exist are marked **archived** by writing `archived.json` into the run directory; nothing is deleted. Archived runs are hidden in `evalkit dev` (turn on **Show archived** in the runs filters) and left out of `evalkit build`. Running `tidy` again after an eval returns restores its runs; delete `archived.json` to restore a single run by hand.
 
-`tidy` also removes trial workspaces from `sandboxDir` that the project's `keepSandboxes` setting would not have kept: those of passed trials by default, or of every finished trial with `'none'`. This frees sandboxes kept by earlier versions, which kept them all. Unfinished trials and folders without a report are left alone; reports are never deleted.
+`tidy` also removes run workspaces from `sandboxDir` that the project's `keepSandboxes` setting would not have kept: those of passed runs by default, or of every finished run with `'none'`. This frees sandboxes kept by earlier versions, which kept them all. Unfinished runs and folders without a report are left alone; reports are never deleted.
+
+## Upgrading results from older versions
+
+EvalKit 0.9 saves each run as one execution, where earlier versions saved a run of trials. `bun run evalkit upgrade` converts the project's saved results once: An old run of one trial keeps its ID; an old run of several becomes runs with the trials' IDs, in a batch with the old run's ID. Either way, old run and trial links keep working. Pass `--dry-run` to see what it would change. It only reads the project's config, so it works before every scenario is updated for 0.9, and it is safe to interrupt and run again. See [Results and reports](/docs/manual/results/#files-on-disk).

@@ -1,5 +1,11 @@
 import type { BundleFile } from './bundle.js';
 import {
+  isLegacyRun,
+  upgradeCatalogFile,
+  upgradeSnapshotRun,
+} from './legacy.js';
+import {
+  allowedLegacyRunPath,
   allowedRunPath,
   isSha,
   isUuid,
@@ -48,35 +54,72 @@ export type RunUpload = {
   run: SharedRun;
   runJson: Uint8Array;
   catalog?: Uint8Array;
-  /** trials.json and trials/** files. */
+  /** detail.json and the run's other snapshot files. */
   files: BundleFile[];
 };
 
-export function parseUpload(bundle: readonly BundleFile[]): RunUpload {
+/**
+ * A run bundle's runs. A bundle from EvalKit 0.9 or later is one run; one
+ * from an older CLI (snapshot format version 1, a run of trials) is
+ * converted into one run per trial, as `POST /api/v1/upgrade` converts
+ * stored runs (RFD0008).
+ */
+export function parseUpload(bundle: readonly BundleFile[]): RunUpload[] {
   const byPath = new Map<string, Uint8Array>();
   for (const file of bundle) {
-    if (!allowedRunPath(file.path))
-      throw new Rejected(`File not allowed in a run bundle: ${file.path}`);
     if (byPath.has(file.path))
       throw new Rejected(`Duplicate file in bundle: ${file.path}`);
     byPath.set(file.path, file.data);
   }
   const runJson = byPath.get('run.json');
   if (!runJson) throw new Rejected('Bundle has no run.json');
-  const catalog = byPath.get('catalog.json');
-  if (catalog) parseCatalog(catalog);
+  const legacy = isLegacyRun(parseJson(runJson, 'run.json'));
+  const allowed = legacy ? allowedLegacyRunPath : allowedRunPath;
+  for (const path of byPath.keys())
+    if (!allowed(path))
+      throw new Rejected(`File not allowed in a run bundle: ${path}`);
+  const storedCatalog = byPath.get('catalog.json');
+  if (storedCatalog) parseCatalog(storedCatalog);
+  const catalog =
+    storedCatalog && legacy ? upgradeCatalogFile(storedCatalog) : storedCatalog;
+  if (!legacy) return [runUpload(byPath, catalog)];
+  // Every trial of the old run is checked before any is stored.
+  parseRun(runJson, { legacy: true });
+  // Trials that were cancelled or never finished are not shareable runs.
+  return upgradeSnapshotRun(byPath)
+    .filter(({ files }) => {
+      const status = (
+        JSON.parse(new TextDecoder().decode(files.get('run.json')!)) as {
+          status?: string;
+        }
+      ).status;
+      return status === 'passed' || status === 'failed' || status === 'errored';
+    })
+    .map(({ files }) => runUpload(files, catalog));
+}
+
+function runUpload(
+  files: Map<string, Uint8Array>,
+  catalog: Uint8Array | undefined,
+): RunUpload {
+  const runJson = files.get('run.json')!;
   return {
     run: parseRun(runJson),
     runJson,
     ...(catalog ? { catalog } : {}),
-    files: bundle.filter(
-      (file) => file.path !== 'run.json' && file.path !== 'catalog.json',
-    ),
+    files: [...files]
+      .filter(([path]) => path !== 'run.json' && path !== 'catalog.json')
+      .map(([path, data]) => ({ path, data })),
   };
 }
 
-export function parseRun(data: Uint8Array): SharedRun {
+export function parseRun(
+  data: Uint8Array,
+  options: { legacy?: boolean } = {},
+): SharedRun {
   const value = record(parseJson(data, 'run.json'), 'run.json');
+  if (!options.legacy && value.snapshotVersion !== 2)
+    throw new Rejected('run.json must be snapshot format version 2');
   const source = record(value.source, 'run.json source');
   const id = text(value.id, 'id');
   if (!isUuid(id)) throw new Rejected('run.json id must be a UUID');

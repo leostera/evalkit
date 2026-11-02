@@ -9,9 +9,9 @@ EvalKit is a local-first kit for **authoring agent evals as code**. Define tasks
 
 1. The CLI loads a project: by default, it discovers default-exported scenarios under `scenarios/`, and each directory below it is a suite. Configuration or an explicit registry is optional.
 2. A **scenario** (an eval, `defineEval`) selects an AUT, an ordered transcript of user messages and optional interleaved checkpoints, optional **datasets**, and final scoring rules. A **suite** groups scenarios; a **matrix** expands them across parameter choices.
-3. A **run** of an eval contains one or more independent **trials**. Each trial gets fresh candidate and evaluator workspaces with its datasets' files, and a new AUT session.
+3. A **run** is one execution of a scenario: fresh candidate and evaluator workspaces with its datasets' files, and a new AUT session. `repeat: n` starts `n` independent runs as one **batch**.
 4. The runner sends each user message to the session, evaluates any following checkpoints against the completed turn and live workspace, appends AUT and runner events to a **trajectory**, closes the session, then executes final predicate scorers. The adapter returns the AUT's reply from `send()` or emits it as events.
-5. The runner writes a local report for the run and each trial. Execution status and scoring pass/fail are separate: a completed trial can have failing scores.
+5. The runner writes a local report for each run, with one status: `passed`, `failed` (it finished but a score did not pass), `errored` (it could not finish) or `cancelled`.
 
 For a first provider-free run, use the [getting-started guide](/docs/) or the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter). The [configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix) sweeps local text styles without a model provider. The [interleaved scenario example](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) has passing and intentionally failing, provider-free checkpoints.
 

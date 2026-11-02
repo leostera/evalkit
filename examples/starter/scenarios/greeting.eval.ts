@@ -11,7 +11,7 @@ export const greetingEval = defineEval({
   datasets: [starter],
   transcript: [user('Ada')],
   scoring: [greetingIsReturned],
-  policy: { trials: 10 },
+  repeat: 10,
 });
 
 export default greetingEval;

@@ -3,35 +3,28 @@ import * as Schema from 'effect/Schema';
 import {
   JsonValueSchema,
   RunManifestSchema,
+  RunScoringSchema,
   RunSummarySchema,
-  TrialManifestSchema,
-  TrialScoringSchema,
-  TrialSummarySchema,
   TrajectoryEventSchema,
 } from './schema.js';
 import { parseTrajectoryJsonl } from './trajectory.js';
 import type { TrajectoryEvent } from './index.js';
 
 const runUri = 'evalkit:run:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const trialUri = 'evalkit:trial:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 const runManifest = {
-  schemaVersion: 2,
+  schemaVersion: 6,
   runUri,
   evalId: 'cron-trigger',
   startedAt: '2026-01-01T00:00:00Z',
   aut: { id: 'build-agent', kind: 'remote-agent' },
   parameters: { model: 'glm-flash', mode: 'with-docs', turnBudget: 6 },
   matrix: { id: 'benchmark', cellKey: 'one-cell' },
+  batch: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', index: 1, size: 3 },
   status: 'running',
 };
-const trialManifest = {
-  ...runManifest,
-  trialUri,
-  trialIndex: 0,
-};
-const trialSummary = {
-  status: 'completed',
+const runSummary = {
+  status: 'failed',
   endedAt: '2026-01-01T00:00:10Z',
   durationMs: 10000,
   scoring: {
@@ -61,7 +54,7 @@ const trialSummary = {
 const events: TrajectoryEvent[] = [
   {
     source: 'runner',
-    kind: 'trial-started',
+    kind: 'run-started',
     timestamp: '2026-01-01T00:00:00Z',
   },
   {
@@ -98,33 +91,21 @@ const events: TrajectoryEvent[] = [
   },
   {
     source: 'runner',
-    kind: 'trial-completed',
+    kind: 'run-completed',
     timestamp: '2026-01-01T00:00:10Z',
   },
 ];
 
 describe('provider-neutral persisted report contract', () => {
-  test('decodes manifests and finalized summaries independently (including pre-fix running manifests)', () => {
+  test('decodes manifests and finalized summaries independently', () => {
+    const manifest = Schema.decodeUnknownSync(RunManifestSchema)(runManifest);
+    expect(manifest.status).toBe('running');
+    expect(manifest.parameters?.mode).toBe('with-docs');
+    expect(manifest.batch).toEqual(runManifest.batch);
     expect(
-      Schema.decodeUnknownSync(RunManifestSchema)(runManifest).status,
-    ).toBe('running');
-    expect(
-      Schema.decodeUnknownSync(RunSummarySchema)({
-        status: 'completed',
-        endedAt: trialSummary.endedAt,
-        trialCount: 1,
-        passed: 0,
-        failed: 1,
-      }).status,
-    ).toBe('completed');
-    expect(
-      Schema.decodeUnknownSync(TrialManifestSchema)(trialManifest).parameters
-        ?.mode,
-    ).toBe('with-docs');
-    expect(
-      Schema.decodeUnknownSync(TrialSummarySchema)(trialSummary).scoring
-        ?.results[0]?.evidence,
-    ).toEqual(trialSummary.scoring.results[0]?.evidence);
+      Schema.decodeUnknownSync(RunSummarySchema)(runSummary).scoring?.results[0]
+        ?.evidence,
+    ).toEqual(runSummary.scoring.results[0]?.evidence);
     expect(
       Schema.decodeUnknownSync(RunManifestSchema)({
         ...runManifest,
@@ -133,17 +114,32 @@ describe('provider-neutral persisted report contract', () => {
     ).toBeUndefined();
   });
 
+  test('older report versions are not read: they go through evalkit upgrade', () => {
+    expect(() =>
+      Schema.decodeUnknownSync(RunManifestSchema)({
+        ...runManifest,
+        schemaVersion: 5,
+      }),
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(RunSummarySchema)({
+        ...runSummary,
+        status: 'completed',
+      }),
+    ).toThrow();
+  });
+
   test('validates scorer evidence as generic JSON, not a provider-specific gate', () => {
     expect(
-      Schema.decodeUnknownSync(TrialScoringSchema)(trialSummary.scoring).passed,
+      Schema.decodeUnknownSync(RunScoringSchema)(runSummary.scoring).passed,
     ).toBe(false);
     expect(() => Schema.decodeUnknownSync(JsonValueSchema)(1n)).toThrow();
     expect(() =>
-      Schema.decodeUnknownSync(TrialSummarySchema)({
-        ...trialSummary,
+      Schema.decodeUnknownSync(RunSummarySchema)({
+        ...runSummary,
         scoring: {
-          ...trialSummary.scoring,
-          results: [{ ...trialSummary.scoring.results[0], evidence: () => 1 }],
+          ...runSummary.scoring,
+          results: [{ ...runSummary.scoring.results[0], evidence: () => 1 }],
         },
       }),
     ).toThrow();

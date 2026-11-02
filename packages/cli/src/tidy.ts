@@ -5,7 +5,7 @@ import {
   type EvalRegistry,
   type KeepSandboxes,
 } from '@evalkit/core';
-import { trialWorkspacePath } from '@evalkit/runner';
+import { runWorkspacePath } from '@evalkit/runner';
 import {
   ARCHIVE_MARKER,
   createDashboardReportReader,
@@ -45,10 +45,7 @@ export async function tidyReports(options: {
   reportRoot: string;
 }): Promise<TidyResult> {
   const known = projectEvalIds(options.registry);
-  const reports = createDashboardReportReader(
-    options.reportRoot,
-    options.registry,
-  );
+  const reports = createDashboardReportReader(options.reportRoot);
   const result: TidyResult = {
     archived: [],
     restored: [],
@@ -81,9 +78,9 @@ export async function tidyReports(options: {
 }
 
 /**
- * Remove the trial workspaces `keep` would not have kept: those of passed
- * trials by default. Unfinished trials are never touched, so a run in
- * progress keeps its workspaces; workspaces without a report are left alone.
+ * Remove the run workspaces `keep` would not have kept: those of passed runs
+ * by default. Unfinished runs are never touched, so a run in progress keeps
+ * its workspace; workspaces without a report are left alone.
  */
 export async function tidySandboxes(options: {
   registry: EvalRegistry;
@@ -93,19 +90,15 @@ export async function tidySandboxes(options: {
 }): Promise<{ removed: number }> {
   const keep = options.keep ?? 'failed';
   if (keep === 'all') return { removed: 0 };
-  const reports = createDashboardReportReader(
-    options.reportRoot,
-    options.registry,
-  );
+  const reports = createDashboardReportReader(options.reportRoot);
   let removed = 0;
-  for (const run of await reports.listRuns())
-    for (const trial of await reports.listTrials(run.id)) {
-      if (trial.status === 'running') continue;
-      if (keep === 'failed' && trial.status !== 'passed') continue;
-      const workspace = trialWorkspacePath(options.sandboxRoot, trial.id);
-      if (!(await stat(workspace).catch(() => undefined))) continue;
-      await rm(workspace, { recursive: true, force: true });
-      removed += 1;
-    }
+  for (const run of await reports.listRuns()) {
+    if (run.status === 'running') continue;
+    if (keep === 'failed' && run.status !== 'passed') continue;
+    const workspace = runWorkspacePath(options.sandboxRoot, run.id);
+    if (!(await stat(workspace).catch(() => undefined))) continue;
+    await rm(workspace, { recursive: true, force: true });
+    removed += 1;
+  }
   return { removed };
 }

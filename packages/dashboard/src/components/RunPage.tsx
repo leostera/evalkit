@@ -1,132 +1,128 @@
+import { Button } from '@cloudflare/kumo';
+import { FolderOpenIcon, PaperclipIcon } from '@phosphor-icons/react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import type { CatalogEval, DashboardApi, RunSummary } from '../api.js';
-import { agentName } from './agentName.js';
-import { monoClass, tableLinkClass } from './DataTable.js';
-import { scenarioHref } from './links.js';
-import { Link } from 'react-router-dom';
-import { DetailList } from './DetailList.js';
-import { formatDuration, formatMetric } from './run-columns.js';
+import { AttachmentsDetail } from './AttachmentsDetail.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { HierarchyBreadcrumbs, PageHeading } from './Hierarchy.js';
-import { CommitLabel } from './RunTable.js';
+import { attachmentsHref, batchHref, workspaceHref } from './links.js';
+import { RunDetail } from './RunDetail.js';
 import { StatusBadge } from './StatusBadge.js';
-import { TrialTable } from './TrialTable.js';
-import { useRunTrials } from './use-run-table-state.js';
+import { useRunDetail } from './use-run-table-state.js';
+import { WorkspaceDetail } from './WorkspaceDetail.js';
 
-/** One run of a scenario: its settings, its outcome, and its trials. */
+/** The run itself, its candidate workspace, or the files attached to it. */
+export type RunView = 'run' | 'workspace' | 'attachments';
+
+const TITLES: Record<Exclude<RunView, 'run'>, string> = {
+  workspace: 'Candidate workspace',
+  attachments: 'Attachments',
+};
+
+/**
+ * One run: its trajectory first, with what it ran and how it scored beside
+ * it. The `workspace` and `attachments` views show its files instead.
+ */
 export function RunPage({
   api,
   catalog,
   runs,
   runId,
+  view = 'run',
 }: {
   api: DashboardApi;
   catalog: CatalogEval[];
   runs: RunSummary[];
   runId: string;
+  view?: RunView;
 }) {
+  const navigate = useNavigate();
   const run = runs.find((entry) => entry.id === runId);
-  const { trials, error } = useRunTrials(api, run);
-  if (!run)
+  const { detail, error } = useRunDetail(api, run);
+  if (!run) {
+    // Before 0.9 a run could hold several trials; its ID is now their batch's.
+    if (runs.some((entry) => entry.batch?.id === runId))
+      return <Navigate to={batchHref(runId)} replace />;
     return (
       <Empty
         message={runs.length ? `Run not found: ${runId}` : 'Loading run…'}
       />
     );
-  const scenario = catalog.find((entry) => entry.id === run.evalId);
-  const parameters = Object.entries(run.parameters ?? {});
+  }
+  const attached = detail?.attachments?.length ?? 0;
   return (
     <>
-      <HierarchyBreadcrumbs run={run} />
+      <HierarchyBreadcrumbs
+        run={run}
+        {...(view === 'run'
+          ? {}
+          : { view: view === 'workspace' ? 'Workspace' : 'Attachments' })}
+      />
       <PageHeading
-        title={`Run ${run.id.slice(0, 8)}`}
+        title={view === 'run' ? `Run ${run.id.slice(0, 8)}` : TITLES[view]}
         subtitle={run.id}
         status={
-          <span
-            title={
-              run.interrupted
-                ? 'Its process stopped before the run finished'
-                : undefined
-            }
-          >
-            <StatusBadge status={run.status} />
-          </span>
+          view === 'run' ? (
+            <span
+              title={
+                run.interrupted
+                  ? 'Its process stopped before the run finished'
+                  : undefined
+              }
+            >
+              <StatusBadge status={run.status} />
+            </span>
+          ) : undefined
+        }
+        actions={
+          view === 'run' ? (
+            <div className="flex gap-2">
+              {attached ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<PaperclipIcon />}
+                  className="open-attachments"
+                  onClick={() => navigate(attachmentsHref(run.id))}
+                >
+                  Attachments{' '}
+                  <span className="text-kumo-subtle tabular-nums">
+                    {attached}
+                  </span>
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<FolderOpenIcon />}
+                className="open-workspace"
+                onClick={() => navigate(workspaceHref(run.id))}
+              >
+                Candidate workspace
+              </Button>
+            </div>
+          ) : undefined
         }
       />
-      <div className="run-overview max-w-3xl">
-        <DetailList
-          items={[
-            [
-              'Scenario',
-              <Link
-                key="scenario"
-                to={scenarioHref(run.evalId)}
-                className={tableLinkClass}
-              >
-                {scenario?.name ?? run.evalId}
-              </Link>,
-            ],
-            ['Agent', scenario ? agentName(scenario) : (run.agent ?? '—')],
-            ['Score', run.score ?? '—'],
-            ['Trials', `${run.completedTrials} of ${run.requestedTrials}`],
-            ...(parameters.length
-              ? ([
-                  [
-                    'Parameters',
-                    <span key="parameters" className={monoClass}>
-                      {parameters
-                        .map(
-                          ([key, value]) => `${key}=${JSON.stringify(value)}`,
-                        )
-                        .join(' ')}
-                    </span>,
-                  ],
-                ] as const)
-              : []),
-            ['Started', new Date(run.startedAt).toLocaleString()],
-            [
-              'Runtime',
-              run.durationMs === undefined
-                ? '—'
-                : formatDuration(run.durationMs)!,
-            ],
-            ...(run.metrics ?? []).map(
-              (metric) =>
-                [
-                  metric.count > 1 ? `Mean ${metric.name}` : metric.name,
-                  <span key={metric.name} className="tabular-nums">
-                    {metric.mean === undefined ? (
-                      <span className="text-kumo-subtle">not measured</span>
-                    ) : (
-                      formatMetric(metric.mean, metric.unit)
-                    )}
-                    {metric.trials !== undefined &&
-                    metric.count < metric.trials ? (
-                      <span className="text-kumo-subtle">
-                        {' '}
-                        · {metric.count} of {metric.trials} trials
-                      </span>
-                    ) : null}
-                  </span>,
-                ] as const,
-            ),
-            ['Commit', <CommitLabel key="commit" source={run.source} />],
-          ]}
-        />
-      </div>
       {error ? (
-        <ErrorBanner title="Unable to load trials" message={error} />
+        <ErrorBanner title="Unable to load the run" message={error} />
       ) : null}
-      <section aria-label="Trials" className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-kumo-strong">Trials</h3>
-        {trials ? (
-          <TrialTable run={run} trials={trials} />
+      {view === 'workspace' ? (
+        <WorkspaceDetail api={api} runId={run.id} />
+      ) : view === 'attachments' ? (
+        detail ? (
+          <AttachmentsDetail
+            api={api}
+            runId={run.id}
+            attachments={detail.attachments ?? []}
+          />
         ) : error ? null : (
-          <output className="text-[13px] text-kumo-subtle">
-            Loading trials…
-          </output>
-        )}
-      </section>
+          <output className="text-[13px] text-kumo-subtle">Loading…</output>
+        )
+      ) : (
+        <RunDetail api={api} catalog={catalog} run={run} detail={detail} />
+      )}
     </>
   );
 }

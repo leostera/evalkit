@@ -36,7 +36,7 @@ export default defineConfig({
   'datasets/greeting/greeting.txt': 'Hello\n',
   'datasets/greeting.dataset.ts': `import { defineDataset } from '@leostera/evalkit';
 
-// Files the agent can read: copied into each trial's workspace under greeting/.
+// Files the agent can read: copied into each run's workspace under greeting/.
 // Paths are relative to the project root.
 export const greeting = defineDataset({
   id: 'greeting',
@@ -113,7 +113,7 @@ bun run evalkit build                           # write a read-only, shareable s
 Coding agents can use the EvalKit skills that ship with the package, in
 \`node_modules/@leostera/evalkit/dist/skills/\` (start with \`evalkit/SKILL.md\`).
 
-EvalKit installs from npm. Reports, trial workspaces, and dashboard snapshots stay local
+EvalKit installs from npm. Reports, run workspaces, and dashboard snapshots stay local
 and are ignored by Git. A snapshot in \`_evalkit-dashboard/\` contains report messages,
 scores, evidence, and candidate files (never evaluator workspaces): review it before sharing.
 `;

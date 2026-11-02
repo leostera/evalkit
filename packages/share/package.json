@@ -8,6 +8,7 @@
     "./worker": "./src/worker.ts"
   },
   "dependencies": {
+    "@evalkit/core": "workspace:*",
     "hono": "^4.11.6"
   },
   "devDependencies": {

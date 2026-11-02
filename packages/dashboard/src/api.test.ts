@@ -37,18 +37,18 @@ describe('dashboard HTTP API', () => {
     ]);
   });
 
-  test('encodes trial IDs and surfaces HTTP errors', async () => {
+  test('encodes run IDs and surfaces HTTP errors', async () => {
     const api = createHttpDashboardApi({
       baseUrl: 'https://evalkit.example',
       fetch: async (input) => {
         expect(input.toString()).toBe(
-          'https://evalkit.example/v1/runs/run-1/trials/a%2Fb/events',
+          'https://evalkit.example/v1/runs/a%2Fb/events',
         );
         return new Response('', { status: 404 });
       },
     });
 
-    await expect(api.getTrialEvents('run-1', 'a/b')).rejects.toThrow(
+    await expect(api.getRunEvents('a/b')).rejects.toThrow(
       'Dashboard request failed: 404',
     );
   });

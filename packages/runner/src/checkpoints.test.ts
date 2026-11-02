@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,12 +20,19 @@ import {
   localReportStore,
   readRunManifest,
   readRunSummary,
-  readTrialManifest,
-  readTrialScoring,
-  readTrialSummary,
-  readTrialEvents,
+  readRunScoring,
+  readRunEvents,
   runEval,
 } from './index.js';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -217,19 +225,17 @@ const scenario = (
 test('interleaves checks with sends and records turn-local evidence in v3+ reports', async () => {
   const dir = await root();
   const aut = writerAgent();
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(scenario(aut.agent), { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('passed');
   expect(result.scoring?.passed).toBe(true);
   expect(result.scoring?.overall).toBe(1);
   expect(aut.sends).toEqual(['first', 'revise']);
   expect(aut.closed).toBe(1);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(5);
-  expect(
-    (await readTrialManifest(dir, result.runId, result.trialId)).schemaVersion,
-  ).toBe(5);
-  const scoring = await readTrialScoring(dir, result.runId, result.trialId);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(6);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(6);
+  const scoring = await readRunScoring(dir, result.runId);
   expect(scoring.checkpoints?.map((c) => c.status)).toEqual([
     'passed',
     'passed',
@@ -237,7 +243,7 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
     'passed',
     'passed',
   ]);
-  const events = await readTrialEvents(dir, result.runId, result.trialId);
+  const events = await readRunEvents(dir, result.runId);
   const matched = scoring.checkpoints![1]!.matchedToolCall!;
   expect(events[matched.eventIndex]).toMatchObject({
     source: 'aut',
@@ -249,10 +255,7 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
   );
   expect(
     parseTrajectoryJsonl(
-      await readFile(
-        join(dir, result.runId, 'trials', result.trialId, 'trajectory.jsonl'),
-        'utf8',
-      ),
+      await readFile(join(dir, result.runId, 'trajectory.jsonl'), 'utf8'),
     ),
   ).toHaveLength(events.length);
   expect(canonicalParameters({ a: 1, b: 2 })).toBe(
@@ -267,12 +270,12 @@ test('failfast stops subsequent prompts but closes, snapshots, and scores partia
   evaluation.scoring.push(
     predicate('partial', () => 1, { supportsPartial: true }),
   );
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
   expect(aut.sends).toEqual(['first']);
   expect(aut.closed).toBe(1);
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('failed');
   expect(result.scoring).toMatchObject({
     passed: false,
     skippedScorers: ['final-state'],
@@ -285,29 +288,14 @@ test('failfast stops subsequent prompts but closes, snapshots, and scores partia
     'skipped',
     'skipped',
   ]);
-  expect(await readRunSummary(dir, result.runId)).toMatchObject({
-    status: 'completed',
-    passed: 0,
-    failed: 1,
-  });
-  expect(
-    (await readTrialSummary(dir, result.runId, result.trialId)).status,
-  ).toBe('completed');
-  const events = await readTrialEvents(dir, result.runId, result.trialId);
+  expect((await readRunSummary(dir, result.runId)).status).toBe('failed');
+  const events = await readRunEvents(dir, result.runId);
   expect(
     events.filter((e) => e.kind === 'transcript-step-skipped'),
   ).toHaveLength(3);
   expect(
     await readFile(
-      join(
-        dir,
-        result.runId,
-        'trials',
-        result.trialId,
-        'artifacts',
-        'candidate',
-        'number.txt',
-      ),
+      join(dir, result.runId, 'artifacts', 'candidate', 'number.txt'),
       'utf8',
     ),
   ).toBe('wrong');
@@ -316,11 +304,11 @@ test('failfast stops subsequent prompts but closes, snapshots, and scores partia
 test('without failfast a failing check does not erase failure or prevent later turns', async () => {
   const dir = await root();
   const aut = writerAgent({ first: 'wrong' });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(scenario(aut.agent, false), { report: localReportStore(dir) }),
   );
   expect(aut.sends).toEqual(['first', 'revise']);
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('failed');
   expect(result.scoring?.overall).toBe(1);
   expect(result.scoring?.passed).toBe(false);
   expect(result.scoring?.checkpoints?.[2]?.status).toBe('failed');
@@ -342,10 +330,10 @@ test('check errors stop regardless of failfast, remain distinct from false, and 
     ],
     scoring: [],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('failed');
+  expect(result.status).toBe('errored');
   expect(result.scoring?.checkpoints?.[0]?.status).toBe('error');
   expect(result.scoring?.checkpoints?.[0]?.passed).toBeUndefined();
   expect(result.scoring?.passed).toBe(false);
@@ -370,7 +358,7 @@ test('checkpoint placement is validated and absent tool events do not match', as
     transcript: [user('one'), expectToolCall({ name: 'write_file' })],
     scoring: [],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
   expect(result.scoring?.checkpoints?.[0]).toMatchObject({
@@ -400,24 +388,18 @@ for (const failingEvent of [
         const writer = await local.startRun(metadata);
         return {
           location: writer.location,
+          writeScores: (scoring) => writer.writeScores(scoring),
+          writeArtifact: (path, data) => writer.writeArtifact(path, data),
           finalize: (summary) => writer.finalize(summary),
-          async startTrial(trialMetadata) {
-            const trial = await writer.startTrial(trialMetadata);
-            return {
-              writeScores: (scoring) => trial.writeScores(scoring),
-              writeArtifact: (path, data) => trial.writeArtifact(path, data),
-              finalize: (summary) => trial.finalize(summary),
-              async appendEvent(event) {
-                if (event.kind === failingEvent)
-                  throw new Error('report unavailable');
-                return trial.appendEvent(event);
-              },
-            };
+          async appendEvent(event) {
+            if (event.kind === failingEvent)
+              throw new Error('report unavailable');
+            return writer.appendEvent(event);
           },
         };
       },
     };
-    const result = await Effect.runPromise(
+    const result = await runOne(
       runEval(
         defineEval({
           id: 'report-error',
@@ -428,16 +410,14 @@ for (const failingEvent of [
         { report: brokenReport },
       ),
     );
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('errored');
     expect(result.error?.name).toBe('ReportError');
     expect(
       result.scoring?.checkpoints?.map((check) => check.status) ?? [],
     ).toEqual(failingEvent === 'checkpoint-completed' ? ['passed'] : []);
     expect(aut.closed).toBe(1);
     await expect(readFile(join(workspaceRoot, 'number.txt'))).rejects.toThrow();
-    expect(
-      (await readTrialSummary(dir, result.runId, result.trialId)).status,
-    ).toBe('failed');
+    expect((await readRunSummary(dir, result.runId)).status).toBe('errored');
   });
 
 test('boolean, thresholded numeric, and low scores are distinct checkpoint outcomes', async () => {
@@ -454,10 +434,10 @@ test('boolean, thresholded numeric, and low scores are distinct checkpoint outco
     ],
     scoring: [],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('failed');
   expect(result.scoring?.checkpoints?.map((c) => [c.status, c.value])).toEqual([
     ['passed', 1],
     ['passed', 0.8],
@@ -493,10 +473,10 @@ test('the same predicate and judge rules execute inline and after close with dis
     transcript: [user('first'), deterministic, rule],
     scoring: [deterministic, rule],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('passed');
   expect(result.scoring?.passed).toBe(true);
   expect(result.scoring?.overall).toBe(0.95); // only the two final scorer values
   expect(
@@ -527,7 +507,7 @@ test('the same predicate and judge rules execute inline and after close with dis
   expect(reviewer.requests[1]?.evidence.trajectory?.length).toBeGreaterThan(
     reviewer.requests[0]?.evidence.turn?.length ?? 0,
   );
-  const scoring = await readTrialScoring(dir, result.runId, result.trialId);
+  const scoring = await readRunScoring(dir, result.runId);
   expect(scoring.checkpoints?.[1]?.evidence).toEqual({
     placement: 'transcript',
   });
@@ -538,7 +518,7 @@ test('the same predicate and judge rules execute inline and after close with dis
   expect(scoring.checkpoints?.[1]?.judge?.events).toContainEqual(
     expect.objectContaining({ kind: 'tool-call', name: 'inspect' }),
   );
-  const autEvents = await readTrialEvents(dir, result.runId, result.trialId);
+  const autEvents = await readRunEvents(dir, result.runId);
   expect(
     autEvents.some(
       (event) => event.kind === 'tool-call' && event.id === 'judge-tool',
@@ -570,10 +550,10 @@ test('a failed inline judge triggers failfast; a partial final judge still canno
     ],
     policy: { failfast: true },
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('failed');
   expect(result.scoring?.passed).toBe(false);
   expect(result.scoring?.checkpoints?.map((entry) => entry.status)).toEqual([
     'failed',
@@ -616,10 +596,10 @@ test('judge configuration and provider errors fail explicitly in either placemen
     ],
     scoring: [],
   });
-  const failed = await Effect.runPromise(
+  const failed = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(failed.status).toBe('failed');
+  expect(failed.status).toBe('errored');
   expect(failed.scoring?.checkpoints?.[0]).toMatchObject({
     kind: 'judge',
     status: 'error',
@@ -631,10 +611,10 @@ test('judge configuration and provider errors fail explicitly in either placemen
     transcript: [user('first')],
     scoring: [judge('verdict', { rubric: 'Is it good?' })],
   });
-  const scored = await Effect.runPromise(
+  const scored = await runOne(
     runEval(finalOnly, { report: localReportStore(dir) }),
   );
-  expect(scored.status).toBe('completed');
+  expect(scored.status).toBe('failed');
   expect(scored.scoring?.results[0]).toMatchObject({
     kind: 'judge',
     passed: false,
@@ -658,10 +638,10 @@ test('malformed judge verdicts fail explicitly and still close the judge and AUT
     ],
     scoring: [],
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
-  expect(result.status).toBe('failed');
+  expect(result.status).toBe('errored');
   expect(result.scoring?.checkpoints?.[0]).toMatchObject({
     kind: 'judge',
     status: 'error',
@@ -669,66 +649,4 @@ test('malformed judge verdicts fail explicitly and still close the judge and AUT
   expect(aut.sends).toEqual(['first']);
   expect(aut.closed).toBe(1);
   expect(reviewer.closed).toBe(1);
-});
-
-test('the shared reader still decodes existing v2 reports', async () => {
-  const dir = await root();
-  const runId = crypto.randomUUID(),
-    trialId = crypto.randomUUID();
-  const { mkdir } = await import('node:fs/promises');
-  const path = join(dir, runId, 'trials', trialId);
-  await mkdir(path, { recursive: true });
-  await writeFile(
-    join(dir, runId, 'manifest.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      runUri: `evalkit:run:${runId}`,
-      evalId: 'old',
-      startedAt: stamp(),
-      status: 'completed',
-    }),
-  );
-  await writeFile(
-    join(dir, runId, 'summary.json'),
-    JSON.stringify({
-      status: 'completed',
-      endedAt: stamp(),
-      trialCount: 1,
-      passed: 1,
-      failed: 0,
-    }),
-  );
-  await writeFile(
-    join(path, 'manifest.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      runUri: `evalkit:run:${runId}`,
-      trialUri: `evalkit:trial:${trialId}`,
-      trialIndex: 0,
-      evalId: 'old',
-      startedAt: stamp(),
-      status: 'completed',
-    }),
-  );
-  await writeFile(
-    join(path, 'summary.json'),
-    JSON.stringify({
-      status: 'completed',
-      endedAt: stamp(),
-      scoring: { results: [], passed: true },
-    }),
-  );
-  await writeFile(
-    join(path, 'scoring.json'),
-    JSON.stringify({ results: [], passed: true }),
-  );
-  await writeFile(
-    join(path, 'trajectory.jsonl'),
-    `${JSON.stringify({ source: 'runner', kind: 'trial-started', timestamp: stamp() })}\n`,
-  );
-  expect((await readRunManifest(dir, runId)).schemaVersion).toBe(2);
-  expect(
-    (await readTrialScoring(dir, runId, trialId)).checkpoints,
-  ).toBeUndefined();
-  expect(await readTrialEvents(dir, runId, trialId)).toHaveLength(1);
 });

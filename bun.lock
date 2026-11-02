@@ -168,6 +168,7 @@
       "name": "@evalkit/share",
       "version": "0.0.1",
       "dependencies": {
+        "@evalkit/core": "workspace:*",
         "hono": "^4.11.6",
       },
       "devDependencies": {

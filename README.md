@@ -6,8 +6,8 @@ EvalKit lets you write agent evaluations as TypeScript: give an Agent Under Test
 
 - **Test the journey, not just the final answer.** Put `predicate(...)`, `judge(...)`, or `expectToolCall(...)` between user turns to check an intermediate reply, observed tool call, or live file state before continuing. `policy.failfast` can skip later turns after a failed checkpoint.
 - **Choose how to score.** Run deterministic predicates without model credentials, or provide an independent judge agent for rubric-based verdicts. A judge can have its own tools; its events stay separate from the AUT trajectory. The same rule can run inline and in final scoring.
-- **Make failures inspectable.** Reports record turns, checkpoints, skipped steps, final scores, and errors. Trials have isolated candidate and evaluator workspaces, so private expected answers need not be shown to the AUT.
-- **Repeat and compare.** Run multiple trials or define a matrix of parameters. An adapter must explicitly apply those parameters to its AUT; EvalKit does not silently switch models.
+- **Make failures inspectable.** Reports record turns, checkpoints, skipped steps, final scores, and errors. Runs have isolated candidate and evaluator workspaces, so private expected answers need not be shown to the AUT.
+- **Repeat and compare.** Run multiple runs or define a matrix of parameters. An adapter must explicitly apply those parameters to its AUT; EvalKit does not silently switch models.
 - **Gate merge requests.** `--junit` gives CI a test report, and `evalkit compare` shows what regressed or improved against the base branch and can fail the pipeline.
 
 ## Try it locally

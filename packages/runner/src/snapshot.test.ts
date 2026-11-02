@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import {
   mkdir,
   mkdtemp,
@@ -14,11 +15,20 @@ import {
   defineEval,
   predicate,
   user,
-  type TrialWriter,
+  type RunWriter,
 } from '@evalkit/core';
 import { Effect } from 'effect';
 import { ignoreRules, snapshotCandidateWorkspace } from './snapshot.js';
 import { localReportStore, runEval } from './index.js';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -72,7 +82,7 @@ test('snapshots skip excluded paths and symbolic links instead of failing', asyn
     writeArtifact: async (path: string) => {
       written.push(path);
     },
-  } as unknown as TrialWriter;
+  } as unknown as RunWriter;
   const artifacts = await snapshotCandidateWorkspace(root, writer);
   expect(written).toEqual(['candidate/hello/main.ml']);
   expect(artifacts.map((entry) => entry.path)).toEqual([
@@ -98,7 +108,7 @@ test('snapshots walk an ignored directory only to keep re-included files', async
     writeArtifact: async (path: string) => {
       written.push(path);
     },
-  } as unknown as TrialWriter;
+  } as unknown as RunWriter;
   const artifacts = await snapshotCandidateWorkspace(root, writer, [
     '_build',
     'node_modules',
@@ -143,22 +153,16 @@ test("a scenario's workspace.ignore comes after the project's and is recorded in
     scoring: [predicate('verdict', () => true)],
     workspace: { ignore: ['!_build/doc/**', '*.tmp'] },
   });
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, {
       report: localReportStore(join(root, 'results')),
       workspaceRoot: join(root, 'sandbox'),
       artifactExclude: ['_build'],
     }),
   );
-  const trialDir = join(
-    root,
-    'results',
-    result.runId,
-    'trials',
-    result.trialId,
-  );
+  const runDir = join(root, 'results', result.runId);
   const manifest = JSON.parse(
-    await Bun.file(join(trialDir, 'manifest.json')).text(),
+    await Bun.file(join(runDir, 'manifest.json')).text(),
   );
   expect(manifest.workspaceIgnore).toEqual([
     '_build',
@@ -166,11 +170,11 @@ test("a scenario's workspace.ignore comes after the project's and is recorded in
     '*.tmp',
   ]);
   expect(
-    await readdir(join(trialDir, 'artifacts/candidate'), { recursive: true }),
+    await readdir(join(runDir, 'artifacts/candidate'), { recursive: true }),
   ).toEqual(
     expect.arrayContaining(['_build', '_build/doc', '_build/doc/index.html']),
   );
-  const saved = await readdir(join(trialDir, 'artifacts/candidate'), {
+  const saved = await readdir(join(runDir, 'artifacts/candidate'), {
     recursive: true,
   });
   expect(saved).not.toContain('_build/main.exe');
@@ -193,7 +197,7 @@ test('workspace.ignore patterns must be non-empty globs', () => {
   ).toThrow('workspace.ignore[0] must be a non-empty glob');
 });
 
-test('persistent workspaces are kept only for trials that did not pass, by default', async () => {
+test('persistent workspaces are kept only for runs that did not pass, by default', async () => {
   const root = await directory();
   const sandbox = join(root, 'sandbox');
   const scenario = (passes: boolean) =>
@@ -208,7 +212,7 @@ test('persistent workspaces are kept only for trials that did not pass, by defau
       scoring: [predicate('verdict', () => passes)],
     });
   const run = (passes: boolean, keepWorkspaces?: 'all' | 'none') =>
-    Effect.runPromise(
+    runOne(
       runEval(scenario(passes), {
         report: localReportStore(join(root, 'results')),
         workspaceRoot: sandbox,
@@ -217,10 +221,10 @@ test('persistent workspaces are kept only for trials that did not pass, by defau
     );
   const failed = await run(false);
   await run(true);
-  expect(await readdir(sandbox)).toEqual([failed.trialId]);
+  expect(await readdir(sandbox)).toEqual([failed.runId]);
   const kept = await run(true, 'all');
   expect((await readdir(sandbox)).sort()).toEqual(
-    [failed.trialId, kept.trialId].sort(),
+    [failed.runId, kept.runId].sort(),
   );
   await run(false, 'none');
   expect((await readdir(sandbox)).length).toBe(2);

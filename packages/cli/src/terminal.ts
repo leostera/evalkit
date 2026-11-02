@@ -80,10 +80,7 @@ function cellLabel(name: string, parameters: object): string {
 }
 
 export function passed(result: RunResult): boolean {
-  return (
-    result.status === 'completed' &&
-    (result.aggregateScoring?.passRate === 1 || Boolean(result.scoring?.passed))
-  );
+  return result.status === 'passed';
 }
 
 /** Live log for runs launched from the `evalkit dev` dashboard. */
@@ -94,31 +91,34 @@ export const runLog = {
       `${clock()}  ${cyan('▶ run ')} ${cellLabel(name, parameters)}${suite}`,
     );
   },
+  /** One line per run; a batch's runs say which one they are. */
   finished(
     name: string,
     parameters: object,
-    result: RunResult,
+    runs: readonly RunResult[],
     ms: number,
   ): void {
-    const ok = passed(result);
-    const trials = result.trials?.length ?? 1;
-    const passedTrials = result.aggregateScoring?.passed ?? (ok ? trials : 0);
-    const status =
-      result.status === 'completed'
-        ? ok
+    for (const result of runs) {
+      const status =
+        result.status === 'passed'
           ? green('✓ pass')
-          : red('✗ fail')
-        : red(`✗ ${result.status}`);
-    console.log(
-      `${clock()}  ${status} ${cellLabel(name, parameters)} ${dim(`${passedTrials}/${trials} trials · ${duration(ms)}`)}`,
-    );
-    console.log(`          ${dim(`report ${result.reportLocation}`)}`);
+          : result.status === 'failed'
+            ? red('✗ fail')
+            : red(`✗ ${result.status}`);
+      const batch = result.batch
+        ? ` #${result.batch.index + 1}/${result.batch.size}`
+        : '';
+      console.log(
+        `${clock()}  ${status} ${cellLabel(name, parameters)}${dim(`${batch} · ${duration(result.durationMs ?? ms)}`)}`,
+      );
+      console.log(`          ${dim(`report ${result.reportLocation}`)}`);
+    }
   },
-  cell(cell: EvalMatrixCell, result: RunResult, ms: number): void {
+  cell(cell: EvalMatrixCell, runs: readonly RunResult[], ms: number): void {
     runLog.finished(
       cell.eval.name ?? authoringId(cell.eval),
       cell.parameters,
-      result,
+      runs,
       ms,
     );
   },

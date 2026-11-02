@@ -8,18 +8,15 @@ import {
   type PreparedFile,
 } from './datasets.js';
 
-export type TrialWorkspace = {
+export type RunWorkspace = {
   artifacts: ArtifactView;
   /** Removes the workspace; a persistent one survives when `keep` is true. */
   cleanup(keep?: boolean): Promise<void>;
 };
 
-/** Where a trial's persistent workspace lives below `root`. */
-export function trialWorkspacePath(root: string, trialId: string): string {
-  return path.join(
-    path.resolve(root),
-    trialId.replace(/[^a-zA-Z0-9._-]/g, '_'),
-  );
+/** Where a run's persistent workspace lives below `root`. */
+export function runWorkspacePath(root: string, runId: string): string {
+  return path.join(path.resolve(root), runId.replace(/[^a-zA-Z0-9._-]/g, '_'));
 }
 
 /**
@@ -27,14 +24,14 @@ export function trialWorkspacePath(root: string, trialId: string): string {
  * dataset's files below its mount, on the side its visibility allows.
  * Two datasets writing the same file is an error, never an overwrite.
  */
-export async function createTrialWorkspace(
-  trialId: string,
+export async function createRunWorkspace(
+  runId: string,
   datasets: readonly PreparedDataset[] = [],
   persistentRoot?: string,
-): Promise<TrialWorkspace> {
+): Promise<RunWorkspace> {
   const root = persistentRoot
-    ? trialWorkspacePath(persistentRoot, trialId)
-    : await mkdtemp(path.join(os.tmpdir(), 'evalkit-trial-'));
+    ? runWorkspacePath(persistentRoot, runId)
+    : await mkdtemp(path.join(os.tmpdir(), 'evalkit-run-'));
   const persistent = persistentRoot !== undefined;
   const artifacts: ArtifactView = {
     candidate: { root: path.join(root, 'candidate') },

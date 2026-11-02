@@ -114,6 +114,17 @@ test('an old evals/ directory gets a hint to move it', async () => {
   );
 });
 
+test('a config from before 0.9 that sets execution.trials says what replaced it', async () => {
+  const root = await project();
+  await writeFile(
+    join(root, 'evalkit.config.js'),
+    'export default { execution: { trials: 3 } };\n',
+  );
+  await expect(loadProject(root)).rejects.toThrow(
+    'execution.trials was renamed to execution.repeat',
+  );
+});
+
 test('config-relative discovery, duplicate IDs, and ambiguous configs fail clearly', async () => {
   const root = await project();
   await writeFile(join(root, 'evalkit.config.ts'), 'export default {};');
@@ -206,7 +217,7 @@ test('run flags are validated into a selection, overrides and limits', () => {
   const invalid: Array<[Parameters<typeof normalizeRunOptions>[0], string[]]> =
     [
       [{ 'max-tokens': '-1' }, []],
-      [{ trials: '1.5' }, []],
+      [{ repeat: '1.5' }, []],
       [{ select: ['novalue'] }, []],
     ];
   for (const [values, positionals] of invalid)
@@ -277,7 +288,7 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
       'utf8',
     ),
   );
-  expect(manifest.schemaVersion).toBe(5);
+  expect(manifest.schemaVersion).toBe(6);
   expect(manifest.evalId).toBe('task-1');
   expect(manifest.evalUri).toBeUndefined();
   expect(manifest.parameters).toEqual({

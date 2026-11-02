@@ -5,10 +5,14 @@ import type { JsonValue, TrajectoryEvent } from './index.js';
 /** Runtime schemas for serialized EvalKit report and API boundaries. */
 export const RunStatusSchema = Schema.Literal(
   'running',
-  'completed',
+  'passed',
   'failed',
+  'errored',
   'cancelled',
 );
+
+/** The report schema version this EvalKit writes and reads. */
+export const REPORT_SCHEMA_VERSION = 6;
 
 export const RecordedErrorSchema = Schema.Struct({
   name: Schema.String,
@@ -61,8 +65,21 @@ export const RunSourceSchema = Schema.Struct({
   ),
 });
 
+export const BatchSchema = Schema.Struct({
+  id: Schema.String,
+  index: Schema.Number,
+  size: Schema.Number,
+});
+
+export const RunDatasetSchema = Schema.Struct({
+  id: Schema.String,
+  visibility: Schema.Literal('candidate', 'evaluator'),
+  source: Schema.Literal('static', 'computed'),
+  digest: Schema.String,
+});
+
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3, 4, 5),
+  schemaVersion: Schema.Literal(6),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -74,41 +91,15 @@ export const RunMetadataSchema = Schema.Struct({
   process: Schema.optional(
     Schema.Struct({ pid: Schema.Number, hostname: Schema.String }),
   ),
-});
-
-export const TrialMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(2, 3, 4, 5),
-  runUri: resourceUriSchema('run'),
-  trialUri: resourceUriSchema('trial'),
-  trialIndex: Schema.Number,
-  evalId: Schema.String,
-  parameters: Schema.optional(ParametersSchema),
-  matrix: Schema.optional(MatrixCellSchema),
-  aut: Schema.optional(AutIdentitySchema),
-  startedAt: Schema.String,
+  batch: Schema.optional(BatchSchema),
   /** The effective snapshot ignore patterns: the project's, then the scenario's. */
   workspaceIgnore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
-  datasets: Schema.optional(
-    Schema.mutable(
-      Schema.Array(
-        Schema.Struct({
-          id: Schema.String,
-          visibility: Schema.Literal('candidate', 'evaluator'),
-          source: Schema.Literal('static', 'computed'),
-          digest: Schema.String,
-        }),
-      ),
-    ),
-  ),
+  datasets: Schema.optional(Schema.mutable(Schema.Array(RunDatasetSchema))),
 });
 
-/** On-disk manifests include a lifecycle status; older finalized manifests may still say running. */
+/** On-disk manifests include a lifecycle status. */
 export const RunManifestSchema = Schema.Struct({
   ...RunMetadataSchema.fields,
-  status: Schema.optional(RunStatusSchema),
-});
-export const TrialManifestSchema = Schema.Struct({
-  ...TrialMetadataSchema.fields,
   status: Schema.optional(RunStatusSchema),
 });
 
@@ -168,7 +159,7 @@ export const MetricResultSchema = Schema.Struct({
   builtIn: Schema.optional(Schema.Literal(true)),
   error: Schema.optional(RecordedErrorSchema),
 });
-export const TrialScoringSchema = Schema.Struct({
+export const RunScoringSchema = Schema.Struct({
   results: Schema.mutable(Schema.Array(ScoreResultSchema)),
   metrics: Schema.optional(Schema.mutable(Schema.Array(MetricResultSchema))),
   checkpoints: Schema.optional(
@@ -188,26 +179,15 @@ export const AttachmentEntrySchema = Schema.Struct({
   size: Schema.Number,
   truncatedFrom: Schema.optional(Schema.Number),
 });
-export const TrialSummarySchema = Schema.Struct({
-  status: RunStatusSchema,
-  endedAt: Schema.String,
-  durationMs: Schema.optional(Schema.Number),
-  scoring: Schema.optional(TrialScoringSchema),
-  artifacts: Schema.optional(Schema.mutable(Schema.Array(ArtifactEntrySchema))),
-  attachments: Schema.optional(
-    Schema.mutable(Schema.Array(AttachmentEntrySchema)),
-  ),
-  error: Schema.optional(RecordedErrorSchema),
-});
-
 export const RunSummarySchema = Schema.Struct({
   status: RunStatusSchema,
   endedAt: Schema.String,
   durationMs: Schema.optional(Schema.Number),
-  trialCount: Schema.Number,
-  passed: Schema.Number,
-  failed: Schema.Number,
-  cancelled: Schema.optional(Schema.Number),
+  scoring: Schema.optional(RunScoringSchema),
+  artifacts: Schema.optional(Schema.mutable(Schema.Array(ArtifactEntrySchema))),
+  attachments: Schema.optional(
+    Schema.mutable(Schema.Array(AttachmentEntrySchema)),
+  ),
   error: Schema.optional(RecordedErrorSchema),
 });
 
@@ -268,9 +248,9 @@ const autEvent = {
   }),
 };
 const runnerEvent = {
-  trialStarted: Schema.Struct({
+  runStarted: Schema.Struct({
     source: Schema.Literal('runner'),
-    kind: Schema.Literal('trial-started'),
+    kind: Schema.Literal('run-started'),
     timestamp: Schema.String,
   }),
   stepStarted: Schema.Struct({
@@ -334,9 +314,9 @@ const runnerEvent = {
     error: RecordedErrorSchema,
     timestamp: Schema.String,
   }),
-  trialCompleted: Schema.Struct({
+  runCompleted: Schema.Struct({
     source: Schema.Literal('runner'),
-    kind: Schema.Literal('trial-completed'),
+    kind: Schema.Literal('run-completed'),
     timestamp: Schema.String,
   }),
   error: Schema.Struct({

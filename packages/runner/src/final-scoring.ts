@@ -12,13 +12,13 @@ import {
   type TranscriptStep,
   type ScoreResult,
   type TrajectoryEvent,
-  type TrialScoring,
+  type RunScoring,
   type TurnView,
 } from '@evalkit/core';
 import { runBoundary } from './effect-boundary.js';
 import { ScoringError } from './errors.js';
 import { evaluateRule } from './evaluate-rule.js';
-import type { TrialWorkspace } from './workspace.js';
+import type { RunWorkspace } from './workspace.js';
 import { turnOutput } from './transcript.js';
 
 export function scoreSummary(
@@ -26,7 +26,7 @@ export function scoreSummary(
   checkpoints: CheckpointResult[],
   skippedScorers: string[],
   metrics: MetricResult[] = [],
-): TrialScoring {
+): RunScoring {
   const valid = results.filter(
     (result) => result.value !== undefined && !result.skipped,
   );
@@ -55,12 +55,12 @@ export function scoreSummary(
 
 type FinalScoringInput = {
   context?: AutContext;
-  workspace?: TrialWorkspace;
+  workspace?: RunWorkspace;
   events: TrajectoryEvent[];
   lastTurn?: TurnView;
   primaryError?: unknown;
   stoppedEarly: boolean;
-  /** No scorer runs for a cancelled trial. */
+  /** No scorer runs for a cancelled run. */
   cancelled: boolean;
   reportingFailed: boolean;
   results: ScoreResult[];
@@ -75,7 +75,7 @@ type FinalScoringInput = {
 /** What final scorers and metrics receive. */
 export function scoringContext(input: {
   context: AutContext;
-  workspace: TrialWorkspace;
+  workspace: RunWorkspace;
   events: TrajectoryEvent[];
   lastTurn?: TurnView;
   data: JsonObject;

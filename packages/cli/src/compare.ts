@@ -1,15 +1,31 @@
 import { canonicalParameters, type JsonObject } from '@evalkit/core';
-import type { LocalRun, RunScorer } from './dashboard-reports.js';
+import type {
+  LocalRun,
+  RunDatasetDigest,
+  RunScorer,
+} from './dashboard-reports.js';
 
 /** The fields of a run that comparison reads, locally or from a share server. */
 export type ComparedRun = Pick<
   LocalRun,
-  'id' | 'evalId' | 'status' | 'startedAt'
+  'id' | 'evalId' | 'status' | 'startedAt' | 'batch'
 > & {
   suiteId?: string;
   parameters?: JsonObject;
   scorers?: RunScorer[];
-  datasets?: { id: string; digests: string[] }[];
+  datasets?: RunDatasetDigest[];
+};
+
+/**
+ * One side of a unit: its latest batch (or latest run), summarised. `status`
+ * is `passed` when every finished run passed, `errored` when all errored;
+ * scorer values are means over the batch.
+ */
+export type ComparedSide = ComparedRun & {
+  /** Runs that passed, of `total` finished (an errored run counts as not passed). */
+  passed: number;
+  total: number;
+  runs: ComparedRun[];
 };
 
 export type UnitChange =
@@ -24,8 +40,8 @@ export type ComparedUnit = {
   change: UnitChange;
   /** Why the unit cannot be compared. */
   reason?: string;
-  base?: ComparedRun;
-  head?: ComparedRun;
+  base?: ComparedSide;
+  head?: ComparedSide;
 };
 
 export type ScorerChange = {
@@ -60,25 +76,71 @@ function unitKey(run: ComparedRun): string {
   return `${run.evalId}\0${canonicalParameters(run.parameters ?? {})}`;
 }
 
-/** The run that represents each unit: the latest finished one, else the latest at all. */
+/**
+ * What represents each unit: the latest finished run's batch (its finished
+ * runs), or that run alone; else the latest run at all.
+ */
 function latestByUnit(runs: readonly ComparedRun[]) {
-  const byUnit = new Map<string, ComparedRun>();
-  let ignored = 0;
-  const ordered = [...runs].sort((a, b) =>
-    b.startedAt.localeCompare(a.startedAt),
-  );
+  const latest = new Map<string, ComparedRun>();
+  const ordered = [...runs]
+    .filter((run) => run.status !== 'running')
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   for (const run of ordered) {
-    if (run.status === 'running') continue;
     const key = unitKey(run);
-    const current = byUnit.get(key);
-    if (!current) byUnit.set(key, run);
-    else {
-      ignored += 1;
-      if (!FINISHED.has(current.status) && FINISHED.has(run.status))
-        byUnit.set(key, run);
-    }
+    const current = latest.get(key);
+    if (!current || (!FINISHED.has(current.status) && FINISHED.has(run.status)))
+      latest.set(key, run);
   }
-  return { byUnit, ignored };
+  const byUnit = new Map<string, ComparedSide>();
+  let used = 0;
+  for (const [key, run] of latest) {
+    const members = run.batch
+      ? ordered.filter(
+          (other) =>
+            other.batch?.id === run.batch!.id && FINISHED.has(other.status),
+        )
+      : [run];
+    used += members.length;
+    byUnit.set(key, side(members));
+  }
+  return { byUnit, ignored: ordered.length - used };
+}
+
+function side(runs: readonly ComparedRun[]): ComparedSide {
+  const scored = runs.filter((run) => run.status !== 'errored');
+  const passed = scored.filter((run) => run.status === 'passed').length;
+  const values = new Map<
+    string,
+    { scorer: RunScorer; sum: number; n: number }
+  >();
+  // Names from every run; values only from runs that did not error.
+  for (const run of runs)
+    for (const scorer of run.scorers ?? []) {
+      const key = `${scorer.kind}\0${scorer.name}`;
+      const entry = values.get(key) ?? { scorer, sum: 0, n: 0 };
+      if (scorer.value !== undefined && run.status !== 'errored') {
+        entry.sum += scorer.value;
+        entry.n += 1;
+      }
+      values.set(key, entry);
+    }
+  const first = runs[0]!;
+  return {
+    ...first,
+    status: !scored.length
+      ? first.status
+      : passed === runs.length
+        ? 'passed'
+        : 'failed',
+    scorers: [...values.values()].map(({ scorer, sum, n }) => ({
+      name: scorer.name,
+      kind: scorer.kind,
+      ...(n ? { value: sum / n } : {}),
+    })),
+    passed,
+    total: runs.length,
+    runs: [...runs],
+  };
 }
 
 function scorerSignature(run: ComparedRun): string {
@@ -89,8 +151,8 @@ function scorerSignature(run: ComparedRun): string {
 }
 
 function classify(
-  base: ComparedRun | undefined,
-  head: ComparedRun | undefined,
+  base: ComparedSide | undefined,
+  head: ComparedSide | undefined,
 ): { change: UnitChange; reason?: string } {
   if (!base) return { change: 'new' };
   if (!head) return { change: 'removed' };
@@ -102,10 +164,10 @@ function classify(
       return { change: 'not-comparable', reason: `${run.status} on ${side}` };
   if (scorerSignature(base) !== scorerSignature(head))
     return { change: 'not-comparable', reason: 'different scorers' };
-  if (base.status === 'passed' && head.status === 'failed')
-    return { change: 'regressed' };
-  if (base.status === 'failed' && head.status === 'passed')
-    return { change: 'fixed' };
+  // With batches, compare how often each side passed.
+  const rate = (side: ComparedSide) => side.passed / side.total;
+  if (rate(head) < rate(base)) return { change: 'regressed' };
+  if (rate(head) > rate(base)) return { change: 'fixed' };
   return { change: 'unchanged' };
 }
 
@@ -139,8 +201,8 @@ function suiteScorers(units: readonly ComparedUnit[]): ScorerChange[] {
       for (const scorer of unit[side]!.scorers ?? []) {
         const key = `${scorer.kind}\0${scorer.name}`;
         kinds.set(key, { name: scorer.name, kind: scorer.kind });
-        if (scorer.mean === undefined) continue;
-        sides[side].set(key, [...(sides[side].get(key) ?? []), scorer.mean]);
+        if (scorer.value === undefined) continue;
+        sides[side].set(key, [...(sides[side].get(key) ?? []), scorer.value]);
       }
   }
   for (const unit of units) {
@@ -210,8 +272,18 @@ export function compareRuns(
   const changedDatasets = new Set<string>();
   for (const unit of units) {
     if (!unit.base || !unit.head) continue;
-    const digests = (run: ComparedRun) =>
-      new Map((run.datasets ?? []).map((d) => [d.id, d.digests.join(',')]));
+    const digests = (side: ComparedSide) => {
+      const byId = new Map<string, Set<string>>();
+      for (const run of side.runs)
+        for (const dataset of run.datasets ?? [])
+          byId.set(
+            dataset.id,
+            (byId.get(dataset.id) ?? new Set()).add(dataset.digest),
+          );
+      return new Map(
+        [...byId].map(([id, set]) => [id, [...set].sort().join(',')]),
+      );
+    };
     const before = digests(unit.base);
     const after = digests(unit.head);
     for (const id of new Set([...before.keys(), ...after.keys()]))
@@ -224,12 +296,12 @@ export function compareRuns(
   const suites = [...bySuite]
     .map(([suite, members]) => {
       const side = (pick: 'base' | 'head') => {
-        const runs = members.flatMap((unit) =>
+        const sides = members.flatMap((unit) =>
           unit[pick] ? [unit[pick]!] : [],
         );
         return {
-          passed: runs.filter((run) => run.status === 'passed').length,
-          total: runs.length,
+          passed: sides.reduce((sum, entry) => sum + entry.passed, 0),
+          total: sides.reduce((sum, entry) => sum + entry.total, 0),
         };
       };
       return {

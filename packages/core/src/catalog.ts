@@ -66,7 +66,7 @@ export type EvalCatalogScorer = {
 };
 
 export type EvalCatalogStep =
-  /** `message` is absent when it is computed for each trial. */
+  /** `message` is absent when it is computed for each run. */
   | { kind: 'user'; message?: string }
   | { kind: 'agent'; expectation: JsonValue }
   | { kind: 'expect-tool-call'; name: string; arguments?: JsonValue }
@@ -82,8 +82,9 @@ export type EvalCatalogEntry = {
   /** The separate agent that runs judge rules, if any. */
   judgeAgent?: EvalCatalogAgent;
   datasets: EvalCatalogDataset[];
-  trialCount: number;
-  policy: { trials: number; timeoutMs?: number; failfast?: boolean };
+  /** Runs started each time the scenario runs (`repeat`). */
+  repeat: number;
+  policy: { timeoutMs?: number; failfast?: boolean };
   transcript: EvalCatalogStep[];
   scorers: EvalCatalogScorer[];
   metadata?: JsonValue;
@@ -113,9 +114,8 @@ export function catalogEntry(
     datasets: (evaluation.datasets ?? []).map((dataset) =>
       catalogDataset(dataset, at),
     ),
-    trialCount: policy.trials ?? 1,
+    repeat: evaluation.repeat ?? 1,
     policy: {
-      trials: policy.trials ?? 1,
       ...(policy.timeoutMs !== undefined
         ? { timeoutMs: policy.timeoutMs }
         : {}),

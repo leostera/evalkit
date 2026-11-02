@@ -165,10 +165,15 @@ export type LoadedProject = {
   /** Discovered files that failed to import; empty with an explicit registry. */
   loadErrors: LoadError[];
 };
-export async function loadProject(
+/**
+ * The project's config and root, without importing any scenario: enough for
+ * commands that only touch results (`evalkit upgrade`), and that must work
+ * while scenarios from an older EvalKit still fail to load.
+ */
+export async function loadConfig(
   cwd: string,
   configPath?: string,
-): Promise<LoadedProject> {
+): Promise<{ root: string; file?: string; config: EvalkitConfig }> {
   const candidates = configPath
     ? [resolve(cwd, configPath)]
     : ['evalkit.config.ts', 'evalkit.config.js', 'evalkit.config.mjs'].map(
@@ -187,10 +192,22 @@ export async function loadProject(
     : {};
   if (!config || typeof config !== 'object' || Array.isArray(config))
     throw new Error('Config must default-export defineConfig({...})');
+  if (config.execution && 'trials' in config.execution)
+    throw new Error(
+      'execution.trials was renamed to execution.repeat in EvalKit 0.9',
+    );
   for (const [key, value] of Object.entries(config.execution ?? {})) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1))
       throw new Error(`execution.${key} must be a positive integer`);
   }
+  return { root, ...(file ? { file } : {}), config };
+}
+
+export async function loadProject(
+  cwd: string,
+  configPath?: string,
+): Promise<LoadedProject> {
+  const { root, file, config } = await loadConfig(cwd, configPath);
   let registry = config.registry;
   if (
     !file &&

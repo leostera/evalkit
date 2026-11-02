@@ -25,9 +25,7 @@ const run = (
     {
       name: 'correct',
       kind: 'predicate',
-      mean: status === 'passed' ? 1 : 0,
-      count: 1,
-      skipped: 0,
+      value: status === 'passed' ? 1 : 0,
     },
   ],
   ...extra,
@@ -41,7 +39,7 @@ test('classifies units and averages scorers over matched units', () => {
       run('c', 'passed'),
       run('gone', 'passed'),
       run('err', 'errored'),
-      run('d', 'passed', { datasets: [{ id: 'help', digests: ['x'] }] }),
+      run('d', 'passed', { datasets: [{ id: 'help', digest: 'x' }] }),
     ],
     [
       run('a', 'failed'),
@@ -50,7 +48,7 @@ test('classifies units and averages scorers over matched units', () => {
       run('c', 'passed'),
       run('new', 'passed'),
       run('err', 'passed'),
-      run('d', 'passed', { datasets: [{ id: 'help', digests: ['y'] }] }),
+      run('d', 'passed', { datasets: [{ id: 'help', digest: 'y' }] }),
     ],
   );
   const changes = Object.fromEntries(
@@ -94,9 +92,7 @@ test('matches units by parameters and refuses to compare different scorers', () 
       run('a', 'failed', { parameters: { model: 'x' } }),
       run('a', 'passed', {
         parameters: { model: 'y' },
-        scorers: [
-          { name: 'renamed', kind: 'predicate', mean: 1, count: 1, skipped: 0 },
-        ],
+        scorers: [{ name: 'renamed', kind: 'predicate', value: 1 }],
       }),
     ],
   );
@@ -110,20 +106,53 @@ test('matches units by parameters and refuses to compare different scorers', () 
   ]);
 });
 
+test('a batch is compared by how often it passed', () => {
+  const batch = (id: string, statuses: ComparedRun['status'][], at: string) =>
+    statuses.map((status, index) =>
+      run('flaky', status, {
+        id: `${id}-${index}`,
+        startedAt: at,
+        batch: { id, index, size: statuses.length },
+      }),
+    );
+  const comparison = compareRuns(
+    [
+      // An older batch is ignored in favour of the latest.
+      ...batch('old', ['failed', 'failed'], '2025-12-01T00:00:00.000Z'),
+      ...batch(
+        'base',
+        ['passed', 'passed', 'failed'],
+        '2026-01-01T00:00:00.000Z',
+      ),
+    ],
+    batch('head', ['passed', 'failed', 'failed'], '2026-01-02T00:00:00.000Z'),
+  );
+  expect(comparison.units[0]).toMatchObject({
+    change: 'regressed',
+    base: { passed: 2, total: 3 },
+    head: { passed: 1, total: 3 },
+  });
+  expect(comparison.ignoredRuns).toEqual({ base: 2, head: 0 });
+  expect(comparison.suites[0]).toMatchObject({
+    base: { passed: 2, total: 3 },
+    head: { passed: 1, total: 3 },
+  });
+  expect(comparison.suites[0]!.scorers[0]).toMatchObject({
+    base: 2 / 3,
+    head: 1 / 3,
+  });
+});
+
 test('score-drop gates on scorer means', () => {
   const comparison = compareRuns(
     [
       run('a', 'passed', {
-        scorers: [
-          { name: 's', kind: 'judge', mean: 0.9, count: 1, skipped: 0 },
-        ],
+        scorers: [{ name: 's', kind: 'judge', value: 0.9 }],
       }),
     ],
     [
       run('a', 'passed', {
-        scorers: [
-          { name: 's', kind: 'judge', mean: 0.7, count: 1, skipped: 0 },
-        ],
+        scorers: [{ name: 's', kind: 'judge', value: 0.7 }],
       }),
     ],
   );

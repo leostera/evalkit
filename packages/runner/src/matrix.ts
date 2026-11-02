@@ -8,9 +8,10 @@ import type {
 } from '@evalkit/core';
 import { runEval, type RunEvalOptions } from './index.js';
 
-/** Cells run; cancelled cells are neither passed nor failed. */
+/** Cells and runs; a run that errored counts as failed, a cancelled one as neither. */
 export type MatrixSummary = {
   cells: number;
+  runs: number;
   passed: number;
   failed: number;
   cancelled: number;
@@ -19,16 +20,13 @@ export type MatrixSummary = {
 /** Bounded workers pull cells from the iterator; no Cartesian job array is allocated. */
 export function runMatrix(
   matrix: EvalMatrix,
-  options: Omit<
-    RunEvalOptions,
-    'runId' | 'trialId' | 'parameters' | 'matrix'
-  > & {
+  options: Omit<RunEvalOptions, 'runId' | 'parameters' | 'matrix'> & {
     selection?: MatrixSelection;
     /** The suite each cell's run is recorded under, when `suiteId` is not given. */
     suiteFor?: (cell: EvalMatrixCell) => string | undefined;
     onResult?: (
       cell: EvalMatrixCell,
-      result: RunResult,
+      runs: readonly RunResult[],
     ) => void | Promise<void>;
   },
 ): Effect.Effect<MatrixSummary, unknown> {
@@ -40,6 +38,7 @@ export function runMatrix(
     const iterator = matrix.cells(options.selection);
     const summary: MatrixSummary = {
       cells: 0,
+      runs: 0,
       passed: 0,
       failed: 0,
       cancelled: 0,
@@ -57,7 +56,7 @@ export function runMatrix(
                 (name) => agentRuntimes(cell.eval.agent)[name],
               );
             const suiteId = options.suiteId ?? options.suiteFor?.(cell);
-            const result = yield* runEval(cell.eval, {
+            const runs = yield* runEval(cell.eval, {
               ...options,
               ...(suiteId ? { suiteId } : {}),
               concurrency: 1,
@@ -66,17 +65,15 @@ export function runMatrix(
               matrix: { id: matrix.id, cellKey: cell.key },
             });
             summary.cells++;
-            if (result.status === 'cancelled') summary.cancelled++;
-            else if (
-              result.status === 'completed' &&
-              (result.aggregateScoring?.passRate === 1 ||
-                result.scoring?.passed)
-            )
-              summary.passed++;
-            else summary.failed++;
+            for (const run of runs) {
+              summary.runs++;
+              if (run.status === 'cancelled') summary.cancelled++;
+              else if (run.status === 'passed') summary.passed++;
+              else summary.failed++;
+            }
             if (options.onResult)
               yield* Effect.tryPromise(async () =>
-                options.onResult!(cell, result),
+                options.onResult!(cell, runs),
               );
           }
         }),

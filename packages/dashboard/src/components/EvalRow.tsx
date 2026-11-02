@@ -11,7 +11,7 @@ export function EvalRow({
   id,
   evaluation,
   parameters = [],
-  trials,
+  repeat,
   onRun,
   runDisabled = false,
   latestRun,
@@ -20,7 +20,8 @@ export function EvalRow({
   id: string;
   evaluation?: CatalogEval;
   parameters?: readonly unknown[];
-  trials?: number;
+  /** Runs one launch starts; the scenario's own `repeat` otherwise. */
+  repeat?: number;
   onRun?: () => void;
   runDisabled?: boolean;
   /** The newest run of this scenario (or matrix cell); its badge opens it. */
@@ -66,7 +67,7 @@ export function EvalRow({
           'default'}
       </Table.Cell>
       <Table.Cell className="tabular-nums">
-        {trials ?? evaluation?.trialCount ?? '—'}
+        {repeat ?? evaluation?.repeat ?? 1}
       </Table.Cell>
       <Table.Cell>
         {latestRun ? (

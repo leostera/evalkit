@@ -27,7 +27,7 @@ export type CatalogDataset = EvalCatalogDataset;
  * fields (transcript, policy, where things are defined), so they are optional.
  */
 export type CatalogEval = EvalSummary &
-  Pick<EvalCatalogEntry, 'path' | 'trialCount' | 'agent' | 'scorers'> &
+  Pick<EvalCatalogEntry, 'path' | 'repeat' | 'agent' | 'scorers'> &
   Partial<
     Pick<
       EvalCatalogEntry,
@@ -54,7 +54,7 @@ export type ProjectInfo = {
 export type MatrixSummary = {
   id: string;
   parameters: Record<string, unknown[]>;
-  trials?: number;
+  repeat?: number;
   /** Until the dashboard supports planner-backed cell listing, use the CLI for constrained sweeps. */
   constrained?: boolean;
   dimensions?: string[];
@@ -87,12 +87,20 @@ export type RunMetric = {
   unit?: string;
   better?: 'lower' | 'higher';
   builtIn?: true;
-  mean?: number;
-  /** Trials with a value; the mean is over these only. */
-  count: number;
-  /** Trials that were scored at all, measured or not. Absent in snapshots from before 0.9. */
-  trials?: number;
+  /** Absent when the run did not measure it: "not measured", never zero. */
+  value?: number;
 };
+
+/** One final scorer's value in a run; skipped and errored scorers have none. */
+export type RunScorer = {
+  name: string;
+  kind: 'predicate' | 'judge';
+  value?: number;
+  skipped?: true;
+};
+
+/** Runs launched together as repeats of one configuration. */
+export type Batch = { id: string; index: number; size: number };
 
 export type RunSummary = {
   id: string;
@@ -108,12 +116,14 @@ export type RunSummary = {
   interrupted?: true;
   startedAt: string;
   completedAt?: string;
-  completedTrials: number;
-  requestedTrials: number;
+  /** Set when the run is one of several repeats launched together. */
+  batch?: Batch;
   score?: number;
   durationMs?: number;
-  /** Each metric's mean over the run's trials (agent time, tokens, tool calls, and the scenario's own). */
+  scorers?: RunScorer[];
+  /** Agent time, tokens, tool calls, and the scenario's own metrics. */
   metrics?: RunMetric[];
+  datasets?: Array<{ id: string; digest: string }>;
   /** The eval is no longer in the project (`evalkit tidy`); hidden by default. */
   archived?: boolean;
   /** Repository and commit the run's eval code came from. */
@@ -133,7 +143,7 @@ export type WorkspaceEntry = {
   size?: number;
 };
 
-/** What can be browsed of a dataset; computed datasets only have files in trial workspaces. */
+/** What can be browsed of a dataset; computed datasets only have files in run workspaces. */
 export type DatasetListing =
   | {
       kind: 'static';
@@ -154,14 +164,8 @@ export type CheckpointResult = {
   matchedToolCall?: { eventIndex: number; id: string };
 };
 
-export type TrialSummary = {
-  id: string;
-  index: number;
-  status: RunSummary['status'];
-  startedAt: string;
-  completedAt?: string;
-  durationMs?: number;
-  score?: number;
+/** What a run's page shows beyond its listing: every score and check. */
+export type RunDetail = {
   scores: Array<{
     name: string;
     kind?: 'predicate' | 'judge';
@@ -178,6 +182,9 @@ export type TrialSummary = {
   /** Files the adapter or scorers attached; read them with `getAttachment`. */
   attachments?: AttachmentEntry[];
   skippedScorers?: string[];
+  /** The saved manifest and summary, for the raw view. */
+  manifest: unknown;
+  summary: unknown;
 };
 
 export type TrajectoryEvent = {
@@ -205,27 +212,14 @@ export interface DashboardApi {
   listEvals(): Promise<EvalSummary[]>;
   listSuites(): Promise<SuiteSummary[]>;
   listRuns(): Promise<RunSummary[]>;
-  listTrials(runId: string): Promise<TrialSummary[]>;
-  getTrialEvents(runId: string, trialId: string): Promise<TrajectoryEvent[]>;
-  getTrial(
-    runId: string,
-    trialId: string,
-  ): Promise<{ manifest: unknown; summary: unknown }>;
+  getRun(runId: string): Promise<RunDetail>;
+  getRunEvents(runId: string): Promise<TrajectoryEvent[]>;
   listArtifacts(
     runId: string,
-    trialId: string,
   ): Promise<Array<{ path: string; kind: string; size?: number }>>;
-  listWorkspace(runId: string, trialId: string): Promise<WorkspaceEntry[]>;
-  getAttachment(
-    runId: string,
-    trialId: string,
-    name: string,
-  ): Promise<Response>;
-  getWorkspaceFile(
-    runId: string,
-    trialId: string,
-    path: string,
-  ): Promise<Response>;
+  listWorkspace(runId: string): Promise<WorkspaceEntry[]>;
+  getAttachment(runId: string, name: string): Promise<Response>;
+  getWorkspaceFile(runId: string, path: string): Promise<Response>;
   listDatasetFiles(datasetId: string): Promise<DatasetListing>;
   getDatasetFile(datasetId: string, path: string): Promise<Response>;
   runEval(path: string, parameters?: Record<string, unknown>): Promise<void>;
@@ -245,6 +239,14 @@ export function createHttpDashboardApi(options: {
           `Dashboard request failed: ${response.status}`,
       );
     return response.json() as Promise<T>;
+  };
+  const run = (runId: string) => `/v1/runs/${encodeURIComponent(runId)}`;
+  /** A file served as bytes; the body is not read here. */
+  const file = async (path: string) => {
+    const response = await send(new URL(path, options.baseUrl));
+    if (!response.ok)
+      throw new Error(`Dashboard request failed: ${response.status}`);
+    return response;
   };
 
   return {
@@ -283,53 +285,24 @@ export function createHttpDashboardApi(options: {
     async listRuns() {
       return (await request<{ runs: RunSummary[] }>('/v1/runs')).runs;
     },
-    async listTrials(runId) {
-      return (
-        await request<{ trials: TrialSummary[] }>(
-          `/v1/runs/${encodeURIComponent(runId)}/trials`,
-        )
-      ).trials;
+    async getRun(runId) {
+      return request<RunDetail>(`${run(runId)}`);
     },
-    async getTrial(runId, trialId) {
-      return request(
-        `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}`,
-      );
-    },
-    async listArtifacts(runId, trialId) {
+    async listArtifacts(runId) {
       return (
         await request<{
           artifacts: Array<{ path: string; kind: string; size?: number }>;
-        }>(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/artifacts`,
-        )
+        }>(`${run(runId)}/artifacts`)
       ).artifacts;
     },
-    async listWorkspace(runId, trialId) {
-      return request<WorkspaceEntry[]>(
-        `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace`,
-      );
+    async listWorkspace(runId) {
+      return request<WorkspaceEntry[]>(`${run(runId)}/workspace`);
     },
-    async getAttachment(runId, trialId, name) {
-      const response = await send(
-        new URL(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/attachments/${encodePath(name)}`,
-          options.baseUrl,
-        ),
-      );
-      if (!response.ok)
-        throw new Error(`Dashboard request failed: ${response.status}`);
-      return response;
+    async getAttachment(runId, name) {
+      return file(`${run(runId)}/attachments/${encodePath(name)}`);
     },
-    async getWorkspaceFile(runId, trialId, filePath) {
-      const response = await send(
-        new URL(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/workspace/${encodePath(filePath)}`,
-          options.baseUrl,
-        ),
-      );
-      if (!response.ok)
-        throw new Error(`Dashboard request failed: ${response.status}`);
-      return response;
+    async getWorkspaceFile(runId, filePath) {
+      return file(`${run(runId)}/workspace/${encodePath(filePath)}`);
     },
     async listDatasetFiles(datasetId) {
       return request<DatasetListing>(
@@ -347,11 +320,9 @@ export function createHttpDashboardApi(options: {
         throw new Error(`Dashboard request failed: ${response.status}`);
       return response;
     },
-    async getTrialEvents(runId, trialId) {
+    async getRunEvents(runId) {
       return (
-        await request<{ events: TrajectoryEvent[] }>(
-          `/v1/runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}/events`,
-        )
+        await request<{ events: TrajectoryEvent[] }>(`${run(runId)}/events`)
       ).events;
     },
     async runEval(path, parameters) {

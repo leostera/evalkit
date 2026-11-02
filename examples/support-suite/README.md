@@ -9,7 +9,7 @@ defined once and shared.
   `scenarios/greeting.eval.ts` and `scenarios/unknown-question.eval.ts` have none.
 - `datasets/support.dataset.ts` has a static dataset (the help-center articles,
   copied into each workspace), a computed one (customers, loaded once with
-  `onLoad` and picked per trial with `onRun`), and an evaluator-only one (the
+  `onLoad` and picked per run with `onRun`), and an evaluator-only one (the
   escalation policy, which only the scorers see).
 - `agents/support-agent.ts` returns its reply and tool calls from `send()`.
 - `judges/support.ts` scores the final `output`, the recorded tool calls and

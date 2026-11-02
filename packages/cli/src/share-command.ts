@@ -119,8 +119,12 @@ export async function runBundle(options: {
   const files: BundleFile[] = [];
   const encode = (value: unknown) =>
     new TextEncoder().encode(`${JSON.stringify(value)}\n`);
-  files.push({ path: 'run.json', data: encode(options.run) });
-  // Runs from schema version 4 save the catalog they ran with.
+  // Version 2: one run is one execution (RFD0008); older servers reject it.
+  files.push({
+    path: 'run.json',
+    data: encode({ snapshotVersion: 2, ...options.run }),
+  });
+  // Each run saves the catalog it ran with.
   const saved = await readFile(
     resolve(options.reportRoot, options.run.id, 'catalog.json'),
   ).catch(() => undefined);
@@ -286,10 +290,7 @@ export async function shareRuns(options: {
   workspaceFiles: boolean;
   step: BuildStep;
 }): Promise<ShareResult> {
-  const reports = createDashboardReportReader(
-    options.reportRoot,
-    options.registry,
-  );
+  const reports = createDashboardReportReader(options.reportRoot);
   return options.step(
     'Uploading',
     async (progress) => {

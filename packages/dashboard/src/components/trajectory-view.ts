@@ -106,8 +106,8 @@ function usage(value: unknown): TurnUsage | undefined {
 
 /** Bookkeeping events whose meaning the view already shows in other ways. */
 const FOLDED = new Set([
-  'trial-started',
-  'trial-completed',
+  'run-started',
+  'run-completed',
   'started',
   'transcript-step-completed',
 ]);

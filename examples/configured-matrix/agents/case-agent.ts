@@ -16,7 +16,7 @@ export const caseAgent = defineAgent({
         return reply;
       },
       // The agent's own log is saved with the results, even when the
-      // passing trial's sandbox is removed.
+      // passing run's sandbox is removed.
       async close() {
         await attach('case-agent.log', `${log.join('\n')}\n`);
       },

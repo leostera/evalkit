@@ -133,7 +133,7 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleDateString();
 }
 
-/** Scores are means over trials; two decimals are enough to compare them. */
+/** Scores are means over runs; two decimals are enough to compare them. */
 export function formatScore(score: number | undefined): string {
   if (score === undefined) return '—';
   return Number.isInteger(score) ? String(score) : score.toFixed(2);
@@ -161,16 +161,8 @@ export function formatMetric(value: number, unit?: string): string {
   return unit && unit !== 'tokens' ? `${number} ${unit}` : number;
 }
 
-/** The score, with how many trials it is over underneath. */
 export function ScoreCell({ run }: { run: RunSummary }) {
-  return (
-    <span className="flex flex-col tabular-nums">
-      <span>{formatScore(run.score)}</span>
-      <span className="text-xs text-kumo-subtle">
-        {run.completedTrials}/{run.requestedTrials} trials
-      </span>
-    </span>
-  );
+  return <span className="tabular-nums">{formatScore(run.score)}</span>;
 }
 
 /** When the run started ("3 h ago"), with how long it took underneath. */

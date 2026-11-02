@@ -1,3 +1,3 @@
 # Starter dataset
 
-This candidate-visible file is copied into every trial workspace.
+This candidate-visible file is copied into every run workspace.

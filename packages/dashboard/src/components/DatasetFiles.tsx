@@ -5,7 +5,7 @@ import { FileTree } from './FileTree.js';
 
 /**
  * Browses the files a static dataset places in each workspace. Computed
- * datasets only produce files when a trial runs, so they point there instead.
+ * datasets only produce files when a run runs, so they point there instead.
  */
 export function DatasetFiles({
   api,
@@ -61,8 +61,8 @@ export function DatasetFiles({
         <p className="text-[13px] text-kumo-subtle">Loading files…</p>
       ) : current.listing.kind === 'computed' ? (
         <p className="text-[13px] text-kumo-subtle">
-          Its files are computed when a trial starts; open a trial&apos;s
-          workspace to see them.
+          Its files are computed when a run starts; open a run&apos;s workspace
+          to see them.
         </p>
       ) : (
         <FileTree

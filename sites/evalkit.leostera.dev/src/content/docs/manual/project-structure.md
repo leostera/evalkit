@@ -9,7 +9,7 @@ A local EvalKit project is a directory from which you run the CLI. The generated
 my-project/
 ├── scenarios/greeting.eval.ts    # default-exported scenario, discovered automatically
 ├── agents/greeting-agent.ts      # AUT adapter
-├── datasets/greeting.dataset.ts  # files copied into each trial's workspace
+├── datasets/greeting.dataset.ts  # files copied into each run's workspace
 ├── datasets/greeting/            # the dataset's files
 ├── judges/matches-greeting.ts    # deterministic scorer
 ├── evalkit.config.ts             # styles matrix and execution settings
@@ -33,7 +33,7 @@ bun run check
 bun run evalkit run
 ```
 
-For an existing Bun project, use `bun add @leostera/evalkit` and then `bun run evalkit new .` from its root. Run `bun install` afterward to install the generated type-checking dependencies. This keeps existing package metadata, scripts, README, and authored scenarios; an existing scaffold path (including `evalkit.config.ts` or `scenarios/greeting.eval.ts`) causes an explicit error before any changes are made. The generated `package.json` installs `@leostera/evalkit` from npm. Import authoring helpers from `@leostera/evalkit` and runner helpers from `@leostera/evalkit/runner`, **not** the monorepo's internal `@evalkit/*` workspace names. The generated scenario is provider-free; its results and trial workspaces stay local. When contributing to this repository, `examples/starter` and `examples/configured-matrix` still use internal workspace imports.
+For an existing Bun project, use `bun add @leostera/evalkit` and then `bun run evalkit new .` from its root. Run `bun install` afterward to install the generated type-checking dependencies. This keeps existing package metadata, scripts, README, and authored scenarios; an existing scaffold path (including `evalkit.config.ts` or `scenarios/greeting.eval.ts`) causes an explicit error before any changes are made. The generated `package.json` installs `@leostera/evalkit` from npm. Import authoring helpers from `@leostera/evalkit` and runner helpers from `@leostera/evalkit/runner`, **not** the monorepo's internal `@evalkit/*` workspace names. The generated scenario is provider-free; its results and run workspaces stay local. When contributing to this repository, `examples/starter` and `examples/configured-matrix` still use internal workspace imports.
 
 ### Migrating from the previous npm scope
 
@@ -71,7 +71,7 @@ Each file is imported on its own. A file that throws while importing (for exampl
 | `run` selecting a broken file's scenarios, or all | Fails before running anything, naming the file. `--skip-broken` runs the rest and exits 1. |
 | `run --dry-run`, `build`, `dev`, `tidy`, `share`  | Warn and continue. `dev` shows the error in the dashboard.                                 |
 
-A config or explicit registry that throws still stops every command, because EvalKit cannot tell which scenarios it defines. Prefer doing expensive or credentialed work in a dataset's `onLoad`, which runs when a trial needs it rather than at import.
+A config or explicit registry that throws still stops every command, because EvalKit cannot tell which scenarios it defines. Prefer doing expensive or credentialed work in a dataset's `onLoad`, which runs when a run needs it rather than at import.
 
 ## Configuration and precedence
 
@@ -87,7 +87,7 @@ export default defineConfig({
   include: ['**/*.eval.ts', '**/*.eval.js'],
   // Custom excludes add to the built-in exclusions.
   exclude: ['**/experimental/**'],
-  execution: { concurrency: 4, trials: 2, maxCells: 100 },
+  execution: { concurrency: 4, repeat: 2, maxCells: 100 },
   reportDir: '_evalkit-results',
   sandboxDir: '_evalkit-sandbox',
   keepSandboxes: 'failed',
@@ -96,18 +96,18 @@ export default defineConfig({
 });
 ```
 
-| Setting                         | Effect                                                                                                                                                                                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `testDir`, `include`, `exclude` | Change the directory (default `scenarios`) and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive.                                                                                                                  |
-| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                                                                                                                                      |
-| `registry`                      | Supply an explicit `registerEvals(...)` registry. Takes precedence over `evals` and discovery.                                                                                                                                                                                  |
-| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/).                                                                                                                       |
-| `discovery.suites`              | `false` stops directories from forming suites. Default `true`.                                                                                                                                                                                                                  |
-| `execution`                     | Defaults for cell concurrency (4), trial override (otherwise each eval's policy), and maximum cells (100). Values must be positive integers.                                                                                                                                    |
-| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                                                                                                                                      |
-| `keepSandboxes`                 | Which trial workspaces stay in `sandboxDir` after a run: `'failed'` (default, trials that did not pass), `'all'` or `'none'`.                                                                                                                                                   |
-| `artifacts.exclude`             | Candidate paths left out of each trial's saved snapshot. A pattern without `/` matches that name at any depth. Default `DEFAULT_ARTIFACT_EXCLUDE`: `.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`. A scenario's `workspace.ignore` comes after it. |
-| `artifacts.attachments`         | Size limits for [attached files](/docs/manual/agents/#attaching-files): `{ maxFileBytes, maxTrialBytes }`. Default `DEFAULT_ATTACHMENT_LIMITS`: 5 MB per file (a larger one keeps its end), 20 MB per trial.                                                                    |
+| Setting                         | Effect                                                                                                                                                                                                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testDir`, `include`, `exclude` | Change the directory (default `scenarios`) and globs used for discovery. Default includes are `**/*.eval.ts` and `**/*.eval.js`; custom excludes are additive.                                                                                                                |
+| `evals`                         | Supply an explicit array of eval definitions instead of discovering files.                                                                                                                                                                                                    |
+| `registry`                      | Supply an explicit `registerEvals(...)` registry. Takes precedence over `evals` and discovery.                                                                                                                                                                                |
+| `matrix`                        | Add a matrix over **all registered evals**; if omitted, ordinary `run` still runs each eval once. See [CLI and matrices](/docs/manual/cli-and-matrices/).                                                                                                                     |
+| `discovery.suites`              | `false` stops directories from forming suites. Default `true`.                                                                                                                                                                                                                |
+| `execution`                     | Defaults for cell concurrency (4), `repeat` (overrides each scenario's), and maximum cells (100). Values must be positive integers.                                                                                                                                           |
+| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                                                                                                                                    |
+| `keepSandboxes`                 | Which run workspaces stay in `sandboxDir` after a run: `'failed'` (default, runs that did not pass), `'all'` or `'none'`.                                                                                                                                                     |
+| `artifacts.exclude`             | Candidate paths left out of each run's saved snapshot. A pattern without `/` matches that name at any depth. Default `DEFAULT_ARTIFACT_EXCLUDE`: `.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`. A scenario's `workspace.ignore` comes after it. |
+| `artifacts.attachments`         | Size limits for [attached files](/docs/manual/agents/#attaching-files): `{ maxFileBytes, maxRunBytes }`. Default `DEFAULT_ATTACHMENT_LIMITS`: 5 MB per file (a larger one keeps its end), 20 MB per run.                                                                      |
 
 Without a config, a default export from `src/registry.ts` is accepted as a legacy explicit registry. Once a config exists, that implicit registry is **not** loaded: set `registry` in the config to use it. `registry` > `evals` > discovery is the selection order. Prefer discovery for ordinary projects; use a registry only when you need full control over suites or explicitly registered matrices.
 
@@ -117,7 +117,7 @@ Each directory directly below `scenarios/` is a suite, named after the directory
 
 ## Authoring IDs
 
-Authored scenarios, suites, datasets, agent identities, and matrices use a stable lowercase kebab-case `id` such as `polite-greeting`. IDs must be unique within their category; use distinct agent identities for clear reporting. CLI selection is by **ID**, while optional `name` is for display. The runner generates UUIDs and `evalkit:run:...` / `evalkit:trial:...` URIs for executions, not for definitions.
+Authored scenarios, suites, datasets, agent identities, and matrices use a stable lowercase kebab-case `id` such as `polite-greeting`. IDs must be unique within their category; use distinct agent identities for clear reporting. CLI selection is by **ID**, while optional `name` is for display. The runner generates UUIDs and `evalkit:run:...` URIs for runs, not for definitions.
 
 ## Explicit registries
 

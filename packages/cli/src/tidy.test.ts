@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +12,18 @@ import {
   user,
   type EvalDefinition,
 } from '@evalkit/core';
-import { localReportStore, runEval, trialWorkspacePath } from '@evalkit/runner';
+import { localReportStore, runEval, runWorkspacePath } from '@evalkit/runner';
 import { createDashboardReportReader } from './dashboard-reports.js';
 import { projectEvalIds, tidyReports, tidySandboxes } from './tidy.js';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -39,7 +49,7 @@ async function reportsFor(evals: EvalDefinition[]) {
   roots.push(root);
   const reportRoot = join(root, '_evalkit-results');
   for (const evaluation of evals)
-    await Effect.runPromise(
+    await runOne(
       runEval(evaluation, {
         report: localReportStore(reportRoot),
         workspaceRoot: join(root, '_evalkit-sandbox'),
@@ -69,10 +79,7 @@ test('tidy archives runs of removed evals, is idempotent, and restores returning
   const first = await tidyReports({ registry: withoutGone, reportRoot });
   expect(first.archived.map((entry) => entry.evalId)).toEqual(['gone']);
   expect(first).toMatchObject({ current: 1, stillArchived: 0, restored: [] });
-  const runs = await createDashboardReportReader(
-    reportRoot,
-    withoutGone,
-  ).listRuns();
+  const runs = await createDashboardReportReader(reportRoot).listRuns();
   expect(runs.find((run) => run.evalId === 'gone')?.archived).toBe(true);
   expect(runs.find((run) => run.evalId === 'keep')?.archived).toBeUndefined();
 
@@ -88,7 +95,7 @@ test('tidy archives runs of removed evals, is idempotent, and restores returning
   await stat(join(reportRoot, restored.restored[0]!.runId, 'manifest.json'));
 });
 
-test('tidy removes sandboxes of passed trials and keeps failed ones', async () => {
+test('tidy removes sandboxes of passed runs and keeps failed ones', async () => {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-tidy-sandbox-'));
   roots.push(root);
   const reportRoot = join(root, '_evalkit-results');
@@ -100,7 +107,7 @@ test('tidy removes sandboxes of passed trials and keeps failed ones', async () =
     });
   // Kept by the runner, as runs before keepSandboxes did.
   const run = (evaluation: EvalDefinition) =>
-    Effect.runPromise(
+    runOne(
       runEval(evaluation, {
         report: localReportStore(reportRoot),
         workspaceRoot: sandboxRoot,
@@ -113,8 +120,8 @@ test('tidy removes sandboxes of passed trials and keeps failed ones', async () =
     scenario('passes', true),
     scenario('fails', false),
   ]);
-  const exists = (trialId: string) =>
-    stat(trialWorkspacePath(sandboxRoot, trialId)).then(
+  const exists = (runId: string) =>
+    stat(runWorkspacePath(sandboxRoot, runId)).then(
       () => true,
       () => false,
     );
@@ -125,10 +132,10 @@ test('tidy removes sandboxes of passed trials and keeps failed ones', async () =
   expect(await tidySandboxes({ registry, reportRoot, sandboxRoot })).toEqual({
     removed: 1,
   });
-  expect(await exists(passed.trialId)).toBe(false);
-  expect(await exists(failed.trialId)).toBe(true);
+  expect(await exists(passed.runId)).toBe(false);
+  expect(await exists(failed.runId)).toBe(true);
   expect(
     await tidySandboxes({ registry, reportRoot, sandboxRoot, keep: 'none' }),
   ).toEqual({ removed: 1 });
-  expect(await exists(failed.trialId)).toBe(false);
+  expect(await exists(failed.runId)).toBe(false);
 });

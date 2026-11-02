@@ -36,7 +36,7 @@ export function libraryAgents(catalog: readonly CatalogEval[]): LibraryAgent[] {
 
 export type JudgeUse = {
   scenario: CatalogEval;
-  /** `final` scores the finished trial; `checkpoint` is checked mid-conversation. */
+  /** `final` scores the finished run; `checkpoint` is checked mid-conversation. */
   placement: 'final' | 'checkpoint';
   step?: number;
 };

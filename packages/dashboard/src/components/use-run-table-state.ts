@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DashboardApi, RunSummary, TrialSummary } from '../api.js';
+import type { DashboardApi, RunDetail, RunSummary } from '../api.js';
 
 /** Keep text filtering responsive while persisting its settled value in the URL. */
 export function useRunFilters(
@@ -46,39 +46,40 @@ export function useRunFilters(
 }
 
 /**
- * One run's trials. A run can appear before its first trial is saved, so the
- * list reloads whenever the polled run summary changes.
+ * One run's scores, checks and attachments. A running run has none yet, so
+ * they reload whenever the polled run summary changes.
  */
-export function useRunTrials(api: DashboardApi, run: RunSummary | undefined) {
+export function useRunDetail(api: DashboardApi, run: RunSummary | undefined) {
   const [state, setState] = useState<{
-    runId?: string;
-    trials?: TrialSummary[];
+    signature?: string;
+    detail?: RunDetail;
     error?: string;
   }>({});
   const signature = run
-    ? `${run.id}:${run.status}:${run.completedTrials}:${run.completedAt ?? ''}`
+    ? `${run.id}:${run.status}:${run.completedAt ?? ''}`
     : '';
   useEffect(() => {
     if (!run) return;
     let active = true;
     void api
-      .listTrials(run.id)
-      .then((trials) => {
-        if (active) setState({ runId: run.id, trials });
+      .getRun(run.id)
+      .then((detail) => {
+        if (active) setState({ signature, detail });
       })
       .catch((cause: unknown) => {
         if (active)
           setState({
-            runId: run.id,
+            signature,
             error:
-              cause instanceof Error ? cause.message : 'Unable to load trials',
+              cause instanceof Error ? cause.message : 'Unable to load the run',
           });
       });
     return () => {
       active = false;
     };
-    // The signature captures every run change that can add or finish trials.
+    // The signature captures every run change that can add scores.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, signature]);
-  return state.runId === run?.id ? state : {};
+  // Keep showing the last detail while a newer one loads, but never another run's.
+  return state.signature?.startsWith(`${run?.id}:`) ? state : {};
 }

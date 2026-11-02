@@ -22,7 +22,7 @@ const standalone: CatalogEval = {
   id: 'echo',
   name: 'Echo Worker',
   path: 'echo',
-  trialCount: 1,
+  repeat: 1,
   agent: { kind: 'worker', runtimes: [{ name: 'local', kind: 'bun' }] },
   datasets: [],
   scorers: [],
@@ -86,16 +86,12 @@ test('a scenario shows its latest run, linked to the run page', () => {
         evalId: 'echo',
         status: 'running',
         startedAt: '2026-01-02T00:00:00Z',
-        completedTrials: 0,
-        requestedTrials: 1,
       },
       {
         id: 'old-run',
         evalId: 'echo',
         status: 'passed',
         startedAt: '2026-01-01T00:00:00Z',
-        completedTrials: 1,
-        requestedTrials: 1,
       },
     ],
   );
@@ -111,7 +107,7 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
       model: ['glm', 'scout'],
       mode: ['with-docs', 'without-docs'],
     },
-    trials: 3,
+    repeat: 3,
   };
   const runs: RunSummary[] = [
     {
@@ -121,8 +117,6 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
       parameters: { model: 'glm', mode: 'with-docs', turnBudget: 6 },
       status: 'passed',
       startedAt: '2026-01-01',
-      completedTrials: 3,
-      requestedTrials: 3,
     },
     {
       id: 'second',
@@ -131,8 +125,6 @@ test('matrix cells are rows with a column per axis and no filter selects', () =>
       parameters: { model: 'scout', mode: 'without-docs' },
       status: 'failed',
       startedAt: '2026-01-02',
-      completedTrials: 3,
-      requestedTrials: 3,
     },
   ];
   const html = render([], [standalone], runs, matrix);

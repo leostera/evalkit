@@ -2,7 +2,7 @@ import {
   DEFAULT_ATTACHMENT_LIMITS,
   type AttachmentEntry,
   type AttachmentLimits,
-  type TrialWriter,
+  type RunWriter,
 } from '@evalkit/core';
 
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$/;
@@ -43,16 +43,16 @@ export type AttachmentStore = {
 };
 
 /**
- * Saves a trial's attachments as `attachments/<name>` below its artifacts.
+ * Saves a run's attachments as `attachments/<name>` below its artifacts.
  * Content is stored as given and never interpreted. A file over
  * `maxFileBytes` keeps its end (where a log's errors are); one that would
- * take the trial past `maxTrialBytes` is rejected.
+ * take the run past `maxRunBytes` is rejected.
  */
 export function attachmentStore(
-  writer: Pick<TrialWriter, 'writeArtifact'>,
+  writer: Pick<RunWriter, 'writeArtifact'>,
   limits: AttachmentLimits = {},
 ): AttachmentStore {
-  const { maxFileBytes, maxTrialBytes } = {
+  const { maxFileBytes, maxRunBytes } = {
     ...DEFAULT_ATTACHMENT_LIMITS,
     ...limits,
   };
@@ -68,7 +68,7 @@ export function attachmentStore(
   ): Promise<void> {
     if (closed)
       throw new Error(
-        `Cannot attach ${JSON.stringify(name)}: the trial has finished`,
+        `Cannot attach ${JSON.stringify(name)}: the run has finished`,
       );
     attachmentName(name);
     if (typeof content !== 'string' && !(content instanceof Uint8Array))
@@ -83,9 +83,9 @@ export function attachmentStore(
       original.byteLength > maxFileBytes
         ? lastBytes(original, maxFileBytes, text)
         : original;
-    if (used + bytes.byteLength > maxTrialBytes)
+    if (used + bytes.byteLength > maxRunBytes)
       throw new Error(
-        `Attachment ${name} (${bytes.byteLength} bytes) would take this trial past its ${maxTrialBytes}-byte attachment limit (${used} used)`,
+        `Attachment ${name} (${bytes.byteLength} bytes) would take this run past its ${maxRunBytes}-byte attachment limit (${used} used)`,
       );
     // Reserve the name and space before writing, so concurrent calls cannot both fit.
     names.add(name);

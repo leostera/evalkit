@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -6,6 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
 import { localReportStore, runEval } from '@evalkit/runner';
 import { loadProject } from '@evalkit/cli/project';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 process.chdir(
   dirname(fileURLToPath(new URL('../package.json', import.meta.url))),
@@ -23,31 +33,25 @@ test('discovers and runs the starter eval without a config or registry', async (
   const evaluation = registry.get('greeting');
   if (!evaluation) throw new Error('Starter eval was not discovered');
 
-  const result = await Effect.runPromise(
+  const result = await runOne(
     runEval(evaluation, {
       report: localReportStore(reportRoot),
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3c',
-      trials: 1,
+      // The scenario repeats 10 times; once is enough here.
+      repeat: 1,
       runtime: 'local',
-      trialId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3d',
     }),
   );
 
-  expect(result.status).toBe('completed');
+  expect(result.status).toBe('passed');
   expect(result.scoring?.overall).toBe(1);
   const summary = JSON.parse(
     await readFile(
-      join(
-        reportRoot,
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b3c',
-        'trials',
-        '0197f17c-4d89-7f81-9d42-6c497e6f6b3d',
-        'summary.json',
-      ),
+      join(reportRoot, '0197f17c-4d89-7f81-9d42-6c497e6f6b3c', 'summary.json'),
       'utf8',
     ),
   ) as { status: string; artifacts: { path: string }[] };
-  expect(summary.status).toBe('completed');
+  expect(summary.status).toBe('passed');
   expect(summary.artifacts).toContainEqual(
     expect.objectContaining({
       kind: 'file',

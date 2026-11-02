@@ -8,6 +8,7 @@ export {
 } from './errors.js';
 
 import { attachmentStore } from './attachments.js';
+import { assertNoRemovedOptions } from '@evalkit/core/upgrade';
 import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
@@ -31,7 +32,7 @@ import {
   type RunResult,
   type RunStatus,
   type ResourceKind,
-  type RunWriter,
+  type Batch,
   type RunMetadata,
   type RunCatalog,
   type RunSource,
@@ -39,15 +40,15 @@ import {
   type KeepSandboxes,
   type MetricResult,
   type ScoreResult,
-  type TrialScoring,
+  type RunScoring,
   type Uuid,
   type TrajectoryEvent,
 } from '@evalkit/core';
 import { snapshotCandidateWorkspace } from './snapshot.js';
-import { createTrialWorkspace, type TrialWorkspace } from './workspace.js';
+import { createRunWorkspace, type RunWorkspace } from './workspace.js';
 import {
   prepareDatasets,
-  trialDatasets,
+  runDatasets,
   type PreparedDataset,
 } from './datasets.js';
 import { executeTranscript, type TranscriptProgress } from './transcript.js';
@@ -74,27 +75,28 @@ export {
 } from './datasets.js';
 export * from './local-report-reader.js';
 export { runMatrix, type MatrixSummary } from './matrix.js';
+export { upgradeReports, type UpgradeReport } from './upgrade.js';
 
 export type RunEvalOptions = {
   report: ReportStore;
+  /** The run's ID; only with one run (no `repeat`). */
   runId?: string;
-  trialId?: string;
   suiteId?: string;
-  /** Overrides the eval policy's requested number of independent trials. */
-  trials?: number;
+  /** Overrides the scenario's `repeat`: how many runs to start, as one batch. */
+  repeat?: number;
   /** Parameters made available to the AUT for this invocation. */
   parameters?: JsonObject;
-  /** Matrix provenance retained with every aggregate and trial manifest. */
+  /** Matrix provenance recorded in every run's manifest. */
   matrix?: RunMetadata['matrix'];
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
   runtime?: AgentRuntimeName;
-  /** Maximum number of trials from this aggregate run executing concurrently. */
+  /** Maximum number of this batch's runs executing concurrently. */
   concurrency?: number;
-  /** Optional shared limiter for coordinating trials across aggregate runs. */
+  /** Optional shared limiter for coordinating runs across batches. */
   semaphore?: Effect.Semaphore;
-  /** Base directory for persistent local trial workspaces. Omit for an ephemeral OS temp workspace. */
+  /** Base directory for persistent local run workspaces. Omit for an ephemeral OS temp workspace. */
   workspaceRoot?: string;
-  /** With `workspaceRoot`: which trial workspaces to keep afterwards. Default `'failed'`. */
+  /** With `workspaceRoot`: which run workspaces to keep afterwards. Default `'failed'`. */
   keepWorkspaces?: KeepSandboxes;
   /**
    * Candidate paths left out of the artifact snapshot, before the scenario's
@@ -110,7 +112,7 @@ export type RunEvalOptions = {
   /** Project root; dataset paths resolve against it. Default: the working directory. */
   root?: string;
   /**
-   * Aborting stops new trials from starting; running trials stop at their next
+   * Aborting stops new runs from starting; running ones stop at their next
    * step and are finalized as cancelled. Also passed to dataset loaders.
    */
   signal?: AbortSignal;
@@ -118,30 +120,30 @@ export type RunEvalOptions = {
    * Observes every trajectory event after it is recorded, for live progress.
    * It must not throw; an error it throws is ignored.
    */
-  onEvent?: (trial: TrialRef, event: TrajectoryEvent) => void;
+  onEvent?: (run: RunRef, event: TrajectoryEvent) => void;
   now?: () => Date;
 };
 
-/** Identifies the trial an observed event belongs to. */
-export type TrialRef = {
+/** Identifies the run an observed event belongs to. */
+export type RunRef = {
   runId: string;
-  trialId: string;
-  trialIndex: number;
+  batch?: Batch;
   evalId: string;
   suiteId?: string;
   parameters?: JsonObject;
 };
 
-type InternalTrialOptions = RunEvalOptions & {
-  runWriter?: RunWriter;
-  trialIndex?: number;
-};
+type RunOnceOptions = RunEvalOptions & { batch?: Batch };
 
-/** Effect-native aggregate eval execution entry point. */
+/**
+ * Runs a scenario: once, or `repeat` times as one batch. Resolves to one
+ * result per run started; runs never started because of cancellation are
+ * left out.
+ */
 export function runEval(
   definition: EvalDefinition,
   options: RunEvalOptions,
-): Effect.Effect<RunResult, unknown> {
+): Effect.Effect<RunResult[], unknown> {
   return Effect.gen(function* () {
     yield* Effect.logInfo('eval run started').pipe(
       Effect.annotateLogs({
@@ -150,22 +152,22 @@ export function runEval(
         ...(options.suiteId ? { suiteId: options.suiteId } : {}),
       }),
     );
-    const result = yield* Effect.tryPromise({
-      try: () => executeRun(definition, options),
+    const runs = yield* Effect.tryPromise({
+      try: () => executeBatch(definition, options),
       catch: (error) => error,
     });
     yield* Effect.logInfo('eval run finished').pipe(
       Effect.annotateLogs({
         evalId: authoringId(definition),
-        runId: result.runId,
-        status: result.status,
+        runs: runs.length,
+        passed: runs.filter((run) => run.status === 'passed').length,
       }),
     );
-    return result;
+    return runs;
   });
 }
 
-function createId(_kind: 'run' | 'trial'): string {
+function createId(): string {
   return crypto.randomUUID();
 }
 
@@ -185,12 +187,13 @@ function assertUuid(value: string, label: string): void {
 
 function runMetadata(
   definition: EvalDefinition,
-  options: RunEvalOptions,
+  options: RunOnceOptions,
   runId: string,
   startedAt: string,
+  extra: Pick<RunMetadata, 'workspaceIgnore' | 'datasets'>,
 ): RunMetadata {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
@@ -201,6 +204,8 @@ function runMetadata(
     parameters: options.parameters,
     matrix: options.matrix,
     startedAt,
+    ...(options.batch ? { batch: options.batch } : {}),
+    ...extra,
   };
 }
 
@@ -221,11 +226,11 @@ async function tryEmitError(
   }
 }
 
-/** Executes one aggregate eval run and its requested isolated trials. */
-async function executeRun(
+/** Starts `repeat` runs of a scenario, as one batch when there are several. */
+async function executeBatch(
   definition: EvalDefinition,
   options: RunEvalOptions,
-): Promise<RunResult> {
+): Promise<RunResult[]> {
   let hasUser = false;
   for (const step of definition.transcript) {
     if (step.kind === 'user') hasUser = true;
@@ -234,122 +239,45 @@ async function executeRun(
   }
   if (definition.judge && definition.judge === definition.agent)
     throw new Error('Judge agent must be distinct from the agent under test');
+  assertNoRemovedOptions(definition);
   if (options.runId) assertUuid(options.runId, 'runId');
-  if (options.trialId) assertUuid(options.trialId, 'trialId');
-  const requestedTrials = options.trials ?? definition.policy?.trials ?? 1;
-  if (!Number.isInteger(requestedTrials) || requestedTrials < 1) {
-    throw new Error(
-      `Trial count must be a positive integer; received ${requestedTrials}`,
-    );
-  }
-  if (requestedTrials === 1) return runTrial(definition, options);
+  const repeat = options.repeat ?? definition.repeat ?? 1;
+  if (!Number.isInteger(repeat) || repeat < 1)
+    throw new Error(`repeat must be a positive integer; received ${repeat}`);
+  if (repeat === 1) return [await runOnce(definition, options)];
+  if (options.runId)
+    throw new Error('runId names one run; it cannot be used with repeat');
 
-  const now = options.now ?? (() => new Date());
-  const aggregateStartedAt = now();
-  const runId = options.runId ?? createId('run');
-  const runWriter = await options.report.startRun(
-    runMetadata(definition, options, runId, aggregateStartedAt.toISOString()),
-    { catalog: options.catalog },
-  );
+  const batchId = createId();
   const signal = options.signal;
-  const trialEffects = Array.from(
-    { length: requestedTrials },
-    (_, trialIndex) => {
-      const trial = Effect.tryPromise({
-        // Once cancelled, trials that have not started are never created.
-        try: async () =>
-          signal?.aborted
-            ? undefined
-            : runTrial(definition, {
-                ...options,
-                runId,
-                trialId: createId('trial'),
-                trials: 1,
-                runWriter,
-                trialIndex,
-              }),
-        catch: (error) => error,
-      });
-      return options.semaphore
-        ? options.semaphore.withPermits(1)(trial)
-        : trial;
-    },
-  );
-  const trials = (
-    await Effect.runPromise(
-      Effect.all(trialEffects, {
-        concurrency: options.concurrency ?? 32,
-      }),
-    )
-  ).filter((trial): trial is RunResult => trial !== undefined);
-  const counts = trialCounts(trials);
-  const status: RunStatus =
-    counts.cancelled || signal?.aborted
-      ? 'cancelled'
-      : trials.some((trial) => trial.status === 'failed')
-        ? 'failed'
-        : 'completed';
-  const endedAt = now();
-  await runWriter.finalize({
-    status,
-    endedAt: endedAt.toISOString(),
-    durationMs: endedAt.getTime() - aggregateStartedAt.getTime(),
-    trialCount: trials.length,
-    passed: counts.passed,
-    failed: counts.failed,
-    ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
+  const runs = Array.from({ length: repeat }, (_, index) => {
+    const run = Effect.tryPromise({
+      // Once cancelled, runs that have not started are never created.
+      try: async () =>
+        signal?.aborted
+          ? undefined
+          : runOnce(definition, {
+              ...options,
+              batch: { id: batchId, index, size: repeat },
+            }),
+      catch: (error) => error,
+    });
+    return options.semaphore ? options.semaphore.withPermits(1)(run) : run;
   });
-  if (!trials.length)
-    return {
-      runId,
-      runUri: canonicalId('run', runId),
-      trialId: '',
-      trialUri: canonicalId('trial', runId),
-      trialIndex: 0,
-      evalId: authoringId(definition),
-      status,
-      reportLocation: runWriter.location,
-      trialCount: 0,
-      passed: 0,
-      failed: 0,
-      aggregateScoring: { passed: 0, failed: 0, passRate: 0 },
-      trials: [],
-    };
-  const overallScores = trials
-    .map((trial) => trial.scoring?.overall)
-    .filter((score): score is number => score !== undefined);
-  return {
-    ...trials[0]!,
-    runId,
-    evalId: authoringId(definition),
-    status,
-    trialCount: trials.length,
-    passed: counts.passed,
-    failed: counts.failed,
-    aggregateScoring: {
-      passed: counts.passed,
-      failed: counts.failed,
-      ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
-      passRate: counts.passed / trials.length,
-      ...(overallScores.length
-        ? {
-            overall:
-              overallScores.reduce((sum, score) => sum + score, 0) /
-              overallScores.length,
-          }
-        : {}),
-    },
-    trials,
-  };
+  return (
+    await Effect.runPromise(
+      Effect.all(runs, { concurrency: options.concurrency ?? 32 }),
+    )
+  ).filter((run): run is RunResult => run !== undefined);
 }
 
-async function runTrial(
+/** One execution: a session in its own sandbox, scored and reported. */
+async function runOnce(
   definition: EvalDefinition,
-  options: InternalTrialOptions,
+  options: RunOnceOptions,
 ): Promise<RunResult> {
   const now = options.now ?? (() => new Date());
-  const runId = options.runId ?? createId('run');
-  const trialId = options.trialId ?? createId('trial');
+  const runId = options.runId ?? createId();
   const startedAt = now().toISOString();
   const selectedRuntime = options.runtime;
   const runtime = selectedRuntime
@@ -362,14 +290,13 @@ async function runTrial(
   }
 
   const randomSeed = crypto.getRandomValues(new Uint32Array(1))[0]!;
-  const trialIndex = options.trialIndex ?? 0;
+  const batch = options.batch;
   const signal = options.signal ?? new AbortController().signal;
   const root = options.root ?? process.cwd();
   const baseContext = {
     runId,
     evalId: authoringId(definition),
-    trialId,
-    trialIndex,
+    ...(batch ? { batch } : {}),
     metadata: {
       ...toJsonObject(definition.metadata ?? {}, `${definition.id}.metadata`),
       randomSeed,
@@ -377,15 +304,14 @@ async function runTrial(
     ...(options.parameters ? { parameters: options.parameters } : {}),
     ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
-  // Loading may fail; the trial then fails with the error recorded in its report.
+  // Loading may fail; the run then errors with the error recorded in its report.
   let datasetsError: unknown;
   let prepared: PreparedDataset[] = [];
   try {
     prepared = await prepareDatasets(definition.datasets ?? [], root, {
       evalId: baseContext.evalId,
       runId,
-      trialId,
-      trialIndex,
+      ...(batch ? { batch } : {}),
       seed: randomSeed,
       parameters: options.parameters ?? {},
       signal,
@@ -400,49 +326,34 @@ async function runTrial(
     ...(definition.workspace?.ignore ?? []),
   ];
   const events: TrajectoryEvent[] = [];
-  const runWriter =
-    options.runWriter ??
-    (await options.report.startRun(
-      runMetadata(definition, options, runId, startedAt),
-      { catalog: options.catalog },
-    ));
-  const trialWriter = await runWriter.startTrial({
-    schemaVersion: 5,
-    runId,
-    runUri: canonicalId('run', runId),
-    trialId,
-    trialUri: canonicalId('trial', trialId),
-    trialIndex: options.trialIndex ?? 0,
-    evalId: definition.id,
-    ...(definition.agent.identity ? { aut: definition.agent.identity } : {}),
-    parameters: options.parameters,
-    matrix: options.matrix,
-    startedAt,
-    workspaceIgnore,
-    ...(prepared.length ? { datasets: trialDatasets(prepared) } : {}),
-  });
-  const attachments = attachmentStore(trialWriter, options.attachmentLimits);
+  const runWriter = await options.report.startRun(
+    runMetadata(definition, options, runId, startedAt, {
+      workspaceIgnore,
+      ...(prepared.length ? { datasets: runDatasets(prepared) } : {}),
+    }),
+    { catalog: options.catalog },
+  );
+  const attachments = attachmentStore(runWriter, options.attachmentLimits);
 
   let writeChain = Promise.resolve();
   let reportingFailed = false;
-  const trialRef: TrialRef = {
+  const runRef: RunRef = {
     runId,
-    trialId,
-    trialIndex,
+    ...(batch ? { batch } : {}),
     evalId: definition.id,
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(options.parameters ? { parameters: options.parameters } : {}),
   };
   const observe = (event: TrajectoryEvent) => {
     try {
-      options.onEvent?.(trialRef, event);
+      options.onEvent?.(runRef, event);
     } catch {
-      // Progress display must never affect a trial.
+      // Progress display must never affect a run.
     }
   };
   const append = async (event: TrajectoryEvent): Promise<void> => {
     events.push(event);
-    writeChain = writeChain.then(() => trialWriter.appendEvent(event));
+    writeChain = writeChain.then(() => runWriter.appendEvent(event));
     try {
       await writeChain;
       observe(event);
@@ -460,11 +371,11 @@ async function runTrial(
   const onAutEvent = (event: AutEventInput) =>
     emitAut(normalizeAutEvent(event, now));
 
-  let workspace: TrialWorkspace | undefined;
+  let workspace: RunWorkspace | undefined;
   let context: AutContext | undefined;
   let primaryError: unknown;
   let closeError: unknown;
-  let scoring: TrialScoring | undefined;
+  let scoring: RunScoring | undefined;
   let artifacts: ArtifactEntry[] | undefined;
   let status: RunStatus = 'running';
   const progress: TranscriptProgress = { checkpoints: [], stoppedEarly: false };
@@ -472,7 +383,7 @@ async function runTrial(
   const workspaceScope = await Effect.runPromise(Scope.make());
 
   try {
-    await emitRunner({ kind: 'trial-started', timestamp: now().toISOString() });
+    await emitRunner({ kind: 'run-started', timestamp: now().toISOString() });
     if (signal.aborted) throw cancelled();
     if (datasetsError)
       throw new DatasetError({
@@ -485,8 +396,7 @@ async function runTrial(
     workspace = await runBoundary(
       Effect.acquireRelease(
         Effect.tryPromise({
-          try: () =>
-            createTrialWorkspace(trialId, prepared, options.workspaceRoot),
+          try: () => createRunWorkspace(runId, prepared, options.workspaceRoot),
           catch: (cause) =>
             new DatasetError({
               cause,
@@ -510,28 +420,28 @@ async function runTrial(
                 cleanupError = error;
               }).pipe(
                 Effect.tap(() =>
-                  Effect.logError('trial workspace cleanup failed'),
+                  Effect.logError('run workspace cleanup failed'),
                 ),
               ),
             ),
           ),
       ).pipe(Effect.provideService(Scope.Scope, workspaceScope)),
     );
-    const trialWorkspace = workspace;
-    const trialContext: AutContext = {
+    const runWorkspace = workspace;
+    const runContext: AutContext = {
       ...baseContext,
       data: candidateData,
-      workspace: trialWorkspace.artifacts.candidate,
-      evaluatorWorkspace: trialWorkspace.artifacts.evaluator,
+      workspace: runWorkspace.artifacts.candidate,
+      evaluatorWorkspace: runWorkspace.artifacts.evaluator,
     };
-    context = trialContext;
+    context = runContext;
     // The Effect bracket closes the AUT even when a step or report append fails.
     await runBoundary(
       Effect.acquireUseRelease(
         Effect.tryPromise({
           try: () =>
             definition.agent.start({
-              context: trialContext,
+              context: runContext,
               ...(runtime ? { runtime } : {}),
               onEvent: onAutEvent,
               attach: attachments.attach,
@@ -546,8 +456,8 @@ async function runTrial(
           Effect.tryPromise({
             try: () =>
               executeTranscript(definition, session, {
-                context: trialContext,
-                artifacts: trialWorkspace.artifacts,
+                context: runContext,
+                artifacts: runWorkspace.artifacts,
                 events,
                 now,
                 randomSeed,
@@ -577,7 +487,7 @@ async function runTrial(
               ),
             ),
           ),
-      ).pipe(Effect.annotateLogs({ runId, trialId, evalId: definition.id })),
+      ).pipe(Effect.annotateLogs({ runId, evalId: definition.id })),
     );
   } catch (error) {
     primaryError = error;
@@ -631,13 +541,13 @@ async function runTrial(
         )),
       );
     scoring = scoreSummary(scoreResults, checkpoints, skippedScorers, metrics);
-    await trialWriter.writeScores(scoring);
+    await runWriter.writeScores(scoring);
 
     if (workspace) {
       try {
         artifacts = await snapshotCandidateWorkspace(
           workspace.artifacts.candidate.root,
-          trialWriter,
+          runWriter,
           workspaceIgnore,
         );
       } catch (captureError) {
@@ -662,51 +572,43 @@ async function runTrial(
   if (!primaryError) {
     try {
       await emitRunner({
-        kind: 'trial-completed',
+        kind: 'run-completed',
         timestamp: now().toISOString(),
       });
     } catch (error) {
       primaryError = error;
     }
   }
-  status = wasCancelled ? 'cancelled' : primaryError ? 'failed' : 'completed';
+  status = wasCancelled
+    ? 'cancelled'
+    : primaryError
+      ? 'errored'
+      : scoring.passed
+        ? 'passed'
+        : 'failed';
 
   const error = primaryError ? recordError(primaryError) : undefined;
   const attached = await attachments.close();
   const endedAt = now().toISOString();
-  await trialWriter.finalize({
+  const durationMs =
+    new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  await runWriter.finalize({
     status,
     endedAt,
-    durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
+    durationMs,
     scoring,
     ...(artifacts ? { artifacts } : {}),
     ...(attached.length ? { attachments: attached } : {}),
     ...(error ? { error } : {}),
   });
-  if (!options.runWriter) {
-    const counts = trialCounts([{ status, scoring }]);
-    await runWriter.finalize({
-      status,
-      endedAt,
-      durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
-      trialCount: 1,
-      passed: counts.passed,
-      failed: counts.failed,
-      ...(counts.cancelled ? { cancelled: counts.cancelled } : {}),
-      ...(error ? { error } : {}),
-    });
-  }
-
   return {
     runId,
     runUri: canonicalId('run', runId),
-    trialId,
-    trialUri: canonicalId('trial', trialId),
-    trialIndex: options.trialIndex ?? 0,
     evalId: definition.id,
     status,
+    ...(batch ? { batch } : {}),
     reportLocation: runWriter.location,
-    durationMs: new Date(endedAt).getTime() - new Date(startedAt).getTime(),
+    durationMs,
     scoring,
     ...(error ? { error } : {}),
   };
@@ -726,22 +628,7 @@ function datasetValues(
   return values;
 }
 
-/** A cancelled trial is neither passed nor failed. */
-function trialCounts(
-  trials: readonly Pick<RunResult, 'status' | 'scoring'>[],
-): { passed: number; failed: number; cancelled: number } {
-  let passed = 0;
-  let failed = 0;
-  let cancelledTrials = 0;
-  for (const trial of trials) {
-    if (trial.status === 'cancelled') cancelledTrials++;
-    else if (trial.status === 'completed' && trial.scoring?.passed) passed++;
-    else failed++;
-  }
-  return { passed, failed, cancelled: cancelledTrials };
-}
-
-/** Persistent workspaces of trials that did not pass are kept for debugging by default. */
+/** Persistent workspaces of runs that did not pass are kept for debugging by default. */
 function keepWorkspace(
   policy: KeepSandboxes = 'failed',
   passed: boolean,
@@ -749,4 +636,4 @@ function keepWorkspace(
   return policy === 'all' || (policy === 'failed' && !passed);
 }
 
-export { trialWorkspacePath } from './workspace.js';
+export { runWorkspacePath } from './workspace.js';

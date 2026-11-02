@@ -1,4 +1,4 @@
-import type { ScenarioResult } from './run-reporter.js';
+import type { RunReport } from './run-reporter.js';
 import { parameterLabel } from './run-reporter.js';
 
 function escape(text: string): string {
@@ -18,11 +18,11 @@ const seconds = (ms: number | undefined) => ((ms ?? 0) / 1000).toFixed(3);
 
 /**
  * A JUnit XML report: one test suite per EvalKit suite (`default` for
- * scenarios without one) and one test case per scenario, per matrix cell
- * when it has parameters.
+ * scenarios without one) and one test case per run, named after its scenario
+ * and parameters, and its place in a batch (` #2`) when repeated.
  */
-export function junitReport(scenarios: readonly ScenarioResult[]): string {
-  const bySuite = new Map<string, ScenarioResult[]>();
+export function junitReport(scenarios: readonly RunReport[]): string {
+  const bySuite = new Map<string, RunReport[]>();
   for (const scenario of scenarios) {
     const suite = scenario.suiteId ?? 'default';
     bySuite.set(suite, [...(bySuite.get(suite) ?? []), scenario]);
@@ -37,9 +37,10 @@ export function junitReport(scenarios: readonly ScenarioResult[]): string {
     const time = cases.reduce((sum, c) => sum + (c.durationMs ?? 0), 0);
     const testcases = cases.map((scenario) => {
       const parameters = parameterLabel(scenario.parameters);
-      const name = parameters
-        ? `${scenario.evalId} [${parameters}]`
-        : scenario.evalId;
+      const batch = scenario.result.batch;
+      const name =
+        (parameters ? `${scenario.evalId} [${parameters}]` : scenario.evalId) +
+        (batch ? ` #${batch.index + 1}` : '');
       const attributes = `name="${escape(name)}" classname="${escape(suite)}" time="${seconds(scenario.durationMs)}"`;
       if (scenario.outcome === 'failed') {
         const message = scenario.reasons.join('; ') || 'failed';
@@ -58,9 +59,8 @@ export function junitReport(scenarios: readonly ScenarioResult[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="evalkit" tests="${total}" failures="${failures}">\n${suites.join('\n')}\n</testsuites>\n`;
 }
 
-/** True when every score of every trial was skip()ped. */
-function allSkipped(scenario: ScenarioResult): boolean {
-  const trials = scenario.result.trials ?? [scenario.result];
-  const results = trials.flatMap((trial) => trial.scoring?.results ?? []);
+/** True when every score was skip()ped. */
+function allSkipped(scenario: RunReport): boolean {
+  const results = scenario.result.scoring?.results ?? [];
   return results.length > 0 && results.every((score) => score.skipped);
 }

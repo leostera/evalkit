@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import type { RunResult } from '@evalkit/core';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -7,11 +8,20 @@ import { loadProject } from '@evalkit/cli/project';
 import {
   localReportStore,
   readRunSummary,
-  readTrialEvents,
-  readTrialManifest,
-  readTrialScoring,
+  readRunEvents,
+  readRunManifest,
+  readRunScoring,
   runEval,
 } from '@evalkit/runner';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const projectRoot = resolve(import.meta.dir, '..');
 
@@ -29,7 +39,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     const run = (id: string) => {
       const evaluation = registry.get(id);
       if (!evaluation) throw new Error(`Eval ${id} was not discovered`);
-      return Effect.runPromise(
+      return runOne(
         runEval(evaluation, {
           report: localReportStore(reports),
           workspaceRoot: join(temporaryRoot, 'sandbox'),
@@ -39,29 +49,20 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     };
 
     const passed = await run('write-revise');
-    expect(passed.status).toBe('completed');
+    expect(passed.status).toBe('passed');
     expect(passed.scoring?.passed).toBe(true);
     expect(passed.scoring?.overall).toBe(1);
-    expect(
-      (await readTrialManifest(reports, passed.runId, passed.trialId))
-        .schemaVersion,
-    ).toBe(5);
-    const passedScores = await readTrialScoring(
-      reports,
-      passed.runId,
-      passed.trialId,
+    expect((await readRunManifest(reports, passed.runId)).schemaVersion).toBe(
+      6,
     );
+    const passedScores = await readRunScoring(reports, passed.runId);
     expect(passedScores.checkpoints?.map((entry) => entry.status)).toEqual([
       'passed',
       'passed',
       'passed',
       'passed',
     ]);
-    const passedEvents = await readTrialEvents(
-      reports,
-      passed.runId,
-      passed.trialId,
-    );
+    const passedEvents = await readRunEvents(reports, passed.runId);
     const match = passedScores.checkpoints?.[1]?.matchedToolCall;
     expect(passedEvents[match!.eventIndex]).toMatchObject({
       source: 'aut',
@@ -74,16 +75,14 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
       ),
     ).toHaveLength(2);
     expect(await readRunSummary(reports, passed.runId)).toMatchObject({
-      passed: 1,
-      failed: 0,
+      status: 'passed',
     });
 
     const judged = await run('judged-reply');
-    expect(judged.status).toBe('completed');
+    expect(judged.status).toBe('passed');
     expect(judged.scoring?.passed).toBe(true);
     expect(
-      (await readTrialScoring(reports, judged.runId, judged.trialId))
-        .checkpoints?.[0],
+      (await readRunScoring(reports, judged.runId)).checkpoints?.[0],
     ).toMatchObject({
       kind: 'judge',
       status: 'passed',
@@ -105,22 +104,18 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     });
 
     const failed = await run('failfast-file');
-    expect(failed.status).toBe('completed'); // assertion failure is not an execution error
+    expect(failed.status).toBe('failed'); // a failed assertion, not an execution error (errored)
     expect(failed.scoring?.passed).toBe(false);
     expect(failed.scoring?.skippedScorers).toEqual(['final file is 2113']);
     expect(failed.scoring?.results.map((entry) => entry.name)).toEqual([
       'first turn was observed',
     ]);
     expect(
-      (
-        await readTrialScoring(reports, failed.runId, failed.trialId)
-      ).checkpoints?.map((entry) => entry.status),
+      (await readRunScoring(reports, failed.runId)).checkpoints?.map(
+        (entry) => entry.status,
+      ),
     ).toEqual(['passed', 'passed', 'failed', 'skipped']);
-    const failedEvents = await readTrialEvents(
-      reports,
-      failed.runId,
-      failed.trialId,
-    );
+    const failedEvents = await readRunEvents(reports, failed.runId);
     expect(
       failedEvents.filter(
         (event) => event.source === 'aut' && event.kind === 'tool-call',
@@ -138,22 +133,12 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     ).toHaveLength(2);
     expect(
       await readFile(
-        join(
-          reports,
-          failed.runId,
-          'trials',
-          failed.trialId,
-          'artifacts',
-          'candidate',
-          'number.txt',
-        ),
+        join(reports, failed.runId, 'artifacts', 'candidate', 'number.txt'),
         'utf8',
       ),
     ).toBe('wrong');
     expect(await readRunSummary(reports, failed.runId)).toMatchObject({
-      status: 'completed',
-      passed: 0,
-      failed: 1,
+      status: 'failed',
     });
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

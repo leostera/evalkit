@@ -29,7 +29,7 @@ import {
 
 type Mode = 'conversation' | 'events';
 
-/** A trial's trajectory: the conversation by default, every raw event on demand. */
+/** A run's trajectory: the conversation by default, every raw event on demand. */
 export function Trajectory({ events }: { events: TrajectoryEvent[] }) {
   const [mode, setMode] = useState<Mode>('conversation');
   const view = trajectoryView(events);
@@ -104,7 +104,7 @@ function Timeline({ items }: { items: TrajectoryItem[] }) {
   );
 }
 
-/** Icon on the rail, content, and the time since the trial started. */
+/** Icon on the rail, content, and the time since the run started. */
 function Row({
   icon,
   tone = 'default',

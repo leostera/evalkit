@@ -22,11 +22,7 @@ import {
 } from './terminal.js';
 import { detectSource, runCatalog, shortSource } from './source.js';
 import { loadProject, type LoadError } from './project.js';
-import {
-  createRunReporter,
-  scenarioResult,
-  totalsLine,
-} from './run-reporter.js';
+import { createRunReporter, runReport, totalsLine } from './run-reporter.js';
 import { junitReport } from './junit.js';
 import { VERSION } from './version.js';
 
@@ -45,7 +41,7 @@ export function normalizeRunOptions(
     'chat-timeout-ms'?: string;
     'turn-budget'?: string;
     concurrency?: string;
-    trials?: string;
+    repeat?: string;
     json?: boolean;
     'dry-run'?: boolean;
     all?: boolean;
@@ -104,7 +100,7 @@ export function normalizeRunOptions(
     parameters,
     selection,
     concurrency: integer('concurrency'),
-    trials: integer('trials'),
+    repeat: integer('repeat'),
   };
 }
 
@@ -243,7 +239,11 @@ export async function runProjectCommand(
     throw new Error(
       'Selection contains no eligible cells; check cases and exclusions',
     );
-  const trials = parsed.trials ?? project.config.execution?.trials;
+  const repeat = parsed.repeat ?? project.config.execution?.repeat;
+  // Each cell starts its scenario's `repeat` runs unless --repeat overrides it.
+  let runs = 0;
+  for (const cell of matrix.cells(selection))
+    runs += repeat ?? cell.eval.repeat ?? 1;
   const plan = {
     matrix: authoringId(matrix),
     // The scenarios that will run: the requested ones, or all of the matrix's.
@@ -251,9 +251,10 @@ export async function runProjectCommand(
       ? requestedEvals
       : matrix.evals.map((definition) => definition.id),
     cells,
+    runs,
     parameters: selection.parameters,
     overrides: selection.overrides,
-    trials: trials ?? 'eval policy',
+    repeat: repeat ?? 'scenario',
   };
   if (values['dry-run']) {
     console.log(JSON.stringify(plan, null, 2));
@@ -295,7 +296,7 @@ export async function runProjectCommand(
   const suiteFor = (evalId: string) => suiteId ?? suiteOf.get(evalId);
   if (!values.json)
     console.log(
-      `  Running ${plural(cells, 'scenario')}${sweeps ? ` from matrix ${plan.matrix}` : ''}${suiteId ? ` from suite ${suiteId}` : ''}` +
+      `  Running ${runs === cells ? plural(cells, 'scenario') : `${plural(runs, 'run')} of ${plural(cells, 'scenario')}`}${sweeps ? ` from matrix ${plan.matrix}` : ''}${suiteId ? ` from suite ${suiteId}` : ''}` +
         (source
           ? ` at ${shortSource(source)}${source.ref ? ` (${source.ref})` : ''}`
           : ' (untracked: not in a git repository)') +
@@ -304,10 +305,13 @@ export async function runProjectCommand(
   const reporter = createRunReporter({
     interactive: interactive && !values.json,
     verbose: Boolean(values.verbose),
-    total: cells,
-    labelFor: (trial) => {
-      const suite = suiteFor(trial.evalId);
-      return suite ? `${suite}/${trial.evalId}` : trial.evalId;
+    total: runs,
+    labelFor: (run) => {
+      const suite = suiteFor(run.evalId);
+      const label = suite ? `${suite}/${run.evalId}` : run.evalId;
+      return run.batch
+        ? `${label} #${run.batch.index + 1}/${run.batch.size}`
+        : label;
     },
     write: values.json ? () => {} : undefined,
   });
@@ -330,7 +334,7 @@ export async function runProjectCommand(
           selection,
           concurrency:
             parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
-          trials,
+          ...(repeat ? { repeat } : {}),
           ...(suiteId ? { suiteId } : {}),
           suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
           ...(values.local ? { runtime: 'local' as const } : {}),
@@ -342,26 +346,28 @@ export async function runProjectCommand(
           artifactExclude: project.config.artifacts?.exclude,
           attachmentLimits: project.config.artifacts?.attachments,
           signal: controller.signal,
-          onEvent: (trial, event) => reporter.onEvent(trial, event),
-          onResult: (cell, result) => {
-            const scenario = scenarioResult(
-              cell,
-              result,
-              suiteFor(authoringId(cell.eval)),
-            );
-            if (values.json)
-              console.log(
-                JSON.stringify({
-                  cell: {
-                    key: cell.key,
-                    eval: authoringId(cell.eval),
-                    parameters: cell.parameters,
-                  },
-                  outcome: scenario.outcome,
-                  result,
-                }),
+          onEvent: (run, event) => reporter.onEvent(run, event),
+          onResult: (cell, results) => {
+            for (const result of results) {
+              const report = runReport(
+                cell,
+                result,
+                suiteFor(authoringId(cell.eval)),
               );
-            reporter.onScenario(scenario);
+              if (values.json)
+                console.log(
+                  JSON.stringify({
+                    cell: {
+                      key: cell.key,
+                      eval: authoringId(cell.eval),
+                      parameters: cell.parameters,
+                    },
+                    outcome: report.outcome,
+                    result,
+                  }),
+                );
+              reporter.onRun(report);
+            }
           },
         }),
       ),
@@ -373,7 +379,7 @@ export async function runProjectCommand(
   if (values.junit) {
     const file = resolve(cwd, values.junit);
     await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, junitReport(reporter.scenarios()));
+    await writeFile(file, junitReport(reporter.runs()));
   }
   if (values.json) console.log(JSON.stringify({ summary: totals }));
   else {

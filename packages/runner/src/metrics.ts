@@ -8,7 +8,7 @@ import {
 } from '@evalkit/core';
 
 /**
- * What EvalKit measures for every trial from its trajectory: the agent's time
+ * What EvalKit measures for every run from its trajectory: the agent's time
  * (first event to the last one before final scoring), tokens when the agent
  * reported usage, and tool calls.
  */

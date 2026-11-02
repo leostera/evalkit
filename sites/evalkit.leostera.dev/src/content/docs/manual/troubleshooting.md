@@ -3,7 +3,7 @@ title: Troubleshooting and limitations
 description: Diagnose discovery, dataset, runtime, matrix, scoring, and report problems.
 ---
 
-Start with a side-effect-free plan from your eval project directory: `bun run evalkit run --dry-run` (or `run --matrix <matrix-id> --dry-run`). If a run has begun, inspect the run/trial `summary.json`, `scoring.json`, and `trajectory.jsonl` in `_evalkit-results/` before changing the eval. See [Results and reports](/docs/manual/results/).
+Start with a side-effect-free plan from your eval project directory: `bun run evalkit run --dry-run` (or `run --matrix <matrix-id> --dry-run`). If a run has begun, inspect the run's `summary.json`, `scoring.json`, and `trajectory.jsonl` in `_evalkit-results/` before changing the eval. See [Results and reports](/docs/manual/results/).
 
 ## Project loading and selection
 
@@ -21,12 +21,12 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 - **`completed` run, but a failing eval or nonzero exit:** Execution status and scoring pass/fail are separate. Read `scoring.json` for `passed: false`, errors, and numeric values, then use the CLI exit status or run `summary.failed` for a gate. A score below 1 does not pass unless the predicate has `passAt` or sets `passed: true`. [Score semantics](/docs/manual/scoring-and-evals/#score-return-values)
 - **Invalid score / scorer error:** Return a finite value between 0 and 1, or `skip(reason)`; `evidence` must convert to JSON (no functions, `bigint` or cycles). Predicate exceptions are captured as failed scores; other scorers can still execute. With a failed AUT, only final predicates or judges marked `supportsPartial: true` can run if a context/workspace exists. [Partial errors](/docs/manual/scoring-and-evals/#partial-execution-and-errors)
 - **Missing eval `judge` / judge error:** Any inline or final `judge(...)` rule requires a separate eval-level `judge` agent; the AUT is not implicitly reused. The judge must emit a JSON verdict in `completed.output` or its assistant message. A missing/invalid verdict or failed judge session is a checkpoint execution error inline or a final scorer error. Judge usage appears only if the judge agent emits it; cost is not measured automatically. [Judges](/docs/manual/scoring-and-evals/#judge-agents)
-- **Unexpected number of runs or provider charges:** Inspect `--dry-run`. A matrix has evals × choices across axes, and _each cell_ may request multiple trials. Narrow with `--eval`, `--model`/`--mode`, or `--select`; cap cells with `execution.maxCells` and set `--trials` deliberately. [CLI and matrices](/docs/manual/cli-and-matrices/)
+- **Unexpected number of runs or provider charges:** Inspect `--dry-run`. A matrix has evals × choices across axes, and _each cell_ may `repeat` several times. Narrow with `--eval`, `--model`/`--mode`, or `--select`; cap cells with `execution.maxCells` and set `--repeat` deliberately. [CLI and matrices](/docs/manual/cli-and-matrices/)
 - **Unknown matrix axis/value or `--local` failure:** A selection must match a configured axis and existing choice (with the right JSON type). `--param` cannot replace an axis selection; a forced local runtime must be declared by the AUT. Check `context.parameters` in the adapter if a selection has no effect. [Matrix selection](/docs/manual/cli-and-matrices/#matrix-definitions-and-selection)
 
 ## Dashboard and reports
 
-- **No reports or a running entry with no details:** `dev` reads the current project's `reportDir`. A trial may still be in progress, or a process may have ended before finalizing summaries. Confirm `--config` and project root, and inspect the report tree. The dashboard lists report versions 2 to 5; it does not migrate v1 files. A run whose process is gone shows as cancelled (interrupted).
+- **No reports or a running entry with no details:** `dev` reads the current project's `reportDir`. A run may still be in progress, or a process may have ended before finalizing summaries. Confirm `--config` and project root, and inspect the report tree. Runs saved before EvalKit 0.9 are hidden until `evalkit upgrade` converts them; it does not convert v1 files. A run whose process is gone shows as cancelled (interrupted).
 - **A dashboard matrix run asks for a single cell:** Select one eval and one value for **every** configured axis. The dashboard does not launch a whole suite with a config-backed matrix; use `run --suite` or `run --matrix` on the CLI. [Dashboard runs](/docs/manual/cli-and-matrices/#dashboard-runs-and-inspection)
 - **No saved evaluator files under report artifacts:** Only the candidate workspace is snapshotted in reports. Evaluator inputs remain in the local sandbox when the CLI supplies a persistent workspace root; handle them as sensitive files. [Report privacy](/docs/manual/results/#privacy-and-retention)
 - **Stale site documentation routes during local website development:** After changing Starlight integrations or route configuration, restart the Astro dev server. `/docs/` is the guide; `/docs/manual/` is the manual index.
@@ -35,7 +35,7 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 
 | Declared feature                                      | Current behavior                                                                                                             |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `agent(...)` transcript step                          | Typed but not executable; inserting it into a transcript fails trial execution.                                              |
+| `agent(...)` transcript step                          | Typed but not executable; inserting it into a transcript fails run execution.                                                |
 | Implicit judge agent                                  | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT. |
 | `policy.timeoutMs` and forwarded CLI budgets/timeouts | Not enforced. Flags such as `--chat-timeout-ms` and `--max-tokens` only set adapter-visible parameters.                      |
 | `agentsSdk()`                                         | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.              |

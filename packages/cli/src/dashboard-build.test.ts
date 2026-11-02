@@ -1,4 +1,5 @@
 import { dashboardIndex } from '@evalkit/share';
+import type { RunResult } from '@evalkit/core';
 import { afterEach, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +17,15 @@ import { localReportStore, runEval } from '@evalkit/runner';
 import { createStaticDashboardApi } from '../../dashboard/src/static-api.js';
 import { tidyReports } from './tidy.js';
 import { buildDashboard, staticRoutes } from './dashboard-build.js';
+
+/** Runs a scenario once and returns its one run. */
+const runOne = async (
+  effect: ReturnType<typeof runEval>,
+): Promise<RunResult> => {
+  const [run, ...more] = await Effect.runPromise(effect);
+  if (!run || more.length) throw new Error('expected exactly one run');
+  return run;
+};
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -60,7 +70,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-build-'));
   roots.push(root);
   const reportRoot = join(root, '_evalkit-results');
-  await Effect.runPromise(
+  await runOne(
     runEval(evaluation, {
       report: localReportStore(reportRoot),
       workspaceRoot: join(root, '_evalkit-sandbox'),
@@ -81,7 +91,7 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   const registry = registerEvals([evaluation]);
   const result = await buildDashboard({ registry, ...paths });
   // The candidate's file and the attachment.
-  expect(result).toMatchObject({ runs: 1, trials: 1, files: 2 });
+  expect(result).toMatchObject({ runs: 1, files: 2 });
   expect(await readFile(join(paths.outDir, 'index.html'), 'utf8')).toContain(
     '"./assets/app.js"',
   );
@@ -102,35 +112,32 @@ test('static snapshots are readable by the dashboard static API and exclude eval
   ]);
   const [run] = await api.listRuns();
   expect(run).toMatchObject({ evalId: 'writes-file', status: 'passed' });
-  const [trial] = await api.listTrials(run!.id);
   // Clean URLs: `<mount>/runs/<id>` is served from runs/<id>.html, based one level up.
   expect(
     await readFile(join(paths.outDir, 'runs', `${run!.id}.html`), 'utf8'),
   ).toContain('<base href="../" />');
   expect(
     await readFile(
-      join(paths.outDir, 'runs', run!.id, 'trials', `${trial!.id}.html`),
+      join(paths.outDir, 'runs', run!.id, 'workspace.html'),
       'utf8',
     ),
-  ).toContain('<base href="../../../" />');
+  ).toContain('<base href="../../" />');
   expect(await readFile(join(paths.outDir, 'index.html'), 'utf8')).toContain(
     '<base href="./" />',
   );
-  const events = await api.getTrialEvents(run!.id, trial!.id);
+  const events = await api.getRunEvents(run!.id);
   expect(events.some((event) => event.content === 'hello snapshot')).toBe(true);
-  expect(trial!.attachments).toEqual([{ name: 'logs/writer.log', size: 24 }]);
+  expect((await api.getRun(run!.id)).attachments).toEqual([
+    { name: 'logs/writer.log', size: 24 },
+  ]);
   expect(
-    await (
-      await api.getAttachment(run!.id, trial!.id, 'logs/writer.log')
-    ).text(),
+    await (await api.getAttachment(run!.id, 'logs/writer.log')).text(),
   ).toBe('<script>not run</script>');
-  expect(await api.listWorkspace(run!.id, trial!.id)).toContainEqual(
+  expect(await api.listWorkspace(run!.id)).toContainEqual(
     expect.objectContaining({ path: 'out/reply.txt', kind: 'file' }),
   );
   expect(
-    await (
-      await api.getWorkspaceFile(run!.id, trial!.id, 'out/reply.txt')
-    ).text(),
+    await (await api.getWorkspaceFile(run!.id, 'out/reply.txt')).text(),
   ).toBe('hello snapshot');
   await expect(api.runEval('writes-file')).rejects.toThrow('read-only');
 
@@ -151,7 +158,7 @@ test('archived runs are left out of the snapshot', async () => {
     registry: registerEvals([evaluation]),
     ...paths,
   });
-  expect(result).toMatchObject({ runs: 0, archived: 1, trials: 0 });
+  expect(result).toMatchObject({ runs: 0, archived: 1 });
   const runs = JSON.parse(
     await readFile(join(paths.outDir, 'data', 'runs.json'), 'utf8'),
   ) as { runs: unknown[] };
@@ -192,15 +199,11 @@ test('static routes cover evals and library pages and skip unsafe IDs', () => {
       scenarios: ['hello', 'a/b'],
       agents: ['greeter', 'greeter'],
       datasets: ['starter'],
-      runs: [
-        { id: 'r1', trials: ['t1', '..'] },
-        { id: 'r#2', trials: ['t2'] },
-      ],
+      runs: ['r1', 'r#2', '..'],
     }),
   ).toEqual([
     'scoreboard',
     'runs',
-    'trials',
     'workspaces',
     'library/agents',
     'library/judges',
@@ -210,8 +213,8 @@ test('static routes cover evals and library pages and skip unsafe IDs', () => {
     'library/agents/greeter',
     'library/datasets/starter',
     'runs/r1',
-    'runs/r1/trials/t1',
-    'runs/r1/trials/t1/workspace',
+    'runs/r1/workspace',
+    'runs/r1/attachments',
   ]);
 });
 

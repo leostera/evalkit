@@ -1,5 +1,5 @@
 /**
- * Dashboard URLs. Evals are results: the scoreboard, then runs, trials and
+ * Dashboard URLs. Evals are results: the scoreboard, then runs and their
  * workspaces. The library is definitions: agents, judges, scenarios and
  * datasets, each with its own page.
  */
@@ -7,19 +7,14 @@ const segment = encodeURIComponent;
 
 export const scoreboardHref = '/scoreboard';
 export const runsListHref = '/runs';
-export const trialsHref = '/trials';
 export const workspacesHref = '/workspaces';
 export const runHref = (runId: string) => `/runs/${segment(runId)}`;
-export const trialHref = (runId: string, trialId: string) =>
-  `${runHref(runId)}/trials/${segment(trialId)}`;
-export const workspaceHref = (runId: string, trialId: string) =>
-  `${trialHref(runId, trialId)}/workspace`;
-export const attachmentsHref = (
-  runId: string,
-  trialId: string,
-  file?: string,
-) =>
-  `${trialHref(runId, trialId)}/attachments${file ? `?file=${encodeURIComponent(file)}` : ''}`;
+/** The Runs list narrowed to the runs launched together with this one. */
+export const batchHref = (batchId: string) =>
+  `${runsListHref}?batch=${segment(batchId)}`;
+export const workspaceHref = (runId: string) => `${runHref(runId)}/workspace`;
+export const attachmentsHref = (runId: string, file?: string) =>
+  `${runHref(runId)}/attachments${file ? `?file=${segment(file)}` : ''}`;
 
 export type LibrarySection = 'agents' | 'judges' | 'scenarios' | 'datasets';
 export const libraryHref = (section: LibrarySection, id?: string) =>

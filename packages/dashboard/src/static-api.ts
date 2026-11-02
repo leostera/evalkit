@@ -27,8 +27,7 @@ export function createStaticDashboardApi(options: {
   };
   const json = async <T>(path: string): Promise<T> =>
     (await file(path)).json() as Promise<T>;
-  const trial = (runId: string, trialId: string) =>
-    `runs/${encodeURIComponent(runId)}/trials/${encodeURIComponent(trialId)}`;
+  const run = (runId: string) => `runs/${encodeURIComponent(runId)}`;
   return {
     readOnly: true,
     listCatalog: async () =>
@@ -47,33 +46,17 @@ export function createStaticDashboardApi(options: {
     listSuites: async () =>
       (await json<{ suites: never[] }>('suites.json')).suites,
     listRuns: async () => (await json<{ runs: never[] }>('runs.json')).runs,
-    listTrials: async (runId) =>
-      (
-        await json<{ trials: never[] }>(
-          `runs/${encodeURIComponent(runId)}/trials.json`,
-        )
-      ).trials,
-    getTrial: (runId, trialId) => json(`${trial(runId, trialId)}/detail.json`),
-    getTrialEvents: async (runId, trialId) =>
-      (await json<{ events: never[] }>(`${trial(runId, trialId)}/events.json`))
-        .events,
-    listArtifacts: async (runId, trialId) =>
-      (
-        await json<{ artifacts: never[] }>(
-          `${trial(runId, trialId)}/artifacts.json`,
-        )
-      ).artifacts,
-    listWorkspace: (runId, trialId) =>
-      json(`${trial(runId, trialId)}/workspace.json`),
-    getAttachment: (runId, trialId, name) =>
-      file(`${trial(runId, trialId)}/attachments/${encodePath(name)}`),
-    getWorkspaceFile: (runId, trialId, path) =>
-      file(
-        `${trial(runId, trialId)}/workspace/${path
-          .split('/')
-          .map(encodeURIComponent)
-          .join('/')}`,
-      ),
+    getRun: (runId) => json(`${run(runId)}/detail.json`),
+    getRunEvents: async (runId) =>
+      (await json<{ events: never[] }>(`${run(runId)}/events.json`)).events,
+    listArtifacts: async (runId) =>
+      (await json<{ artifacts: never[] }>(`${run(runId)}/artifacts.json`))
+        .artifacts,
+    listWorkspace: (runId) => json(`${run(runId)}/workspace.json`),
+    getAttachment: (runId, name) =>
+      file(`${run(runId)}/attachments/${encodePath(name)}`),
+    getWorkspaceFile: (runId, path) =>
+      file(`${run(runId)}/workspace/${encodePath(path)}`),
     listDatasetFiles: (datasetId) =>
       json(`datasets/${encodeURIComponent(datasetId)}/files.json`),
     getDatasetFile: (datasetId, path) =>

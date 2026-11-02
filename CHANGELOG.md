@@ -4,21 +4,40 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Breaking: runs without trials
+
+A **run** is now one execution of a scenario: one agent session in one sandbox, scored. The level above it, a run of trials, is gone ([RFD0008](https://github.com/leostera/evalkit/blob/main/docs/rfds/RFD0008-runs-without-trials.md)). Most runs had a single trial, so their pages had one row to click through, and Runs and Trials listed the same thing twice.
+
+- **`repeat` replaces `policy.trials`.** `repeat: 3` on a scenario, `-n, --repeat 3` (was `--trials`) and `execution.repeat` (was `execution.trials`) start three ordinary runs that share a **batch**: `batch: { id, index, size }` in their manifests. A config or scenario that still sets the old option fails with a message naming the new one.
+- **Statuses.** A finished run is `passed`, `failed` (it finished, but a score or checkpoint did not pass), `errored` (it could not finish) or `cancelled`. Old `completed` became `passed` or `failed`, and old `failed` became `errored`.
+- **Report schema version 6.** A run's directory holds `manifest.json`, `catalog.json`, `trajectory.jsonl`, `scoring.json`, `summary.json` and `artifacts/` directly, with no `trials/`. The summary is the old trial summary. Readers accept version 6 only; `evalkit upgrade` converts older results.
+- **API.** `runEval` resolves to `RunResult[]`, one per run. `readTrialManifest`, `readTrialSummary`, `readTrialScoring` and `readTrialEvents` are `readRunManifest`, `readRunSummary`, `readRunScoring` and `readRunEvents(root, runId)`. `trialWorkspacePath` is `runWorkspacePath`, `maxTrialBytes` is `maxRunBytes`, and the schemas are `RunManifestSchema`, `RunSummarySchema`, `RunScoringSchema`, `BatchSchema` and `RunDatasetSchema`. The adapter, scoring and dataset contexts have an optional `batch` instead of `trialId` and `trialIndex`, as does a computed `user()` message. `runMatrix` resolves to `{ cells, runs, passed, failed, cancelled }` and `onResult(cell, runs)`. The `evalkit:trial:` URI kind and the `trial-started` and `trial-completed` events (now `run-started` and `run-completed`) are gone; `AggregateScoring` and `TrialResult` are removed.
+- **Counting.** The CLI summary, JUnit (one testcase per run, `#2` for a batch's second), `evalkit compare` (a cell is compared by its latest batch's pass rate), the scoreboard and Compare count runs.
+- **Dashboard.** A run's page is the old trial page: its trajectory beside what it ran (scenario, agent, parameters, commit, batch) and how it scored. The Trials page is gone; a batch shows as `2/3` beside a run's ID in the Runs list, which filters the list to it (`/runs?batch=<id>`). Run and trial links from before 0.9 still lead to the same run, or to the batch for a run of several trials.
+- **Snapshots and the share server.** `evalkit build` and `evalkit share` write snapshot format version 2 (`runs/<id>/detail.json`, `events.json`, `workspace/` and so on). The share server converts uploads from older CLIs as they arrive, and `POST /api/v1/upgrade` converts the runs it already stores.
+
+### Migrating from 0.8
+
+1. Rename `policy: { trials: n }` to `repeat: n`, `execution.trials` to `execution.repeat`, and `--trials` to `--repeat` in scripts and CI.
+2. Run `bun run evalkit upgrade` in each eval project (`--dry-run` first to see what it would change). An old run of one trial keeps its ID; an old run of several becomes runs with the trials' IDs, in a batch with the old run's ID. Either way, old run and trial links keep working. It only reads the config, is safe to interrupt and run again, and leaves runs that are still running for later.
+3. In code, handle `runEval`'s array of runs, the new statuses and the renamed readers above; `status === 'passed'` replaces `status === 'completed' && scoring.passed`.
+4. If you host a share server, redeploy it, then call `POST /api/v1/upgrade` until `remaining` is 0. Until a stored run is converted it is not shown.
+
 ### Added
 
 - **Selecting a slice in one line.** `-m` and `-s` combine: `evalkit run -m models -s testing -a model=luna -a toolchain=riot` runs the testing suite's scenarios on Luna with Riot. `-s` alone narrows the config's matrix the same way, eval IDs (as arguments or `-e`) narrow further, and selections that cannot be met are errors. `--select` has a short form, `-a` (for axis), and takes comma-separated values: `-a model=luna,kimi`.
 - **Built-in metric names are typed.** `BuiltInMetricName` is `'agent time' | 'tokens' | 'tool calls'`, `MetricResult.name` suggests them, and `metric('tokens', ...)` is a type error. The docs define each one precisely.
-- `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the trial page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
+- `Usage.cachedInputTokens`: how many of a turn's input tokens came from a prompt cache, shown on the run page. `turnTokens(usage)` computes what a turn counts toward `tokens`.
 - **Typed checkpoint lookups.** `checkpoint(rule)` on the scoring context returns a checkpoint's latest result by the rule itself, not its name, with the predicate's evidence type: `checkpoint(builds)?.evidence?.stdout`. Renaming the check cannot break it, and a rule outside the transcript throws instead of reading as "not run".
-- **Attachments.** Adapters get `attach(name, content)` in `start()`, and scorers and checkpoints on their context, to save files such as the agent's raw log with the trial's results. They survive when a passing trial's sandbox is removed, show on the trial page and its new **Attachments** page, and are included by `build` and `share`. Names are checked relative paths; a file over 5 MB keeps its last bytes, and a trial's attachments are capped at 20 MB (`artifacts.attachments` sets both). Sharing runs with attachments needs a share server on this version.
-- **Agent replies render as Markdown** on the trial page: headings, lists, code blocks, tables, task lists and links, with single newlines kept. "Source" shows the exact text. Raw HTML is shown as text, links open in a new tab without a referrer, and images are never loaded, only linked.
+- **Attachments.** Adapters get `attach(name, content)` in `start()`, and scorers and checkpoints on their context, to save files such as the agent's raw log with the run's results. They survive when a passing run's sandbox is removed, show on the run page and its new **Attachments** page, and are included by `build` and `share`. Names are checked relative paths; a file over 5 MB keeps its last bytes, and a run's attachments are capped at 20 MB (`artifacts.attachments` sets both).
+- **Agent replies render as Markdown** on the run page: headings, lists, code blocks, tables, task lists and links, with single newlines kept. "Source" shows the exact text. Raw HTML is shown as text, links open in a new tab without a referrer, and images are never loaded, only linked.
+- `evalkit upgrade [--dry-run]` and `POST /api/v1/upgrade` on the share server; see above.
 
 ### Changed
 
 - **`tokens` has one definition:** each turn's `inputTokens + outputTokens`, with cached input counted as input, and `totalTokens` only when a turn reports neither. Before, a reported `totalTokens` took precedence.
 - `-s` with a config matrix records its runs under that matrix's ID, as `-m` does, instead of `default`.
-
-- **Missing metrics are "not measured", never zero.** Trials from before a metric existed, or that recorded nothing for it, stay out of its means, and the dashboard shows how many contributed: "3 of 5 trials" on run pages, "1 of 2 runs" on the scoreboard and in Compare cells, and "not measured" when none did. Each run metric has `trials` beside `count`.
+- **Missing metrics are "not measured", never zero.** Runs from before a metric existed, or that recorded nothing for it, stay out of its means, and the dashboard shows how many contributed: "1 of 2 runs" on the scoreboard and in Compare cells, and "not measured" on a run page or when none did.
 
 ### Fixed
 

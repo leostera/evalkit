@@ -24,7 +24,6 @@ const MARKER = '.evalkit-dashboard';
 export type DashboardBuildResult = {
   outDir: string;
   runs: number;
-  trials: number;
   files: number;
   /** Runs written by an older EvalKit, which this version cannot read. */
   skipped: number;
@@ -34,7 +33,7 @@ export type DashboardBuildResult = {
 
 /**
  * Write a read-only static dashboard: the bundled UI plus JSON snapshots of
- * the catalog and local reports, and each trial's candidate artifact files.
+ * the catalog and local reports, and each run's candidate artifact files.
  * Evaluator workspaces are never copied; reports may still contain sensitive
  * messages, scores, or evidence, so review the output before sharing it.
  */
@@ -126,16 +125,14 @@ export async function buildDashboard(
     (files) => count(files, 'dataset file'),
   );
 
-  const reports = createDashboardReportReader(reportRoot, registry);
+  const reports = createDashboardReportReader(reportRoot);
   const snapshot = await step(
     'Run reports',
     async (progress) => {
       const all = await reports.listRuns();
       const runs = all.filter((run) => !run.archived);
       await write('runs.json', { runs });
-      let trials = 0;
       let files = 0;
-      const runTrials: Array<{ id: string; trials: string[] }> = [];
       for (const [index, run] of runs.entries()) {
         progress(`run ${index + 1}/${runs.length} · ${run.id.slice(0, 8)}`);
         const written = await snapshotRun(
@@ -143,23 +140,22 @@ export async function buildDashboard(
           run.id,
           directorySink(resolve(data, 'runs', run.id)),
         );
-        trials += written.trialIds.length;
         files += written.files;
-        runTrials.push({ id: run.id, trials: written.trialIds });
       }
       return {
         runs: runs.length,
-        trials,
         files,
         skipped: reports.legacyRunIds().length,
         archived: all.length - runs.length,
-        runTrials,
+        runIds: runs.map((run) => run.id),
       };
     },
-    ({ runs, trials, files, skipped, archived }) =>
-      `${count(runs, 'run')} · ${count(trials, 'trial')} · ${count(files, 'candidate file')}` +
+    ({ runs, files, skipped, archived }) =>
+      `${count(runs, 'run')} · ${count(files, 'candidate file')}` +
       (archived ? ` · ${archived} archived excluded` : '') +
-      (skipped ? ` · ${skipped} older-format skipped` : ''),
+      (skipped
+        ? ` · ${skipped} older-format skipped (run \`evalkit upgrade\`)`
+        : ''),
   );
   await step(
     'Route pages',
@@ -174,7 +170,7 @@ export async function buildDashboard(
         datasets: catalog.flatMap((entry) =>
           entry.datasets.map((dataset) => dataset.id),
         ),
-        runs: snapshot.runTrials,
+        runs: snapshot.runIds,
       });
       for (const route of routes) {
         const file = resolve(outDir, `${route}.html`);
@@ -193,7 +189,7 @@ export async function buildDashboard(
     },
     (pages) => `${count(pages, 'page')} with clean /path URLs`,
   );
-  const { runTrials: _runs, ...summary } = snapshot;
+  const { runIds: _runs, ...summary } = snapshot;
   return { outDir, ...summary };
 }
 
@@ -207,7 +203,7 @@ export function staticRoutes(ids: {
   scenarios: readonly string[];
   agents?: readonly string[];
   datasets?: readonly string[];
-  runs: ReadonlyArray<{ id: string; trials: readonly string[] }>;
+  runs: readonly string[];
 }): string[] {
   const safe = (id: string) =>
     id.length > 0 && !/[/\\\0#?%]/.test(id) && id !== '.' && id !== '..';
@@ -216,7 +212,6 @@ export function staticRoutes(ids: {
   return [
     'scoreboard',
     'runs',
-    'trials',
     'workspaces',
     'library/agents',
     'library/judges',
@@ -226,15 +221,11 @@ export function staticRoutes(ids: {
     ...under('library/agents', ids.agents),
     ...under('library/datasets', ids.datasets),
     ...ids.runs
-      .filter((run) => safe(run.id))
-      .flatMap((run) => [
-        `runs/${run.id}`,
-        ...run.trials
-          .filter(safe)
-          .flatMap((trial) => [
-            `runs/${run.id}/trials/${trial}`,
-            `runs/${run.id}/trials/${trial}/workspace`,
-          ]),
+      .filter(safe)
+      .flatMap((id) => [
+        `runs/${id}`,
+        `runs/${id}/workspace`,
+        `runs/${id}/attachments`,
       ]),
   ];
 }
@@ -279,59 +270,46 @@ export function directorySink(root: string): SnapshotSink {
 
 /**
  * One run's snapshot, shared by `evalkit build` (files on disk) and
- * `evalkit share` (an upload bundle): `trials.json`, then per trial
- * `detail.json`, `events.json`, `artifacts.json`, `workspace.json`, the
- * candidate files under `workspace/`, and attachments under `attachments/`
- * (both left out with `workspaceFiles: false`; they stay listed). Evaluator
- * workspaces are never read.
+ * `evalkit share` (an upload bundle): `detail.json`, `events.json`,
+ * `artifacts.json` and `workspace.json`, the candidate files under
+ * `workspace/`, and attachments under `attachments/` (both left out with
+ * `workspaceFiles: false`; they stay listed). Evaluator workspaces are never
+ * read.
  */
 export async function snapshotRun(
   reports: ReturnType<typeof createDashboardReportReader>,
   runId: string,
   sink: SnapshotSink,
   options: { workspaceFiles?: boolean } = {},
-): Promise<{ trialIds: string[]; files: number }> {
-  const trials = await reports.listTrials(runId);
-  await sink.json('trials.json', { trials });
+): Promise<{ files: number }> {
+  const detail = await reports.runDetail(runId);
+  await sink.json('detail.json', detail);
+  await sink.json('events.json', { events: await reports.trajectory(runId) });
+  await sink.json('artifacts.json', {
+    artifacts: await reports.listArtifacts(runId),
+  });
+  const workspace = await reports.listCandidateWorkspace(runId);
+  await sink.json('workspace.json', workspace);
+  if (options.workspaceFiles === false) return { files: 0 };
   let files = 0;
-  for (const trial of trials) {
-    const base = `trials/${trial.id}`;
-    await sink.json(
-      `${base}/detail.json`,
-      await reports.trialDetail(runId, trial.id),
+  for (const attachment of detail.attachments ?? []) {
+    const response = await reports.attachmentFile(runId, attachment.name);
+    await sink.bytes(
+      `attachments/${attachment.name}`,
+      new Uint8Array(await response.arrayBuffer()),
     );
-    await sink.json(`${base}/events.json`, {
-      events: await reports.trajectory(runId, trial.id),
-    });
-    await sink.json(`${base}/artifacts.json`, {
-      artifacts: await reports.listArtifacts(runId, trial.id),
-    });
-    const workspace = await reports.listCandidateWorkspace(runId, trial.id);
-    await sink.json(`${base}/workspace.json`, workspace);
-    if (options.workspaceFiles === false) continue;
-    for (const attachment of trial.attachments ?? []) {
-      const response = await reports.attachmentFile(
-        runId,
-        trial.id,
-        attachment.name,
-      );
-      await sink.bytes(
-        `${base}/attachments/${attachment.name}`,
-        new Uint8Array(await response.arrayBuffer()),
-      );
-      files += 1;
-    }
-    for (const entry of workspace) {
-      if (entry.kind !== 'file') continue;
-      const response = await reports.candidateFile(runId, trial.id, entry.path);
-      await sink.bytes(
-        `${base}/workspace/${entry.path}`,
-        new Uint8Array(await response.arrayBuffer()),
-      );
-      files += 1;
-    }
+    files += 1;
   }
-  return { trialIds: trials.map((trial) => trial.id), files };
+  for (const entry of workspace) {
+    if (entry.kind !== 'file') continue;
+    const response = await reports.candidateFile(runId, entry.path);
+    await sink.bytes(
+      `workspace/${entry.path}`,
+      new Uint8Array(await response.arrayBuffer()),
+    );
+    files += 1;
+  }
+  return { files };
 }
 
 /** Total size and file count of a directory, for the build summary. */
