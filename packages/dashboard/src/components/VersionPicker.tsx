@@ -14,11 +14,12 @@ function label(commit: ShareCommit): string {
 
 /** Switch between shared commits of this repository. */
 export function VersionPicker({
-  repo,
+  pages,
   current,
   commitsUrl,
 }: {
-  repo: string;
+  /** Where this repository's pages live (see `ShareContext.pages`). */
+  pages: string;
   current: string;
   commitsUrl: string;
 }) {
@@ -51,7 +52,7 @@ export function VersionPicker({
         onChange={(event) =>
           window.location.assign(
             versionHref(
-              repo,
+              pages,
               event.target.value,
               location.pathname,
               location.search,

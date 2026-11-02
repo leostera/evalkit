@@ -37,11 +37,15 @@ export function directoryAssets(root: string): DashboardAssets {
 export async function createDirectoryShareApp(options: {
   dir: string;
   dashboardRoot: string;
+  basePath?: string;
+  repo?: string;
 }) {
   await mkdir(options.dir, { recursive: true });
   return createShareApp({
     files: directoryFiles(join(options.dir, 'files')),
     index: await sqliteIndex(join(options.dir, 'index.sqlite')),
     assets: directoryAssets(options.dashboardRoot),
+    ...(options.basePath ? { basePath: options.basePath } : {}),
+    ...(options.repo ? { repo: options.repo } : {}),
   });
 }

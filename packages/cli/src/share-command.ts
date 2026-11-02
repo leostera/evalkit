@@ -97,15 +97,30 @@ export function noRunsMessage(
   return `No runs for ${at}. Run \`evalkit run\` first${options.all ? '' : ', or pass --all to share runs from other commits'}.`;
 }
 
-/** Where to look after sharing: the commit, or the repository if several commits were shared. */
+/**
+ * A share server API URL. The server may live below a path
+ * (`https://example.com/evals`), so paths resolve below `share.url`.
+ */
+export function shareApiUrl(serverUrl: string, path: string): URL {
+  return new URL(path, serverUrl.endsWith('/') ? serverUrl : `${serverUrl}/`);
+}
+
+/**
+ * Where to look after sharing: the commit, or the repository if several
+ * commits were shared. Both come from a run URL the server returned
+ * (`<repo pages>/-/<sha>/runs/<id>`), since only the server knows its layout.
+ */
 export function shareTarget(
   serverUrl: string,
-  head: RunSource,
+  runUrl: string | undefined,
   runs: readonly { source: RunSource }[],
 ): string {
+  const commitUrl = runUrl?.replace(/\/runs\/[^/]+\/?$/, '');
+  if (!commitUrl || commitUrl === runUrl) return serverUrl;
   const commits = new Set(runs.map((run) => run.source.commit));
-  const commit = commits.size === 1 ? `/-/${[...commits][0]}` : '';
-  return new URL(`/${repoKey(head)}${commit}`, serverUrl).href;
+  return commits.size === 1
+    ? commitUrl
+    : commitUrl.replace(/\/-\/[0-9a-f]{40}$/, '') || serverUrl;
 }
 
 /** Build one run's upload bundle: run.json, catalog.json, and its snapshot. */
@@ -187,7 +202,7 @@ export async function checkShareServer(
   serverUrl: string,
   headers: ShareHeaders,
 ): Promise<void> {
-  const response = await fetch(new URL('/api/v1/repos', serverUrl), {
+  const response = await fetch(shareApiUrl(serverUrl, 'api/v1/repos'), {
     headers,
     redirect: 'manual',
   });
@@ -224,7 +239,7 @@ async function postBundle(
   bundle: Uint8Array,
   headers: ShareHeaders,
 ): Promise<UploadResult> {
-  const response = await fetch(new URL('/api/v1/uploads', serverUrl), {
+  const response = await fetch(shareApiUrl(serverUrl, 'api/v1/uploads'), {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/octet-stream' },
     body: bundle as BodyInit,
@@ -279,6 +294,8 @@ export type ShareResult = {
   exists: number;
   failed: { runId: string; error: string }[];
   bytes: number;
+  /** A shared run's page, as the server named it. */
+  url?: string;
 };
 
 export async function shareRuns(options: {
@@ -317,6 +334,7 @@ export async function shareRuns(options: {
           });
           result.bytes += bundle.byteLength;
           result[uploaded.status] += 1;
+          result.url ??= uploaded.url;
         } catch (error) {
           if (error instanceof ShareServerError) throw error;
           result.failed.push({

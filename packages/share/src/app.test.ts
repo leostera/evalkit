@@ -20,7 +20,9 @@ const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
 const REPO = 'gitlab.example.com/team/evals';
 
-async function server(options: { failWrites?: boolean } = {}) {
+async function server(
+  options: { failWrites?: boolean; basePath?: string; repo?: string } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'evalkit-share-'));
   roots.push(root);
   const stored = directoryFiles(join(root, 'files'));
@@ -43,6 +45,8 @@ async function server(options: { failWrites?: boolean } = {}) {
       get: async (path) =>
         path === 'app.js' ? new Response('/* app */') : null,
     },
+    ...(options.basePath ? { basePath: options.basePath } : {}),
+    ...(options.repo ? { repo: options.repo } : {}),
   });
   const request = (path: string, init?: RequestInit) =>
     app.request(`http://share.test${path}`, init);
@@ -165,7 +169,82 @@ function legacyFiles(
 const upload = (
   request: Awaited<ReturnType<typeof server>>['request'],
   body: Uint8Array,
-) => request('/api/v1/uploads', { method: 'POST', body: body as BodyInit });
+  base = '',
+) =>
+  request(`${base}/api/v1/uploads`, {
+    method: 'POST',
+    body: body as BodyInit,
+  });
+
+test('a base path prefixes every API path, page, asset and URL', async () => {
+  const { request } = await server({ basePath: '/evals/' });
+  const summary = run();
+  const created = await upload(request, await bundleFor(summary), '/evals');
+  expect((await created.json()).url).toBe(
+    `http://share.test/evals/${REPO}/-/${SHA_A}/runs/${summary.id}`,
+  );
+  expect((await upload(request, await bundleFor(run()))).status).toBe(404);
+  expect((await request('/evals/api/v1/repos')).status).toBe(200);
+  expect((await request(`/evals/${REPO}`)).headers.get('location')).toBe(
+    `/evals/${REPO}/-/${SHA_A}/`,
+  );
+  const page = await (await request(`/evals/${REPO}/-/${SHA_A}/runs`)).text();
+  expect(page).toContain(`<base href="/evals/${REPO}/-/${SHA_A}/" />`);
+  expect(page).toContain(`/evals/api/v1/repos/${REPO}/-/${SHA_A}/`);
+  expect(page).toContain('"/evals/assets/app.js"');
+  expect(await (await request('/evals/assets/app.js')).text()).toBe(
+    '/* app */',
+  );
+  for (const home of ['/evals', '/evals/'])
+    expect(await (await request(home)).text()).toContain(
+      '<base href="/evals/" />',
+    );
+  expect((await request(`/${REPO}`)).status).toBe(404);
+  expect(() =>
+    createShareApp({ basePath: 'evals' } as Parameters<
+      typeof createShareApp
+    >[0]),
+  ).toThrow('basePath must look like /evals');
+});
+
+test('single-repository mode drops the repository from URLs and rejects others', async () => {
+  const { request } = await server({ basePath: '/evals', repo: REPO });
+  const summary = run();
+  const created = await upload(request, await bundleFor(summary), '/evals');
+  expect((await created.json()).url).toBe(
+    `http://share.test/evals/-/${SHA_A}/runs/${summary.id}`,
+  );
+  const location = async (path: string) =>
+    (await request(path)).headers.get('location');
+  expect(await location('/evals')).toBe(`/evals/-/${SHA_A}/`);
+  expect(await location('/evals/-/main/runs?x=1')).toBe(
+    `/evals/-/${SHA_A}/runs?x=1`,
+  );
+  // Links from before single-repository mode keep working.
+  expect(await location(`/evals/${REPO}/-/aaaaaaa/runs`)).toBe(
+    `/evals/-/aaaaaaa/runs`,
+  );
+  const page = await (await request(`/evals/-/${SHA_A}/runs`)).text();
+  expect(page).toContain(`<base href="/evals/-/${SHA_A}/" />`);
+  expect(page).toContain(`/evals/api/v1/repos/${REPO}/-/${SHA_A}/`);
+  expect(page).toContain('&quot;single&quot;:true');
+  expect((await request('/evals/other')).status).toBe(404);
+
+  const other = run();
+  other.source.repo = 'github.com/someone/else';
+  const rejected = await upload(request, await bundleFor(other), '/evals');
+  expect(rejected.status).toBe(400);
+  expect((await rejected.json()).error).toContain(
+    `only accepts results for ${REPO}`,
+  );
+  expect(await (await request('/evals/api/v1/repos')).json()).toMatchObject({
+    repos: [{ key: REPO }],
+  });
+  expect(
+    (await request('/evals/api/v1/repos/github.com/someone/else/-/commits'))
+      .status,
+  ).toBe(404);
+});
 
 test('uploads are stored, indexed, idempotent, and served with the dashboard', async () => {
   const { request, events } = await server();

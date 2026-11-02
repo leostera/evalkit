@@ -133,9 +133,9 @@ function Dashboard({
     <DashboardShell
       project={project}
       header={
-        share?.repo && share.commits && commit ? (
+        share?.pages !== undefined && share.commits && commit ? (
           <VersionPicker
-            repo={share.repo}
+            pages={share.pages}
             current={commit}
             commitsUrl={share.commits}
           />
@@ -145,7 +145,7 @@ function Dashboard({
       {share?.repo ? (
         <p className="text-[13px] text-kumo-subtle" role="note">
           Shared results for{' '}
-          <a href={`/${share.repo}`} className="font-mono">
+          <a href={`${share.pages ?? ''}/`} className="font-mono">
             {share.repo}
           </a>
           . Runs cannot be started here.

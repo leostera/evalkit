@@ -7,6 +7,12 @@ export type ShareContext = {
   /** This commit's snapshot data. Absent on the repository list. */
   data?: string;
   repo?: string;
+  /** Where this repository's pages live: `/<repo>`, or the server's base path in single-repository mode. */
+  pages?: string;
+  /** The server's front page, e.g. `/` or `/evals/`. */
+  home: string;
+  /** Single-repository mode: there is no list of repositories. */
+  single: boolean;
   /** A ref or SHA with no shared results. */
   missing?: string;
 };
@@ -40,13 +46,16 @@ export function readShareContext(
     return undefined;
   }
   if (typeof value?.repos !== 'string') return undefined;
-  const optional = (key: 'commits' | 'data' | 'repo' | 'missing') =>
+  const optional = (key: 'commits' | 'data' | 'repo' | 'pages' | 'missing') =>
     typeof value[key] === 'string' ? { [key]: value[key] } : {};
   return {
     repos: value.repos,
+    home: typeof value.home === 'string' ? value.home : '/',
+    single: value.single === true,
     ...optional('commits'),
     ...optional('data'),
     ...optional('repo'),
+    ...optional('pages'),
     ...optional('missing'),
   };
 }
@@ -56,12 +65,12 @@ export function readShareContext(
  * run pages (their IDs belong to one commit) fall back to the runs list.
  */
 export function versionHref(
-  repo: string,
+  pages: string,
   commit: string,
   pathname: string,
   search: string,
 ): string {
   const commitScoped = /^\/(runs|workspaces)\/./.test(pathname);
   const path = commitScoped ? '/runs' : pathname === '/' ? '/' : pathname;
-  return `/${repo}/-/${commit}${path}${commitScoped ? '' : search}`;
+  return `${pages}/-/${commit}${path}${commitScoped ? '' : search}`;
 }

@@ -5,16 +5,20 @@ import { DataTable, tableLinkClass } from './DataTable.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 
-/** The share server's front page: every repository with shared results. */
+/**
+ * The share server's front page: every repository with shared results. In
+ * single-repository mode there is no list, so this only says what is missing.
+ */
 export function ShareHome({ share }: { share: ShareContext }) {
   const [repos, setRepos] = useState<ShareRepo[]>();
   const [error, setError] = useState<string>();
   useEffect(() => {
+    if (share.single) return;
     void fetch(share.repos)
       .then((response) => response.json() as Promise<{ repos: ShareRepo[] }>)
       .then((value) => setRepos(value.repos))
       .catch(() => setError('Unable to load repositories'));
-  }, [share.repos]);
+  }, [share.repos, share.single]);
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8">
       <h1 className="text-base font-semibold text-kumo-strong">
@@ -46,7 +50,10 @@ export function ShareHome({ share }: { share: ShareContext }) {
             {repos.map((repo) => (
               <Table.Row key={repo.key}>
                 <Table.Cell>
-                  <a className={tableLinkClass} href={`/${repo.key}`}>
+                  <a
+                    className={tableLinkClass}
+                    href={`${share.home}${repo.key}`}
+                  >
                     {repo.key}
                   </a>
                 </Table.Cell>

@@ -49,7 +49,11 @@ import {
   shareRuns,
   shareTarget,
 } from './share-command.js';
-import { createDirectoryShareApp, repoKey } from '@evalkit/share';
+import {
+  createDirectoryShareApp,
+  normalizeBasePath,
+  repoKey,
+} from '@evalkit/share';
 import { newProject } from './new-project.js';
 import {
   datasetFile,
@@ -781,22 +785,27 @@ async function upgradeAction(options: {
 async function shareServeAction(options: {
   dir: string;
   port?: number;
+  basePath?: string;
+  repo?: string;
 }): Promise<void> {
   const root = resolve(process.cwd(), options.dir);
   const app = await createDirectoryShareApp({
     dir: root,
     dashboardRoot: dashboardAssets(),
+    ...(options.basePath ? { basePath: options.basePath } : {}),
+    ...(options.repo ? { repo: options.repo } : {}),
   });
   const server = await listen(app.fetch, options.port, 4318);
+  const url = `http://localhost:${server.port}${normalizeBasePath(options.basePath)}`;
   banner('share serve', VERSION);
-  console.log(
-    `  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(`http://localhost:${server.port}`)}`,
-  );
+  console.log(`  ${cyan('➜')}  ${bold('Local:'.padEnd(9))}${cyan(url)}`);
+  if (options.repo)
+    console.log(`  ${cyan('➜')}  ${bold('Repo:'.padEnd(9))}${options.repo}`);
   console.log(
     `  ${cyan('➜')}  ${bold('Storage:'.padEnd(9))}${relative(process.cwd(), root) || '.'}`,
   );
   console.log(
-    `\n  ${dim(`Upload with share.url = "http://localhost:${server.port}". No authentication: keep it private.`)}\n`,
+    `\n  ${dim(`Upload with share.url = "${url}". No authentication: keep it private.`)}\n`,
   );
 }
 
@@ -873,7 +882,7 @@ async function shareAction(options: {
     console.log(
       `  ${yellow('✗')} ${failure.runId.slice(0, 8)} ${dim(failure.error)}`,
     );
-  const target = shareTarget(serverUrl, head, selection.selected);
+  const target = shareTarget(serverUrl, result.url, selection.selected);
   console.log(
     `\n  ${bold(result.failed.length ? 'Shared with errors' : 'Shared')} in ${duration(performance.now() - started)}\n`,
   );

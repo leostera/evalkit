@@ -4,7 +4,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [0.9.0] - 2026-11-02
 
-A run is one execution now: `repeat` starts several as a batch, and `evalkit upgrade` converts older results. Also attachments, typed checkpoint lookups, Markdown replies and one definition of `tokens`.
+A run is one execution now: `repeat` starts several as a batch, and `evalkit upgrade` converts older results. Also attachments, typed checkpoint lookups, Markdown replies, one definition of `tokens`, and a share server that can live below a path on your own site and show a single repository.
 
 ### Breaking: runs without trials
 
@@ -34,6 +34,7 @@ A **run** is now one execution of a scenario: one agent session in one sandbox, 
 - **Attachments.** Adapters get `attach(name, content)` in `start()`, and scorers and checkpoints on their context, to save files such as the agent's raw log with the run's results. They survive when a passing run's sandbox is removed, show on the run page and its new **Attachments** page, and are included by `build` and `share`. Names are checked relative paths; a file over 5 MB keeps its last bytes, and a run's attachments are capped at 20 MB (`artifacts.attachments` sets both).
 - **Agent replies render as Markdown** on the run page: headings, lists, code blocks, tables, task lists and links, with single newlines kept. "Source" shows the exact text. Raw HTML is shown as text, links open in a new tab without a referrer, and images are never loaded, only linked.
 - `evalkit upgrade [--dry-run]` and `POST /api/v1/upgrade` on the share server; see above.
+- **A share server below a path, for one repository.** `basePath` (`BASE_PATH` in the Worker's `vars`, `--base-path` for `share serve`) serves everything below a path such as `/evals`, so the server can be routed into a site's own domain. `repo` (`REPO`, `--repo`) shows only that repository: pages are `/evals/` and `/evals/-/<sha>/runs/…`, there is no list of repositories, and uploads for any other repository are rejected. Set `share.url` to the full address, e.g. `https://example.com/evals`.
 
 ### Changed
 

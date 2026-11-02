@@ -257,9 +257,24 @@ export { default, ShareIndex } from '@leostera/evalkit/share/worker';
 
 Create the bucket (`npx wrangler r2 bucket create evalkit-share`), then run `npx wrangler deploy`. The index can always be rebuilt from R2 with `POST /api/v1/reindex`.
 
+Two optional `vars` fit the server into an existing site:
+
+- **`BASE_PATH`** serves everything below a path, for example `"/evals"` with a route such as `example.com/evals*`. Pages, assets and the API all move below it.
+- **`REPO`** shows a single repository, named as `evalkit share` prints it (for example `"github.com/acme/agents"`). Its pages lose the repository part, so `/evals/` opens the latest commit and a commit is `/evals/-/<sha>/runs`. There is no list of repositories, uploads for any other repository are rejected, and links that still name the repository redirect.
+
+```jsonc
+// wrangler.jsonc, added to the above
+{
+  "vars": { "BASE_PATH": "/evals", "REPO": "github.com/acme/agents" },
+  "routes": [{ "pattern": "example.com/evals*", "zone_name": "example.com" }],
+}
+```
+
+Then point projects at the full address: `share: { url: 'https://example.com/evals' }`.
+
 A share server from EvalKit 0.9 stores one run per execution. It converts uploads from older CLIs as they arrive, and runs it stored before the update with `POST /api/v1/upgrade`: each call converts up to `?limit=` stored runs (default 20) and answers `{ upgraded, runs, remaining }`, so call it until `remaining` is 0. Runs not yet converted are not shown. Like uploads, it has no authentication of its own: keep the server [behind your auth proxy](#behind-an-auth-proxy).
 
-To try it without Cloudflare, `bun run evalkit share serve` runs the same server on port 4318 (or the next free one), storing everything in `_evalkit-share/` (`--dir`, `--port`/`-p`).
+To try it without Cloudflare, `bun run evalkit share serve` runs the same server on port 4318 (or the next free one), storing everything in `_evalkit-share/` (`--dir`, `--port`/`-p`, and `--base-path`/`--repo` as above).
 
 ## Archiving removed evals
 

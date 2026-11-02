@@ -1,5 +1,6 @@
 export {
   createShareApp,
+  normalizeBasePath,
   type DashboardAssets,
   type ShareAppOptions,
   type ShareEvent,

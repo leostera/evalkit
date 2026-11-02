@@ -54,7 +54,29 @@ export type ShareAppOptions = {
   maxBundleBytes?: number;
   /** Defaults to one JSON line per event on stdout (Workers Logs indexes these). */
   log?: (event: ShareEvent) => void;
+  /**
+   * Serve everything below this path, e.g. `/evals` on a site's own domain.
+   * Every URL the server makes carries it; other paths are not answered.
+   */
+  basePath?: string;
+  /**
+   * Single-repository mode: show and accept only this repository key (as
+   * `evalkit share` derives it, e.g. `github.com/acme/agents`). Pages drop
+   * the repository from their URLs (`/-/<sha>/runs`), there is no list of
+   * repositories, and uploads for any other repository are rejected.
+   */
+  repo?: string;
 };
+
+/** `''` or `/a/b`: a path prefix with no trailing slash. */
+export function normalizeBasePath(basePath: string | undefined): string {
+  const path = (basePath ?? '').replace(/\/+$/, '');
+  if (path && !/^(\/[A-Za-z0-9._~-]+)+$/.test(path))
+    throw new Error(
+      `basePath must look like /evals (letters, digits, ".", "_", "~" and "-" between slashes), got ${JSON.stringify(basePath)}`,
+    );
+  return path;
+}
 
 /** What a non-API path shows. */
 type SharePage =
@@ -85,13 +107,27 @@ const jsonLine = (event: ShareEvent) => console.log(JSON.stringify(event));
  *   GET  /<repo>/-/<ref|prefix>/…                → full SHA
  *   GET  everything else                         the dashboard app
  *
+ * All of it below `basePath` when set. With `repo` (single-repository mode)
+ * pages are `/` (→ latest commit) and `/-/<ref|prefix>/…`.
+ *
  * There is no authentication: run it on a private network.
  */
 export function createShareApp(options: ShareAppOptions) {
   const { files, index, assets } = options;
   const log = options.log ?? jsonLine;
   const maxBundleBytes = options.maxBundleBytes ?? 256 * 1024 * 1024;
-  const app = new Hono();
+  const base = normalizeBasePath(options.basePath);
+  const single = options.repo;
+  if (single !== undefined && !validRepoKey(single))
+    throw new Error(
+      `repo must be a repository key such as github.com/acme/agents, got ${JSON.stringify(single)}`,
+    );
+  /** Where a repository's pages live: `<base>/<repo>`, or `<base>` for the single one. */
+  const pagesOf = (repo: string) => (single ? base : `${base}/${repo}`);
+  const shown = (repo: string) => !single || repo === single;
+  /** The request path below `basePath`. */
+  const local = (path: string) => path.slice(base.length);
+  const app = base ? new Hono().basePath(base) : new Hono();
 
   app.onError((error, context) => {
     log({
@@ -112,6 +148,11 @@ export function createShareApp(options: ShareAppOptions) {
       );
       if (!uploads.length)
         throw new Rejected('The bundle has no finished runs');
+      const other = uploads.find(({ run }) => !shown(run.repoKey));
+      if (other)
+        throw new Rejected(
+          `This share server only accepts results for ${single}, not ${other.run.repoKey}`,
+        );
     } catch (error) {
       if (!(error instanceof BundleError || error instanceof Rejected))
         throw error;
@@ -144,7 +185,7 @@ export function createShareApp(options: ShareAppOptions) {
     }
     const { run } = uploads[0]!;
     const url = new URL(
-      `/${run.repoKey}/-/${run.source.commit}/runs/${run.id}`,
+      `${pagesOf(run.repoKey)}/-/${run.source.commit}/runs/${run.id}`,
       context.req.url,
     ).href;
     return context.json(
@@ -279,15 +320,19 @@ export function createShareApp(options: ShareAppOptions) {
   });
 
   app.get('/api/v1/repos', async (context) =>
-    context.json({ repos: await index.repos() }, 200, NO_CACHE),
+    context.json(
+      { repos: (await index.repos()).filter((repo) => shown(repo.key)) },
+      200,
+      NO_CACHE,
+    ),
   );
 
   // /api/v1/repos/<repo>/-/commits and /api/v1/repos/<repo>/-/<sha>/data/…
   app.get('/api/v1/repos/*', async (context) => {
-    const path = context.req.path.slice('/api/v1/repos/'.length);
+    const path = local(context.req.path).slice('/api/v1/repos/'.length);
     const marker = path.indexOf('/-/');
     const key = marker === -1 ? '' : path.slice(0, marker);
-    if (!validRepoKey(key))
+    if (!validRepoKey(key) || !shown(key))
       return context.json({ error: 'Unknown repository' }, 404);
     const [sha = '', kind, ...segments] = path.slice(marker + 3).split('/');
     if (sha === 'commits' && kind === undefined)
@@ -304,7 +349,7 @@ export function createShareApp(options: ShareAppOptions) {
   // The bundled dashboard's JS/CSS. A Worker serves these as static assets
   // before this app runs; the Bun server serves them here.
   app.get('/assets/*', async (context) => {
-    const path = context.req.path.slice('/assets/'.length);
+    const path = local(context.req.path).slice('/assets/'.length);
     if (!path.split('/').every(safeSegment)) return context.notFound();
     const response = await assets.get(path);
     if (!response) return context.notFound();
@@ -319,27 +364,60 @@ export function createShareApp(options: ShareAppOptions) {
   // first, so every commit page URL names one immutable commit.
   app.get('*', async (context) => {
     const url = new URL(context.req.url);
-    const path = url.pathname.replace(/\/+$/, '');
+    const pathname = local(url.pathname);
+    const path = pathname.replace(/\/+$/, '');
+    if (single) {
+      // A link from before single-repository mode: drop the repository.
+      if (path === `/${single}` || path.startsWith(`/${single}/`))
+        return context.redirect(
+          `${base}${path.slice(single.length + 1) || '/'}${url.search}`,
+        );
+      if (!path) return latestPage(context, single);
+      if (!path.startsWith('/-/'))
+        return dashboardPage(context, { kind: 'missing', repo: single });
+      return commitPage(context, single, pathname.slice(3), url.search);
+    }
     const marker = path.indexOf('/-/');
-    if (marker === -1) return repositoryPage(context, path.slice(1));
-    const repo = path.slice(1, marker);
-    const [ref = '', ...rest] = url.pathname.slice(marker + 3).split('/');
+    if (marker === -1) {
+      const repo = path.slice(1);
+      return repo
+        ? latestPage(context, repo)
+        : dashboardPage(context, { kind: 'repositories' });
+    }
+    return commitPage(
+      context,
+      path.slice(1, marker),
+      pathname.slice(marker + 3),
+      url.search,
+    );
+  });
+
+  /**
+   * `<pages>/-/<ref>/…`: a short ref resolves to its full SHA first, so every
+   * commit page URL names one immutable commit.
+   */
+  async function commitPage(
+    context: Context,
+    repo: string,
+    afterMarker: string,
+    search: string,
+  ) {
+    const [ref = '', ...rest] = afterMarker.split('/');
     const sha = validRepoKey(repo)
       ? await index.resolve(repo, decodeURIComponent(ref))
       : undefined;
     if (!sha) return dashboardPage(context, { kind: 'missing', repo, ref });
     if (sha !== ref)
       return context.redirect(
-        `/${repo}/-/${sha}/${rest.join('/')}${url.search}`,
+        `${pagesOf(repo)}/-/${sha}/${rest.join('/')}${search}`,
       );
     return dashboardPage(context, { kind: 'commit', repo, sha });
-  });
+  }
 
-  /** `/` lists repositories; `/<repo>` opens its latest commit. */
-  async function repositoryPage(context: Context, repo: string) {
-    if (!repo) return dashboardPage(context, { kind: 'repositories' });
+  /** A repository's own page opens its latest commit. */
+  async function latestPage(context: Context, repo: string) {
     const latest = validRepoKey(repo) ? await index.latest(repo) : undefined;
-    if (latest) return context.redirect(`/${repo}/-/${latest}/`);
+    if (latest) return context.redirect(`${pagesOf(repo)}/-/${latest}/`);
     return dashboardPage(context, { kind: 'missing', repo });
   }
 
@@ -348,16 +426,25 @@ export function createShareApp(options: ShareAppOptions) {
     const api =
       page.kind === 'repositories'
         ? undefined
-        : `/api/v1/repos/${page.repo}/-/`;
+        : `${base}/api/v1/repos/${page.repo}/-/`;
     return context.html(
       dashboardIndex(await assets.index(), {
-        base: page.kind === 'commit' ? `/${page.repo}/-/${page.sha}/` : '/',
-        assets: '/assets/',
+        base:
+          page.kind === 'commit'
+            ? `${pagesOf(page.repo)}/-/${page.sha}/`
+            : `${base}/`,
+        assets: `${base}/assets/`,
         share: {
-          repos: '/api/v1/repos',
+          repos: `${base}/api/v1/repos`,
+          home: `${base}/`,
+          ...(single ? { single: true } : {}),
           ...(page.kind === 'repositories'
             ? {}
-            : { repo: page.repo, commits: `${api}commits` }),
+            : {
+                repo: page.repo,
+                pages: pagesOf(page.repo),
+                commits: `${api}commits`,
+              }),
           ...(page.kind === 'commit' ? { data: `${api}${page.sha}/` } : {}),
           ...(page.kind === 'missing' && page.ref ? { missing: page.ref } : {}),
         },

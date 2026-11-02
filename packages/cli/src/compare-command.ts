@@ -5,7 +5,7 @@ import {
   createDashboardReportReader,
   type LocalRun,
 } from './dashboard-reports.js';
-import { expectShareServer } from './share-command.js';
+import { expectShareServer, shareApiUrl } from './share-command.js';
 
 /** The runs at HEAD that `compare` uses: not running, not archived, clean unless allowed. */
 export function headRuns(
@@ -72,7 +72,7 @@ export async function baseRunsFromServer(options: {
 }): Promise<{ commit: string; ref?: string; runs: ComparedRun[] } | undefined> {
   const repo = repoKey(options.head);
   const api = (path: string) =>
-    new URL(`/api/v1/repos/${repo}/-/${path}`, options.serverUrl);
+    shareApiUrl(options.serverUrl, `api/v1/repos/${repo}/-/${path}`);
   const listed = (await getJson(
     api('commits'),
     options.serverUrl,

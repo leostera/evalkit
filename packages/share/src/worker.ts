@@ -5,14 +5,18 @@ import { durableObjectIndex } from './index-do.js';
 export { ShareIndexObject as ShareIndex } from './index-do.js';
 
 /**
- * Bindings for a share server Worker (see `wrangler.jsonc` in this package):
- * RESULTS (R2), INDEX (SQLite Durable Object, class ShareIndex), and ASSETS
- * (static assets: the bundled dashboard, with `run_worker_first: true`).
+ * Bindings for a share server Worker: RESULTS (R2), INDEX (SQLite Durable
+ * Object, class ShareIndex), and ASSETS (static assets: the bundled
+ * dashboard). Optional `vars`: BASE_PATH serves it below a path such as
+ * `/evals`, and REPO (a key such as `github.com/acme/agents`) turns on
+ * single-repository mode. See `ShareAppOptions`.
  */
 export type ShareEnv = {
   RESULTS: R2BucketLike;
   INDEX: Parameters<typeof durableObjectIndex>[0];
   ASSETS: { fetch(request: Request): Promise<Response> };
+  BASE_PATH?: string;
+  REPO?: string;
 };
 
 export default {
@@ -30,6 +34,8 @@ export default {
           return response.ok ? response : null;
         },
       },
+      ...(env.BASE_PATH ? { basePath: env.BASE_PATH } : {}),
+      ...(env.REPO ? { repo: env.REPO } : {}),
     });
     return app.fetch(request);
   },

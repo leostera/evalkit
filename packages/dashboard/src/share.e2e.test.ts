@@ -10,6 +10,9 @@ import { createDirectoryShareApp } from '../../share/src/node.js';
 const cli = resolve(import.meta.dir, '../../cli/src/index.ts');
 let root: string;
 let server: ReturnType<typeof Bun.serve>;
+/** Below `/evals`, showing only this test's repository. */
+let single: ReturnType<typeof Bun.serve>;
+const REPO = 'gitlab.example.com/team/shared';
 let browser: Browser;
 
 // Async: the share server runs in this process and must keep serving.
@@ -38,6 +41,13 @@ beforeAll(async () => {
     dashboardRoot: resolve(import.meta.dir, '..', 'dist'),
   });
   server = Bun.serve({ port: 0, fetch: app.fetch });
+  const singleApp = await createDirectoryShareApp({
+    dir: join(root, 'single-server'),
+    dashboardRoot: resolve(import.meta.dir, '..', 'dist'),
+    basePath: '/evals',
+    repo: REPO,
+  });
+  single = Bun.serve({ port: 0, fetch: singleApp.fetch });
   browser = await puppeteer.launch({
     headless: true,
     args: process.env.CI === 'true' ? ['--no-sandbox'] : [],
@@ -47,11 +57,39 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   void server?.stop(true);
+  void single?.stop(true);
   if (root) await rm(root, { recursive: true, force: true });
 }, 30_000);
 
-test('shared results are browsable by commit with a version picker', async () => {
-  const project = join(root, 'project');
+test(
+  'shared results are browsable by commit with a version picker',
+  () =>
+    shareAndBrowse({
+      name: 'project',
+      shareUrl: `http://127.0.0.1:${server.port}`,
+      pages: `/${REPO}`,
+    }),
+  60_000,
+);
+
+test(
+  'a share server below a path, for one repository, works the same',
+  () =>
+    shareAndBrowse({
+      name: 'single',
+      shareUrl: `http://127.0.0.1:${single.port}/evals`,
+      pages: '/evals',
+    }),
+  60_000,
+);
+
+async function shareAndBrowse(options: {
+  name: string;
+  shareUrl: string;
+  /** Where the repository's pages live on that server. */
+  pages: string;
+}) {
+  const project = join(root, options.name);
   await mkdir(join(project, 'scenarios'), { recursive: true });
   const evalSource = (message: string) => `
     export default {
@@ -70,7 +108,7 @@ test('shared results are browsable by commit with a version picker', async () =>
   );
   await writeFile(
     join(project, 'evalkit.config.js'),
-    `export default { share: { url: 'http://127.0.0.1:${server.port}' } };`,
+    `export default { share: { url: '${options.shareUrl}' } };`,
   );
   await writeFile(join(project, '.gitignore'), '_evalkit-*/\n');
   const git = (...args: string[]) =>
@@ -92,7 +130,7 @@ test('shared results are browsable by commit with a version picker', async () =>
   const first = git('rev-parse', 'HEAD');
   await evalkit(project, 'run');
   const output = await evalkit(project, 'share');
-  const url = `http://127.0.0.1:${server.port}/gitlab.example.com/team/shared/-/${first}`;
+  const url = `${new URL(options.shareUrl).origin}${options.pages}/-/${first}`;
   expect(output).toContain(url);
   expect(output).toContain('1 new');
 
@@ -133,12 +171,18 @@ test('shared results are browsable by commit with a version picker', async () =>
     page.select('select[aria-label="Version"]', second),
   ]);
   expect(new URL(page.url()).pathname).toBe(
-    `/gitlab.example.com/team/shared/-/${second}/runs`,
+    `${options.pages}/-/${second}/runs`,
   );
   await page.waitForFunction(
     () => document.body.innerText.includes('Shared greeting'),
     { timeout: 10_000 },
   );
+  // The note links to the repository's latest commit.
+  const home = await page.$eval(
+    '[role="note"] a',
+    (link) => (link as HTMLAnchorElement).pathname,
+  );
+  expect(home).toBe(`${options.pages}/`);
   expect(errors).toEqual([]);
   await page.close();
-}, 60_000);
+}

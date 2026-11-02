@@ -287,8 +287,21 @@ export function createProgram(actions: Actions): Command {
     .description('run a share server locally, with no authentication')
     .option('-d, --dir <dir>', 'where to store uploads', '_evalkit-share')
     .addOption(portOption(4318))
-    .action((options: { dir: string; port?: number }) =>
-      actions.shareServe(options),
+    .option(
+      '--base-path <path>',
+      'serve everything below this path, e.g. /evals',
+    )
+    .option(
+      '--repo <key>',
+      'show and accept only this repository, e.g. github.com/acme/agents',
+    )
+    .action(
+      (options: {
+        dir: string;
+        port?: number;
+        basePath?: string;
+        repo?: string;
+      }) => actions.shareServe(options),
     );
 
   program

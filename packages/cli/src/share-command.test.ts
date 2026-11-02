@@ -6,6 +6,7 @@ import {
   noRunsMessage,
   resolveShareHeaders,
   selectRuns,
+  shareApiUrl,
   shareTarget,
   uploadBundle,
 } from './share-command.js';
@@ -58,15 +59,29 @@ test('nothing to share says why', () => {
 
 test('the share URL names the commit only when one commit was shared', () => {
   const server = 'https://evals.example.com';
-  expect(shareTarget(server, head, [{ source: head }])).toBe(
-    `${server}/gitlab.example.com/team/evals/-/${head.commit}`,
+  const pages = `${server}/gitlab.example.com/team/evals`;
+  const runUrl = `${pages}/-/${head.commit}/runs/${'1'.repeat(8)}`;
+  expect(shareTarget(server, runUrl, [{ source: head }])).toBe(
+    `${pages}/-/${head.commit}`,
   );
-  expect(
-    shareTarget(server, head, [
-      { source: head },
-      { source: { ...head, commit: 'b'.repeat(40) } },
-    ]),
-  ).toBe(`${server}/gitlab.example.com/team/evals`);
+  const two = [
+    { source: head },
+    { source: { ...head, commit: 'b'.repeat(40) } },
+  ];
+  expect(shareTarget(server, runUrl, two)).toBe(pages);
+  // Single-repository mode below a base path: the server names the pages.
+  const single = `https://example.com/evals/-/${head.commit}/runs/x`;
+  expect(shareTarget(server, single, two)).toBe('https://example.com/evals');
+  expect(shareTarget(server, undefined, two)).toBe(server);
+});
+
+test('API paths resolve below a share URL with a path', () => {
+  expect(shareApiUrl('https://example.com/evals', 'api/v1/repos').href).toBe(
+    'https://example.com/evals/api/v1/repos',
+  );
+  expect(shareApiUrl('https://example.com/', 'api/v1/repos').href).toBe(
+    'https://example.com/api/v1/repos',
+  );
 });
 
 test('uploads retry server errors but not rejections', async () => {

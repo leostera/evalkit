@@ -11,6 +11,12 @@ export type ShareContext = {
   /** This commit's snapshot data (replaces `<base>/data/`). */
   data?: string;
   repo?: string;
+  /** Where this repository's pages live (`/<repo>`, or `/` in single-repository mode); a commit is `<pages>/-/<sha>/`. */
+  pages?: string;
+  /** The server's front page, below its base path. */
+  home?: string;
+  /** Single-repository mode: there is no list of repositories. */
+  single?: boolean;
   /** A ref or SHA with no shared results. */
   missing?: string;
 };
