@@ -23,7 +23,12 @@ import {
   yellow,
 } from './terminal.js';
 import { detectSource, runCatalog, shortSource } from './source.js';
-import { loadProject, type LoadError } from './project.js';
+import {
+  loadProject,
+  SANDBOX_INSIDE_WARNING,
+  sandboxLocation,
+  type LoadError,
+} from './project.js';
 import { createRunReporter, runReport, totalsLine } from './run-reporter.js';
 import { junitReport } from './junit.js';
 import { VERSION } from './version.js';
@@ -286,10 +291,10 @@ export async function runProjectCommand(
     project.root,
     project.config.reportDir ?? '_evalkit-results',
   );
-  const sandboxDir = resolve(
-    project.root,
-    project.config.sandboxDir ?? '_evalkit-sandbox',
-  );
+  const sandbox = sandboxLocation(project);
+  const sandboxDir = sandbox.path;
+  if (sandbox.inside)
+    console.error(`  ${yellow('!')} ${SANDBOX_INSIDE_WARNING}`);
   const source = await detectSource(project.root, {
     outputDirs: [
       reportDir,

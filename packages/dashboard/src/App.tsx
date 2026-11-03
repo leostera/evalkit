@@ -130,26 +130,24 @@ function Dashboard({
   }, [api]);
 
   return (
-    <DashboardShell
-      project={project}
-      header={
-        share?.pages !== undefined && share.commits && commit ? (
-          <VersionPicker
-            pages={share.pages}
-            current={commit}
-            commitsUrl={share.commits}
-          />
-        ) : undefined
-      }
-    >
+    <DashboardShell project={project}>
       {share?.repo ? (
-        <p className="text-[13px] text-kumo-subtle" role="note">
-          Shared results for{' '}
-          <a href={`${share.pages ?? ''}/`} className="font-mono">
-            {share.repo}
-          </a>
-          . Runs cannot be started here.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[13px] text-kumo-subtle" role="note">
+            Shared results for{' '}
+            <a href={`${share.pages ?? ''}/`} className="font-mono">
+              {share.repo}
+            </a>
+            . Runs cannot be started here.
+          </p>
+          {share.pages !== undefined && share.commits && commit ? (
+            <VersionPicker
+              pages={share.pages}
+              current={commit}
+              commitsUrl={share.commits}
+            />
+          ) : null}
+        </div>
       ) : api.readOnly ? (
         <p className="text-[13px] text-kumo-subtle" role="note">
           Read-only snapshot built with <code>evalkit build</code>. Runs cannot

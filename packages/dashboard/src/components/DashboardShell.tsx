@@ -145,12 +145,9 @@ function ProjectLabel({ project }: { project?: ProjectInfo | null }) {
 
 export function DashboardShell({
   children,
-  header,
   project,
 }: {
   children: ReactNode;
-  /** Extra controls on the right of the page header. */
-  header?: ReactNode;
   project?: ProjectInfo | null;
 }) {
   const { pathname, search } = useLocation();
@@ -199,14 +196,11 @@ export function DashboardShell({
           </Sidebar.Content>
         </Sidebar>
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-kumo-line bg-kumo-base px-4 md:px-6">
-            <Sidebar.Trigger className="md:hidden" />
-            <h1 className="text-base font-semibold text-kumo-strong">
-              {screenTitle(pathname)}
-            </h1>
-            {header}
-          </header>
+          {/* No title bar: each page's breadcrumb says where you are, and the
+              room goes to the page. The title stays for screen readers. */}
+          <h1 className="sr-only">{screenTitle(pathname)}</h1>
           <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 md:px-6">
+            <Sidebar.Trigger className="self-start md:hidden" />
             {children}
           </div>
         </main>

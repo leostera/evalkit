@@ -127,12 +127,21 @@ export const JudgeRunInfoSchema = Schema.Struct({
   events: Schema.optional(Schema.mutable(Schema.Array(JsonValueSchema))),
 });
 
-const CriterionResultSchema = Schema.Struct({
-  name: Schema.String,
-  value: Schema.Number,
-  weight: Schema.optional(Schema.Number),
-  note: Schema.optional(Schema.String),
-});
+const CriterionResultSchema = Schema.Union(
+  Schema.Struct({
+    name: Schema.String,
+    value: Schema.Number,
+    weight: Schema.optional(Schema.Number),
+    explanation: Schema.optional(Schema.String),
+    evidence: Schema.optional(JsonValueSchema),
+  }),
+  Schema.Struct({
+    name: Schema.String,
+    reached: Schema.Literal(false),
+    weight: Schema.optional(Schema.Number),
+    explanation: Schema.optional(Schema.String),
+  }),
+);
 
 /** What every score and checkpoint result can carry about its verdict. */
 const verdictFields = {
@@ -141,6 +150,7 @@ const verdictFields = {
   criteria: Schema.optional(
     Schema.mutable(Schema.Array(CriterionResultSchema)),
   ),
+  attachments: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
 };
 
 export const ScoreResultSchema = Schema.Struct({

@@ -142,7 +142,7 @@ jq '{status, error}' "$RUN/summary.json"
 jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN/scoring.json"
 ```
 
-> **Important:** Execution status `completed` does not mean the scores passed. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Local `_evalkit-sandbox/` directories retain _both_ candidate and evaluator workspaces; review them for sensitive data before sharing.
+> **Important:** Execution status `completed` does not mean the scores passed. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Kept run workspaces (`$TMPDIR/evalkit/<project>-<hash>/`) retain _both_ candidate and evaluator files; review them for sensitive data before sharing.
 
 Learn more: [Results and reports](/docs/manual/results/).
 

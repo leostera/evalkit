@@ -92,13 +92,13 @@ Each run gets two separate workspaces:
 
 Scorers see every dataset's value as `data[id]` on the scoring context.
 
-These are directory conventions, **not** a security sandbox. A trusted adapter can read both; never pass evaluator paths or contents to a model. The CLI keeps both workspaces under `_evalkit-sandbox/` for debugging, so keep that directory private too.
+These are directory conventions, **not** a security sandbox. A trusted adapter can read both; never pass evaluator paths or contents to a model. The CLI keeps both workspaces of a run that did not pass for debugging, so keep that directory private too. Workspaces live outside the project, but every run of a project shares one parent directory, so an agent that walks up from its workspace can still reach other runs and its own evaluator files. Real confinement is the adapter's job: run the agent in a container or an OS sandbox.
 
 ## Paths and mounts
 
 A dataset's files go below a directory named after its ID: `help-center` writes `help-center/…` in the workspace. Set `mount` to choose another directory, or `mount: '.'` for the workspace root. Paths may not escape the mount, and two datasets in one scenario may not write the same file. `{ file }` sources and directories resolve from the project root, not from the dataset's file.
 
-Each run's files are written fresh before the agent starts, so edits made in one run never become another run's starting state. The CLI uses `_evalkit-sandbox/<run-uuid>/{candidate,evaluator}/` and keeps it after the run. A low-level `runEval(...)` call without a persistent `workspaceRoot` uses an OS temporary workspace that is removed afterwards.
+Each run's files are written fresh before the agent starts, so edits made in one run never become another run's starting state. The CLI uses `$TMPDIR/evalkit/<project>-<hash>/`<run-uuid>/{candidate,evaluator}/, outside the project, and keeps it after a run that did not pass. A low-level `runEval(...)` call without a persistent `workspaceRoot` uses an OS temporary workspace that is removed afterwards.
 
 ## Digests
 

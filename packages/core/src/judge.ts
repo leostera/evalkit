@@ -65,48 +65,84 @@ export function choices(
 }
 
 /**
+ * Criteria by name: a number is the weight; `{ weight, description }` also
+ * says what the criterion checks. Weights default to 1.
+ */
+export type CriteriaOptions = Record<
+  string,
+  number | { weight?: number; description?: string }
+>;
+
+/**
  * A judge that scores each criterion from 0 to 1; the score is the weighted
  * mean. A number is the weight; `{ weight, description }` also says what the
  * criterion means. Weights default to 1.
  */
-export function criteria(
-  options: Record<string, number | { weight?: number; description?: string }>,
-): JudgeAnswer {
-  const entries = Object.entries(options);
-  if (!entries.length) throw new Error('criteria(...) needs a criterion');
-  return {
-    kind: 'criteria',
-    criteria: entries.map(([name, option]) => {
-      if (!name.trim()) throw new Error('A criterion needs a name');
-      const weight = typeof option === 'number' ? option : (option.weight ?? 1);
-      if (!Number.isFinite(weight) || weight <= 0)
-        throw new Error(
-          `Criterion ${name} must have a positive weight; received ${String(weight)}`,
-        );
-      const description =
-        typeof option === 'number' ? undefined : option.description;
-      return { name, weight, ...(description ? { description } : {}) };
-    }),
-  };
+export function criteria(options: CriteriaOptions): JudgeAnswer {
+  return { kind: 'criteria', criteria: declaredCriteria(options) };
 }
 
-/** One criterion's result, as a scorer returns it and as results record it. */
-export type CriterionResult = {
+/** Checked criteria declarations, for `criteria()` and `predicate(..., { criteria })`. */
+export function declaredCriteria(options: CriteriaOptions): JudgeCriterion[] {
+  const entries = Object.entries(options);
+  if (!entries.length) throw new Error('criteria(...) needs a criterion');
+  return entries.map(([name, option]) => {
+    if (!name.trim()) throw new Error('A criterion needs a name');
+    const weight = typeof option === 'number' ? option : (option.weight ?? 1);
+    if (!Number.isFinite(weight) || weight <= 0)
+      throw new Error(
+        `Criterion ${name} must have a positive weight; received ${String(weight)}`,
+      );
+    const description =
+      typeof option === 'number' ? undefined : option.description;
+    return { name, weight, ...(description ? { description } : {}) };
+  });
+}
+
+/**
+ * One criterion's result, as a scorer returns it and as results record it:
+ * a value with what it saw, or `reached: false` when the check never got to
+ * run, because something before it failed (say, the app would not start).
+ * A criterion not reached counts as 0; the score's `explanation` says why,
+ * once, instead of every criterion repeating it.
+ */
+export type CriterionResult = ReachedCriterion | UnreachedCriterion;
+
+export type ReachedCriterion = {
   name: string;
+  /** From 0 to 1. */
   value: number;
-  /** Default 1. */
+  /** Default 1, or the declared weight. */
   weight?: number;
   /** Why this value. */
-  note?: string;
+  explanation?: string;
+  /** What the check observed, as plain data. */
+  evidence?: JsonValue;
 };
 
-/** The weighted mean of criteria; weights default to 1. */
+export type UnreachedCriterion = {
+  name: string;
+  reached: false;
+  weight?: number;
+  explanation?: string;
+};
+
+/** A criterion as a scorer returns it: its evidence may be any plain value. */
+export type CriterionInput =
+  | (Omit<ReachedCriterion, 'evidence'> & { evidence?: unknown })
+  | UnreachedCriterion;
+
+/** What a criterion counts for in the weighted mean. */
+export const criterionValue = (result: CriterionResult): number =>
+  'value' in result ? result.value : 0;
+
+/** The weighted mean of criteria; weights default to 1, a criterion not reached counts 0. */
 export function weightedMean(results: readonly CriterionResult[]): number {
   let total = 0;
   let weights = 0;
   for (const result of results) {
     const weight = result.weight ?? 1;
-    total += weight * result.value;
+    total += weight * criterionValue(result);
     weights += weight;
   }
   if (!weights) throw new Error('Criteria need a positive total weight');
@@ -167,7 +203,7 @@ export function answerInstruction(answer: JudgeAnswer): string {
         `Answer with only a JSON object: {"criteria": {${answer.criteria
           .map(
             (criterion) =>
-              `${JSON.stringify(criterion.name)}: {"value": <0 to 1>, "note": "<why>"}`,
+              `${JSON.stringify(criterion.name)}: {"value": <0 to 1>, "explanation": "<why>"}`,
           )
           .join(', ')}}, "explanation": "<one sentence overall>"}`,
       ].join('\n');
@@ -224,19 +260,19 @@ export function readJudgeAnswer(
       throw new UnreadableAnswer(
         `criterion ${JSON.stringify(criterion.name)} needs a "value" from 0 to 1`,
       );
-    const note =
+    const explanation =
       typeof entry === 'object' &&
       entry !== null &&
       !Array.isArray(entry) &&
-      typeof entry.note === 'string' &&
-      entry.note.trim()
-        ? entry.note.trim()
+      typeof entry.explanation === 'string' &&
+      entry.explanation.trim()
+        ? entry.explanation.trim()
         : undefined;
     return {
       name: criterion.name,
       value,
       weight: criterion.weight,
-      ...(note ? { note } : {}),
+      ...(explanation ? { explanation } : {}),
     };
   });
   return {

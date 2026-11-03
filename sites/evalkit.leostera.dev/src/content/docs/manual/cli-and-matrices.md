@@ -174,7 +174,7 @@ To work on the dashboard UI itself, start `bun run evalkit dev` in an example pr
 
 ## Sharing a static snapshot
 
-`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, scores, checkpoints, trajectories, attachments, and each run's **candidate** artifact snapshot. It never copies `_evalkit-sandbox/` or evaluator workspaces. Runs of evals archived by [`evalkit tidy`](#archiving-removed-evals) are left out. Runs cannot be started from a snapshot.
+`bun run evalkit build` writes a read-only copy of the dashboard and the project's current local reports to `_evalkit-dashboard/` (choose another directory with `--out`). It includes the catalog, runs, scores, checkpoints, trajectories, attachments, and each run's **candidate** artifact snapshot. It never copies run workspaces or evaluator files. Runs of evals archived by [`evalkit tidy`](#archiving-removed-evals) are left out. Runs cannot be started from a snapshot.
 
 Before building, `build` asks whether to run the evals first so the snapshot has fresh results. With no current results it runs them without asking. Pass `--run` to always run them first or `--no-run` to use existing results; without a terminal to answer (CI, pipes) it uses existing results. Failing evals do not stop the build; their results are included.
 

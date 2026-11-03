@@ -42,7 +42,7 @@ The generator creates `scenarios/`, `agents/`, `datasets/`, and `judges/`, plus 
 
 In-place setup preserves existing dependencies, scripts, README, and scenario files; it refuses to overwrite any of the generated paths, including an existing config. The project installs `@leostera/evalkit` from npm. For more runnable examples, see [`examples/starter`](examples/starter/) and [`examples/interleaved-scenario`](examples/interleaved-scenario/).
 
-Runs create `_evalkit-results/` and `_evalkit-sandbox/` in the generated project directory. Scenario definitions can be versioned in Git; reports and workspaces remain local and are **not automatically shared**. Review them for sensitive data before sharing.
+Runs write reports to `_evalkit-results/` in the project, and run their agents in workspaces outside it (`$TMPDIR/evalkit/<project>-<hash>/`), so an agent cannot read the project's source, instructions or other runs by looking around. Scenario definitions can be versioned in Git; reports and workspaces remain local and are **not automatically shared**. Review them for sensitive data before sharing.
 
 ## Explore more
 

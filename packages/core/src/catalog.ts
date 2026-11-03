@@ -204,7 +204,11 @@ function catalogScorer(
     ...(rule.supportsPartial !== undefined
       ? { supportsPartial: rule.supportsPartial }
       : {}),
-    ...(rule.kind === 'judge' ? catalogJudge(rule, at, defaultJudge) : {}),
+    ...(rule.kind === 'judge'
+      ? catalogJudge(rule, at, defaultJudge)
+      : rule.criteria
+        ? { answer: { kind: 'criteria' as const, criteria: rule.criteria } }
+        : {}),
     ...(definedAt ? { definedAt } : {}),
   };
 }

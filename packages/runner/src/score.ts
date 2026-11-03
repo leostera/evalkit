@@ -1,6 +1,8 @@
 import {
   toJson,
+  type CriterionInput,
   type CriterionResult,
+  type JudgeCriterion,
   type ScoreResult,
   type ScoreValue,
 } from '@evalkit/core';
@@ -19,31 +21,72 @@ const inUnitInterval = (value: unknown): value is number =>
   value >= 0 &&
   value <= 1;
 
-/** Criteria must be well formed before they can stand for the score. */
-function checkedCriteria(criteria: unknown): CriterionResult[] {
-  if (!Array.isArray(criteria) || !criteria.length)
+/**
+ * Criteria must be well formed before they can stand for the score. With
+ * declared criteria, each takes its declared weight unless it sets one, a
+ * declared one left out is not reached, and an undeclared one is an error,
+ * so the checks shown before a run are the checks recorded after it.
+ */
+function checkedCriteria(
+  criteria: unknown,
+  declared: readonly JudgeCriterion[] | undefined,
+): CriterionResult[] {
+  if (!Array.isArray(criteria) || (!criteria.length && !declared?.length))
     throw new Error('criteria must be a non-empty array');
-  return criteria.map((entry: Partial<CriterionResult>, index) => {
+  const seen = new Set<string>();
+  const results = criteria.map((entry: Partial<CriterionInput>, index) => {
     if (typeof entry?.name !== 'string' || !entry.name.trim())
       throw new Error(`criteria[${index}] needs a name`);
-    if (!inUnitInterval(entry.value))
+    const { name } = entry;
+    if (seen.has(name)) throw new Error(`Criterion ${name} is listed twice`);
+    seen.add(name);
+    const declaration = declared?.find((criterion) => criterion.name === name);
+    if (declared && !declaration)
       throw new Error(
-        `Criterion ${entry.name} value must be a number from 0 to 1; received ${String(entry.value)}`,
+        `Criterion ${name} is not declared; declared: ${declared.map((criterion) => criterion.name).join(', ')}`,
       );
-    if (
-      entry.weight !== undefined &&
-      !(Number.isFinite(entry.weight) && entry.weight > 0)
-    )
+    const weight = (entry as { weight?: number }).weight ?? declaration?.weight;
+    if (weight !== undefined && !(Number.isFinite(weight) && weight > 0))
       throw new Error(
-        `Criterion ${entry.name} weight must be a positive number; received ${String(entry.weight)}`,
+        `Criterion ${name} weight must be a positive number; received ${String(weight)}`,
       );
+    const explanation = (entry as { explanation?: unknown }).explanation;
+    if (explanation !== undefined && typeof explanation !== 'string')
+      throw new Error(`Criterion ${name} explanation must be a string`);
+    const common = {
+      name,
+      ...(weight !== undefined ? { weight } : {}),
+      ...(explanation?.trim() ? { explanation: explanation.trim() } : {}),
+    };
+    if ('reached' in entry) {
+      if (entry.reached !== false)
+        throw new Error(
+          `Criterion ${name}: reached can only be false; leave it out for a check that ran`,
+        );
+      return { ...common, reached: false as const };
+    }
+    const value = (entry as { value?: unknown }).value;
+    if (!inUnitInterval(value))
+      throw new Error(
+        `Criterion ${name} value must be a number from 0 to 1; received ${String(value)}`,
+      );
+    const evidence = (entry as { evidence?: unknown }).evidence;
     return {
-      name: entry.name,
-      value: entry.value,
-      ...(entry.weight !== undefined ? { weight: entry.weight } : {}),
-      ...(entry.note ? { note: entry.note } : {}),
+      ...common,
+      value,
+      ...(evidence !== undefined
+        ? { evidence: toJson(evidence, `criteria.${name}.evidence`) }
+        : {}),
     };
   });
+  const missing = (declared ?? [])
+    .filter((criterion) => !seen.has(criterion.name))
+    .map((criterion) => ({
+      name: criterion.name,
+      weight: criterion.weight,
+      reached: false as const,
+    }));
+  return [...results, ...missing];
 }
 
 /**
@@ -55,6 +98,7 @@ function checkedCriteria(criteria: unknown): CriterionResult[] {
 export function normalizeScore(
   value: ScoreValue | JudgedScore | boolean,
   passAt?: number,
+  declared?: readonly JudgeCriterion[],
 ): NormalizedScore {
   if (
     typeof value === 'object' &&
@@ -76,7 +120,7 @@ export function normalizeScore(
   const criteria =
     normalized.criteria === undefined
       ? undefined
-      : checkedCriteria(normalized.criteria);
+      : checkedCriteria(normalized.criteria, declared);
   const score =
     normalized.value ?? (criteria ? weightedMean(criteria) : undefined);
   if (!inUnitInterval(score))

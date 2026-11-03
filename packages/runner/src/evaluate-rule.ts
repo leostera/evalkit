@@ -48,7 +48,12 @@ export function evaluateRule(
           })
         : (yield* runJudgeAgent(rule, judgeAgent!, input, placement)).value;
     const score = yield* Effect.try({
-      try: () => normalizeScore(evaluated, rule.passAt),
+      try: () =>
+        normalizeScore(
+          evaluated,
+          rule.passAt,
+          rule.kind === 'predicate' ? rule.criteria : undefined,
+        ),
       catch: (cause) => failure(rule.name, cause),
     });
     const validated = yield* Schema.decodeUnknown(ScoreResultSchema)({

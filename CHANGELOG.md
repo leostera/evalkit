@@ -4,7 +4,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
-You can see what a judge checks before a run and why it passed or failed after. A judge is now a rubric plus what it sees and how it answers: EvalKit builds the prompt, enforces the answer, and records the prompt, reply, model and cost, which a matrix axis can vary.
+You can see what a judge checks before a run and why it passed or failed after. A judge is now a rubric plus what it sees and how it answers: EvalKit builds the prompt, enforces the answer, and records the prompt, reply, model and cost, which a matrix axis can vary. Run pages put why a run failed beside what it did, a scorer can report several checks from one exercise, and run workspaces move out of the project.
 
 ### Breaking: judges name their agent and EvalKit builds the prompt
 
@@ -13,22 +13,35 @@ You can see what a judge checks before a run and why it passed or failed after. 
 - **The judge agent gets the run's `parameters`**, so a matrix axis such as `judgeModel` chooses its model. It should return `{ reply, usage, model }`; the model is recorded with each verdict.
 - `EvalCatalogEntry.judgeAgent` is gone; each catalog scorer has its own `agent`, and judges add `inputs`, `answer` and `prompt` (the template).
 
+### Breaking: run workspaces live outside the project
+
+Run workspaces used to live in `_evalkit-sandbox/` inside the project, so an agent that looked around found the project's source, its `AGENTS.md` and skills, its results, and other runs' workspaces, and some read them unprompted. They now default to the system temp directory, `$TMPDIR/evalkit/<project>-<hash>/<run>/{candidate,evaluator}`, one directory per checkout so `tidy`, `dev` and the Workspaces page still find the ones a run kept. Setting `sandboxDir` inside the project still works, and `run` warns. This removes what an agent finds by accident; it is not confinement. Runs of a project still share a parent directory, and the evaluator workspace sits beside the candidate one, so an agent that goes looking can reach them. Confine the agent in its adapter, with a container or an OS sandbox.
+
 ### Migrating from 0.9
 
 1. Move the scenario's `judge: myJudge` to `judge: myJudge` in `evalkit.config.ts`, or to `agent: myJudge` on each `judge()` rule. A scenario that still sets it fails with a message saying where it went.
 2. If your judge agent parsed EvalKit's old JSON prompt, make it send the message it receives to its model as it is, and return the model's reply. Return `model` and `usage` too.
 3. If a judge returned partial values and relied on its own `passed`, set `passAt` to the lowest value that should pass.
+4. If a script reads `_evalkit-sandbox/` by path, read the dashboard's Workspaces page or the run's saved artifacts instead, or set `sandboxDir: '_evalkit-sandbox'` to keep the old place (and its warning). Delete the old `_evalkit-sandbox/` and its Git ignore line.
+5. Several predicates sharing one cached exercise can become one predicate that returns `criteria`, declared with `predicate(name, fn, { criteria })`; see below.
 
 ### Added
 
 - **Descriptions.** `predicate(name, fn, { description })` and `judge(name, { description })` say what a scorer checks, in the dashboard, `--dry-run` (which now lists each scenario's scorers, pass marks and judge agents) and the Judges page.
-- **Criteria.** A predicate can return `criteria: [{ name, value, weight?, note? }]` instead of `value`; the score is their weighted mean (weight 1 by default), and the run page shows the formula. `criteria()` judges answer per criterion.
-- **Verdicts on the run page.** Each scorer and checkpoint row opens (failed ones open by default) to the verdict in words ("answered C (0), passes at A or B → failed"), the explanation, criteria, and for a judge the agent, model, tokens, time and retry, then tabs with the prompt it saw, its reply, its conversation and the evidence as a tree or JSON. A checkpoint in the trajectory opens the same panel.
+- **Criteria: one exercise, several checks.** A predicate can return `criteria` instead of `value`, one per check: `{ name, value, weight?, explanation?, evidence? }`. The score is their weighted mean (weight 1 by default), and the run page shows the formula. `criteria()` judges answer the same way.
+  - `predicate(name, fn, { criteria: { 'cannot push': 'the share token gets 403' } })` declares the checks, so they show before a run.
+  - A declared check that the result leaves out, or one returned as `{ name, reached: false }`, is **not reached**: it counts as 0 and shows as "not reached", with the score's explanation as the one root cause. A check that wasn't declared is an error.
+  - Each criterion's evidence opens under it on the run page.
+- **A run page that answers why.** What the agent did, its trajectory, is on the left. Every verdict is on the right, failures first and open, and stays in view while the trajectory scrolls. The pane is titled "Why it failed", "How it scored" or "Why it errored", with "2 of 3 checks did not pass" beside it. Judging, metrics, attachments, datasets and artifacts fold away below. Clicking a checkpoint in the trajectory points the pane at its verdict, and `?verdict=` links to one. What the run ran sits in one line under the title, with agent and judge tokens apart.
+- **No title bar.** The bar at the top of every page, which repeated the section name, is gone; the breadcrumb says where you are. A shared page's version picker moved beside the "Shared results for…" line.
+- **Verdicts.** Each scorer and checkpoint opens (failed ones open by default) to the verdict in words ("answered C (0), passes at A or B → failed"), the explanation, criteria, and for a judge the agent, model, tokens, time and retry, then tabs with the prompt it saw, its reply, its conversation and the evidence as a tree or JSON.
 - **Judging cost apart from the agent's.** Results save the judge's prompt, reply, conversation, usage, model and the `passAt` applied. A **Judging** section on the run page totals judge tokens and time by judge, and the built-in `judge tokens` metric puts it on the scoreboard and in Compare.
 - **Judges page.** The list shows each judge's description, pass mark, latest model and last 10 runs. A judge's page shows its agent, what it sees, how it answers, the choice or criteria table, the rubric, the prompt EvalKit sends (as a template or as a recent run sent it), and recent verdicts with their reasons.
 - **"How it is scored"** on a scenario's page: every scorer, what it checks, its pass mark and how it did in the last 10 runs. Checkpoints in the transcript show their description and pass mark.
-- **Failure lines say why.** The CLI's failure line and JUnit messages give each failing scorer's value, pass mark, choice and the first line of its explanation.
-- [`examples/judges`](https://github.com/leostera/evalkit/tree/main/examples/judges): choices and criteria judges on a chat assistant, evidence-returning predicates on a built service, and a judge model chosen by the matrix, all provider-free.
+- **Failure lines say why, in one line.** The CLI's failure line and JUnit messages give each failing scorer's value, pass mark and choice, which criteria failed or weren't reached, and the first line of its explanation, without terminal colours. A 300-line stderr in an explanation or error no longer floods the terminal.
+- **Attachments next to the verdict.** A score or checkpoint records the files its scorer saved with `attach()` (`attachments`), even when the scorer then failed. Its verdict links them, and a failed one also links the run's other attachments, such as the agent's transcript.
+- **Graders that read external state**, documented: reset before you exercise, or compare before and after, so the agent's own test leftovers don't decide a check.
+- [`examples/judges`](https://github.com/leostera/evalkit/tree/main/examples/judges): choices and criteria judges on a chat assistant, one predicate with declared checks (failed, and not reached) on a built service, and a judge model chosen by the matrix, all provider-free.
 
 ### Fixed
 

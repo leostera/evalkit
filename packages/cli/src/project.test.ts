@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { loadProject } from './project.js';
+import { loadProject, sandboxLocation } from './project.js';
 import { normalizeRunOptions } from './run-command.js';
 
 const roots: string[] = [];
@@ -298,4 +298,24 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
   });
   expect(manifest.matrix.id).toBe('models');
   expect(manifest.matrix.cellKey).toContain('with-docs');
+});
+
+test('run workspaces live outside the project unless sandboxDir puts them inside', () => {
+  const root = '/work/my-evals';
+  const outside = sandboxLocation({ root, config: {} });
+  expect(outside.inside).toBe(false);
+  expect(outside.path.startsWith(join(tmpdir(), 'evalkit', 'my-evals-'))).toBe(
+    true,
+  );
+  // Stable per checkout, so tidy and dev find what run kept.
+  expect(sandboxLocation({ root, config: {} }).path).toBe(outside.path);
+  expect(sandboxLocation({ root: '/work/other', config: {} }).path).not.toBe(
+    outside.path,
+  );
+  expect(
+    sandboxLocation({ root, config: { sandboxDir: '_evalkit-sandbox' } }),
+  ).toEqual({ path: '/work/my-evals/_evalkit-sandbox', inside: true });
+  expect(
+    sandboxLocation({ root, config: { sandboxDir: '/scratch/evals' } }),
+  ).toEqual({ path: '/scratch/evals', inside: false });
 });

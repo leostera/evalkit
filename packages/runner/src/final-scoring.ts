@@ -1,3 +1,4 @@
+import { attachedFields, trackAttachments } from './attachments.js';
 import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
@@ -126,12 +127,14 @@ export async function evaluateFinalScorers(
       timestamp: started.toISOString(),
     });
     let result: ScoreResult;
+    const tracked = trackAttachments(input.attach);
     try {
       const score = await runBoundary(
         evaluateRule(
           scorer,
           scoringContext({
             ...input,
+            attach: tracked.attach,
             context,
             workspace,
             transcript: definition.transcript,
@@ -149,6 +152,7 @@ export async function evaluateFinalScorers(
         kind: scorer.kind,
         durationMs: now().getTime() - started.getTime(),
         ...score,
+        ...attachedFields(tracked.attached),
       };
       results.push(result);
     } catch (error) {
@@ -159,6 +163,7 @@ export async function evaluateFinalScorers(
         durationMs: now().getTime() - started.getTime(),
         error: recorded,
         passed: false,
+        ...attachedFields(tracked.attached),
       });
       await emitRunner({
         kind: 'scorer-failed',

@@ -11,12 +11,23 @@ import {
 import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);
-import type { CriterionResult, JudgeAnswer } from './judge.js';
+import {
+  declaredCriteria,
+  type CriteriaOptions,
+  type CriterionInput,
+  type CriterionResult,
+  type JudgeAnswer,
+  type JudgeCriterion,
+} from './judge.js';
 export {
   choices,
   criteria,
   passMark,
+  type CriteriaOptions,
+  type CriterionInput,
   type CriterionResult,
+  type ReachedCriterion,
+  type UnreachedCriterion,
   type JudgeAnswer,
   type JudgeChoice,
   type JudgeCriterion,
@@ -335,8 +346,11 @@ export type ScoreValue<Evidence = unknown> =
        * evidence reaches later scorers through `checkpoint(rule)`.
        */
       evidence?: Evidence;
-      /** Per-criterion values, shown on the run page; see `CriterionResult`. */
-      criteria?: CriterionResult[];
+      /**
+       * Per-criterion results, each shown on its own; see `CriterionResult`.
+       * Return `{ name, reached: false }` for a check that never ran.
+       */
+      criteria?: CriterionInput[];
       /** What a model-backed scorer saw and said; never counted as AUT usage. */
       judge?: JudgeRunInfo;
     };
@@ -362,6 +376,8 @@ export type ScoreResult = {
   /** A `choices` judge's answer, such as `B`. */
   choice?: string;
   criteria?: CriterionResult[];
+  /** Files its scorer saved with `attach()`, by name. */
+  attachments?: string[];
   judge?: JudgeRunInfo;
   durationMs: number;
   error?: RecordedError;
@@ -427,6 +443,12 @@ export type PredicateScorer<Evidence = unknown> = {
   supportsPartial?: boolean;
   /** A numeric result passes when it is at least this value. Default: only 1 passes. */
   passAt?: number;
+  /**
+   * The checks it reports, declared up front so they show before a run.
+   * A declared criterion it leaves out is recorded as not reached; one it
+   * did not declare is an error.
+   */
+  criteria?: JudgeCriterion[];
   run(
     context: ScoringContext,
   ): boolean | ScoreValue<Evidence> | Promise<boolean | ScoreValue<Evidence>>;
@@ -477,11 +499,35 @@ export function predicate<Evidence = unknown>(
   options: Pick<
     PredicateScorer,
     'supportsPartial' | 'passAt' | 'description'
-  > = {},
+  > & {
+    /** The checks it reports by name: `{ 'cannot push': 'the share token gets 403' }` or `{ name: { weight, description } }`. */
+    criteria?: Record<
+      string,
+      string | number | { weight?: number; description?: string }
+    >;
+  } = {},
 ): PredicateScorer<Evidence> {
   if (!name.trim()) throw new Error('Predicate name must not be empty');
   assertPassAt(`Predicate ${name}`, options.passAt);
-  return markDefinitionSite({ kind: 'predicate', name, run, ...options });
+  const { criteria: declared, ...rest } = options;
+  return markDefinitionSite({
+    kind: 'predicate',
+    name,
+    run,
+    ...rest,
+    ...(declared
+      ? {
+          criteria: declaredCriteria(
+            Object.fromEntries(
+              Object.entries(declared).map(([key, option]) => [
+                key,
+                typeof option === 'string' ? { description: option } : option,
+              ]),
+            ) as CriteriaOptions,
+          ),
+        }
+      : {}),
+  });
 }
 
 /**
@@ -887,6 +933,8 @@ export type CheckpointResult = {
   evidence?: JsonValue;
   choice?: string;
   criteria?: CriterionResult[];
+  /** Files its scorer saved with `attach()`, by name. */
+  attachments?: string[];
   judge?: JudgeRunInfo;
   durationMs?: number;
   error?: RecordedError;

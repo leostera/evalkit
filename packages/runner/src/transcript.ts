@@ -1,3 +1,4 @@
+import { attachedFields, trackAttachments } from './attachments.js';
 import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
@@ -179,6 +180,7 @@ async function runCheckpoint(
     name: step.name,
     timestamp: started.toISOString(),
   });
+  const tracked = trackAttachments(input.attach);
   return runBoundary(
     evaluateCheckpoint(
       step,
@@ -194,33 +196,36 @@ async function runCheckpoint(
         checkpoint: checkpointLookup(definition.transcript, [
           ...progress.checkpoints,
         ]),
-        attach: input.attach,
+        attach: tracked.attach,
       },
       now,
       input.defaultJudge,
     ),
-  ).catch(async (error: unknown) => {
-    const recorded = recordError(error);
-    progress.checkpoints.push({
-      step: index,
-      kind: step.kind,
-      name: step.name,
-      status: 'error',
-      durationMs: now().getTime() - started.getTime(),
-      error: recorded,
-    });
-    try {
-      await emitRunner({
-        kind: 'checkpoint-error',
+  )
+    .then((result) => ({ ...result, ...attachedFields(tracked.attached) }))
+    .catch(async (error: unknown) => {
+      const recorded = recordError(error);
+      progress.checkpoints.push({
         step: index,
+        kind: step.kind,
+        name: step.name,
+        status: 'error',
+        durationMs: now().getTime() - started.getTime(),
         error: recorded,
-        timestamp: now().toISOString(),
+        ...attachedFields(tracked.attached),
       });
-    } catch {
-      // Preserve the checkpoint error if the writer also fails.
-    }
-    throw error;
-  });
+      try {
+        await emitRunner({
+          kind: 'checkpoint-error',
+          step: index,
+          error: recorded,
+          timestamp: now().toISOString(),
+        });
+      } catch {
+        // Preserve the checkpoint error if the writer also fails.
+      }
+      throw error;
+    });
 }
 
 async function skipRemainingSteps(

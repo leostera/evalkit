@@ -34,8 +34,8 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 ## Scoring
 
-- `predicate(name, run: (ctx: ScoringContext) => boolean | ScoreValue, { description?, passAt?, supportsPartial? })`  
-  A scorer in code; `predicate<Evidence>` types what it returns as `evidence`. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. A number passes at `passAt` (default only 1). Without a `value`, the score is the weighted mean of `criteria` (`[{ name, value, weight?, note? }]`). `description` says what it checks, in the dashboard and `--dry-run`.
+- `predicate(name, run: (ctx: ScoringContext) => boolean | ScoreValue, { description?, criteria?, passAt?, supportsPartial? })`  
+  A scorer in code; `predicate<Evidence>` types what it returns as `evidence`. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. A number passes at `passAt` (default only 1). Without a `value`, the score is the weighted mean of `criteria`: each `{ name, value, weight?, explanation?, evidence? }`, or `{ name, reached: false }` for a check that never ran (counts as 0). `criteria` in the options declares the checks by name (`{ 'cannot push': 'the share token gets 403' }`, or `{ name: { weight, description } }`): declared ones left out are not reached, undeclared ones are an error. `description` says what it checks, in the dashboard and `--dry-run`. See [one exercise, several checks](/docs/manual/scoring-and-evals/#one-exercise-several-checks).
 - `judge(name, { rubric, description?, agent?, inputs?, answer?, passAt?, supportsPartial? })`  
   A scorer graded by a judge agent. EvalKit builds the prompt from the rubric, the `inputs` (`{ name: (ctx: ScoringContext) => JsonValue }`, default the conversation and the reply) and the answer format, reads the reply, and asks once more if it cannot. `agent` defaults to `judge` in `evalkit.config.ts`; it receives the matrix cell's `parameters`, so an axis can choose the judge's model. See [Judges](/docs/manual/scoring-and-evals/#judges).
 - `choices({ A: [label, value], ... })`  

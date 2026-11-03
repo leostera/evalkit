@@ -29,7 +29,7 @@ test('judges explain why the small model fails, with the judge model the matrix 
         judge: config.judge,
       }),
     );
-    expect(result).toMatchObject({ runs: 6, passed: 4, failed: 2 });
+    expect(result).toMatchObject({ runs: 9, passed: 5, failed: 4 });
     const runs = await Promise.all(
       (await readdir(reports)).map(async (runId) => {
         const manifest = await readRunManifest(reports, runId);
@@ -47,7 +47,12 @@ test('judges explain why the small model fails, with the judge model the matrix 
         .filter((run) => !run.passed)
         .map((run) => `${run.scenario}/${run.model}`)
         .sort(),
-    ).toEqual(['purge-single-url/small', 'versioned-notes/small']);
+    ).toEqual([
+      'purge-single-url/small',
+      'purge-single-url/tiny',
+      'versioned-notes/small',
+      'versioned-notes/tiny',
+    ]);
 
     const purge = runs.find(
       (run) => run.scenario === 'purge-single-url' && run.model === 'small',
@@ -66,9 +71,9 @@ test('judges explain why the small model fails, with the judge model the matrix 
       'How do I purge one URL from the cache?',
     );
     const tone = purge.results.find((score) => score.name === 'Tone')!;
-    expect(tone.criteria?.find((c) => c.name === 'no disclosure')?.value).toBe(
-      0,
-    );
+    expect(
+      tone.criteria?.find((c) => c.name === 'no disclosure'),
+    ).toMatchObject({ value: 0, explanation: 'Mentions its system prompt.' });
     expect(tone.value).toBeCloseTo(0.8);
     expect(
       purge.metrics?.find((metric) => metric.name === 'judge tokens')?.value,
@@ -77,11 +82,30 @@ test('judges explain why the small model fails, with the judge model the matrix 
     const notes = runs.find(
       (run) => run.scenario === 'versioned-notes' && run.model === 'small',
     )!.run;
-    const history = notes.results.find((score) => score.name === 'history')!;
-    expect(history.explanation).toBe(
-      'Got 2 history entries for a, expected 3.',
-    );
-    expect(history.evidence).toHaveLength(2);
+    const service = notes.results.find(
+      (score) => score.name === 'notes service',
+    )!;
+    expect(service.attachments).toEqual(['logs/notes-store.json']);
+    expect(service.criteria).toMatchObject([
+      { name: 'saves', value: 1 },
+      {
+        name: 'history',
+        value: 0,
+        explanation: '2 entries for a, expected 3',
+        evidence: [{ text: 'final text' }, { text: 'second draft' }],
+      },
+      { name: 'one commit per save', value: 0 },
+    ]);
+
+    // Nothing to read: every check is not reached, with the cause said once.
+    const tiny = runs.find(
+      (run) => run.scenario === 'versioned-notes' && run.model === 'tiny',
+    )!.run;
+    const unreached = tiny.results.find(
+      (score) => score.name === 'notes service',
+    )!;
+    expect(unreached.explanation).toStartWith('Could not read notes.json');
+    expect(unreached.criteria?.every((c) => 'reached' in c)).toBe(true);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

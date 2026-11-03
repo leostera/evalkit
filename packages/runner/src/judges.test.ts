@@ -251,9 +251,9 @@ test('criteria: the score is the weighted mean of the criteria the judge scored'
   const reviewer = fakeJudge(() =>
     JSON.stringify({
       criteria: {
-        concise: { value: 1, note: 'Short.' },
+        concise: { value: 1, explanation: 'Short.' },
         professional: 1,
-        'no disclosure': { value: 0, note: 'Mentions its prompt.' },
+        'no disclosure': { value: 0, explanation: 'Mentions its prompt.' },
       },
       explanation: 'Good tone, one slip.',
     }),
@@ -286,13 +286,13 @@ test('criteria: the score is the weighted mean of the criteria the judge scored'
     value: 0.8,
     passed: true,
     criteria: [
-      { name: 'concise', value: 1, weight: 2, note: 'Short.' },
+      { name: 'concise', value: 1, weight: 2, explanation: 'Short.' },
       { name: 'professional', value: 1, weight: 2 },
       {
         name: 'no disclosure',
         value: 0,
         weight: 1,
-        note: 'Mentions its prompt.',
+        explanation: 'Mentions its prompt.',
       },
     ],
   });
@@ -326,6 +326,136 @@ test('a predicate may return criteria instead of a value', async () => {
     value: 0.75,
     passed: true,
     passAt: 0.75,
+  });
+});
+
+test('one exercise, several checks: declared criteria, evidence, and checks not reached', async () => {
+  const dir = await root();
+  // The exercise runs once per run; each check is a criterion of its result.
+  let exercised = 0;
+  const service = (started: boolean) =>
+    predicate(
+      'service',
+      async ({ attach }) => {
+        exercised += 1;
+        await attach('logs/app.md', started ? 'listening' : 'EADDRINUSE');
+        if (!started)
+          return { criteria: [], explanation: 'The app did not start' };
+        return {
+          criteria: [
+            { name: 'saves', value: 1, evidence: { status: 201 } },
+            {
+              name: 'idempotent',
+              value: 0,
+              explanation: 'an extra repo exists',
+              evidence: ['bob', 'ada', 'demo-tenant', 'template'],
+            },
+          ],
+        };
+      },
+      {
+        criteria: {
+          saves: 'every save answers with a version',
+          idempotent: {
+            weight: 2,
+            description: 'provisioning twice is a no-op',
+          },
+          history: 'history is kept',
+        },
+      },
+    );
+  const run = (started: boolean) =>
+    runOne(
+      runEval(
+        defineEval({
+          id: started ? 'started' : 'never-started',
+          agent: greeter().agent,
+          transcript: [user('first')],
+          scoring: [service(started)],
+        }),
+        { report: localReportStore(dir) },
+      ),
+    );
+
+  const ran = (await run(true)).scoring!.results[0]!;
+  expect(ran).toMatchObject({
+    value: 0.25,
+    passed: false,
+    attachments: ['logs/app.md'],
+    criteria: [
+      { name: 'saves', value: 1, weight: 1, evidence: { status: 201 } },
+      {
+        name: 'idempotent',
+        value: 0,
+        weight: 2,
+        explanation: 'an extra repo exists',
+        evidence: ['bob', 'ada', 'demo-tenant', 'template'],
+      },
+      { name: 'history', weight: 1, reached: false },
+    ],
+  });
+
+  const stopped = (await run(false)).scoring!.results[0]!;
+  expect(stopped).toMatchObject({
+    value: 0,
+    passed: false,
+    explanation: 'The app did not start',
+    attachments: ['logs/app.md'],
+  });
+  expect(stopped.criteria?.map((criterion) => 'reached' in criterion)).toEqual([
+    true,
+    true,
+    true,
+  ]);
+  expect(exercised).toBe(2);
+});
+
+test('a criterion a predicate did not declare is an error naming the declared ones', async () => {
+  const dir = await root();
+  const result = await runOne(
+    runEval(
+      defineEval({
+        id: 'undeclared',
+        agent: greeter().agent,
+        transcript: [user('first')],
+        scoring: [
+          predicate(
+            'service',
+            () => ({ criteria: [{ name: 'saves', value: 1 }] }),
+            { criteria: { history: 'history is kept' } },
+          ),
+        ],
+      }),
+      { report: localReportStore(dir) },
+    ),
+  );
+  expect(result.scoring?.results[0]?.error?.message).toBe(
+    'Criterion saves is not declared; declared: history',
+  );
+});
+
+test('a scorer that fails still links what it attached', async () => {
+  const dir = await root();
+  const result = await runOne(
+    runEval(
+      defineEval({
+        id: 'attached-then-failed',
+        agent: greeter().agent,
+        transcript: [user('first')],
+        scoring: [
+          predicate('boots', async ({ attach }) => {
+            await attach('logs/worker.md', 'wrangler: port in use');
+            throw new Error('the worker did not start');
+          }),
+        ],
+      }),
+      { report: localReportStore(dir) },
+    ),
+  );
+  expect(result.scoring?.results[0]).toMatchObject({
+    passed: false,
+    error: { message: 'the worker did not start' },
+    attachments: ['logs/worker.md'],
   });
 });
 

@@ -2,8 +2,8 @@ import { defineAgent } from '@evalkit/core';
 
 /**
  * A provider-free stand-in for a chat assistant. The matrix's `model` picks
- * how good it is: `small` gets cache purging wrong and mentions its prompt,
- * `large` answers well and links the docs.
+ * how good it is: `small` and `tiny` get cache purging wrong and mention
+ * their prompt, `large` answers well and links the docs.
  */
 export const docsAssistant = defineAgent({
   identity: {
@@ -12,7 +12,7 @@ export const docsAssistant = defineAgent({
     name: 'Docs assistant',
   },
   async start({ context }) {
-    const large = context.parameters?.model !== 'small';
+    const large = context.parameters?.model === 'large';
     return {
       async send(message: string) {
         const usage = { inputTokens: 900 + message.length, outputTokens: 120 };

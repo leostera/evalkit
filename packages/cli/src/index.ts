@@ -27,7 +27,12 @@ import {
   UNTRUSTED_FILE,
 } from './dashboard-reports.js';
 import { selectDashboardCell } from './dashboard-matrix.js';
-import { loadConfig, loadProject } from './project.js';
+import {
+  defaultSandboxDir,
+  loadConfig,
+  loadProject,
+  sandboxLocation,
+} from './project.js';
 import {
   normalizeRunOptions,
   printLoadErrors,
@@ -103,7 +108,7 @@ import {
 
 let projectRoot = process.cwd();
 let reportRoot = resolve(projectRoot, '_evalkit-results');
-let sandboxRoot = resolve(projectRoot, '_evalkit-sandbox');
+let sandboxRoot = defaultSandboxDir(projectRoot);
 let project: Awaited<ReturnType<typeof loadProject>> | undefined;
 
 async function loadRegistry(): Promise<EvalRegistry> {
@@ -499,10 +504,7 @@ async function useProject(configPath: string | undefined): Promise<void> {
     projectRoot,
     project.config.reportDir ?? '_evalkit-results',
   );
-  sandboxRoot = resolve(
-    projectRoot,
-    project.config.sandboxDir ?? '_evalkit-sandbox',
-  );
+  sandboxRoot = sandboxLocation(project).path;
 }
 
 /**

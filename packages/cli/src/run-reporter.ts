@@ -66,7 +66,7 @@ export function verdictReason(
   definition: EvalDefinition,
   verdict: Pick<
     ScoreResult,
-    'name' | 'value' | 'passAt' | 'choice' | 'explanation'
+    'name' | 'value' | 'passAt' | 'choice' | 'explanation' | 'criteria'
   >,
 ): string {
   const rule = [...definition.transcript, ...definition.scoring].find(
@@ -79,12 +79,42 @@ export function verdictReason(
       : answer?.kind === 'choices'
         ? ` (passes at ${passMark(verdict.passAt, answer)})`
         : ` (passes at ${verdict.passAt})`;
-  const why = firstLine(verdict.explanation);
+  const why = [criteriaReason(verdict.criteria), firstLine(verdict.explanation)]
+    .filter(Boolean)
+    .join(' · ');
   return `${verdict.name} ${verdict.choice ?? value(verdict)}${mark}${why ? `: ${why}` : ''}`;
 }
 
+/**
+ * Which criteria let the score down, so seven checks the app never reached
+ * read as one cause (`not reached: saves, history`), not seven failures.
+ */
+function criteriaReason(criteria: ScoreResult['criteria']): string {
+  if (!criteria?.length) return '';
+  const failed = criteria.filter(
+    (criterion) => 'value' in criterion && criterion.value < 1,
+  );
+  const unreached = criteria.filter((criterion) => !('value' in criterion));
+  return [
+    failed.length
+      ? `failed ${failed
+          .map((criterion) => {
+            const why = firstLine(criterion.explanation, 60);
+            return why ? `${criterion.name} (${why})` : criterion.name;
+          })
+          .join(', ')}`
+      : '',
+    unreached.length
+      ? `not reached ${unreached.map((criterion) => criterion.name).join(', ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function scoreReason(definition: EvalDefinition, score: ScoreResult): string {
-  if (score.error) return `${score.name} error: ${score.error.message}`;
+  if (score.error)
+    return `${score.name} error: ${firstLine(score.error.message)}`;
   return verdictReason(definition, score);
 }
 
@@ -93,7 +123,7 @@ function checkpointReason(
   checkpoint: CheckpointResult,
 ): string {
   if (checkpoint.status === 'error')
-    return `step ${checkpoint.step} ${checkpoint.name} error: ${checkpoint.error?.message ?? ''}`;
+    return `step ${checkpoint.step} ${checkpoint.name} error: ${firstLine(checkpoint.error?.message)}`;
   if (checkpoint.value === undefined && !checkpoint.choice)
     return `step ${checkpoint.step} ${checkpoint.name} ${checkpoint.status}`;
   return `step ${checkpoint.step} ${verdictReason(definition, checkpoint)}`;
@@ -107,7 +137,7 @@ function reasonsFor(
   const reasons = new Set<string>();
   const skipped = new Set<string>();
   if (run.status === 'errored' && run.error)
-    reasons.add(`error: ${run.error.message}`);
+    reasons.add(`error: ${firstLine(run.error.message, 160)}`);
   for (const checkpoint of run.scoring?.checkpoints ?? [])
     if (checkpoint.status === 'failed' || checkpoint.status === 'error')
       reasons.add(checkpointReason(definition, checkpoint));

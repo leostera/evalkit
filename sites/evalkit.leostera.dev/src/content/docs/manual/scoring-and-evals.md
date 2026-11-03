@@ -215,7 +215,7 @@ Each judge result saves the prompt it saw, its reply, its conversation, its usag
 
 ### Score return values
 
-A predicate returns a boolean, a number in `[0, 1]`, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. Without a `value`, the score is the weighted mean of `criteria`, a list of `{ name, value, weight?, note? }` (weight 1 by default), and the run page shows the formula. Values must be finite and within that interval. Without an explicit `passed`, **only a value of exactly `1` passes**; a score of `0.9` does not. Give `passAt` to pass numeric scores at a threshold; an explicit `passed` in a returned object still wins:
+A predicate returns a boolean, a number in `[0, 1]`, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. Without a `value`, the score is the weighted mean of `criteria` (weight 1 by default), and the run page shows the formula; see [one exercise, several checks](#one-exercise-several-checks). Values must be finite and within that interval. Without an explicit `passed`, **only a value of exactly `1` passes**; a score of `0.9` does not. Give `passAt` to pass numeric scores at a threshold; an explicit `passed` in a returned object still wins:
 
 ```ts
 import { predicate, skip } from '@leostera/evalkit';
@@ -236,6 +236,69 @@ export const citesSources = predicate(
 A skipped result is recorded with its reason and no value. It neither passes nor fails the run and is left out of averages; a run whose scorers all skip passes.
 
 `explanation` is human-readable. `evidence` may be any plain value; it is converted to JSON once, and a value that cannot be (a function, `bigint`, a cycle) fails the scorer with the path of the bad field. Final rules execute **in definition order** after session close. A thrown error or an invalid score is saved as a scorer error with `passed: false` and no numeric value; another scorer can still run. The run's `scoring.overall` is the unweighted mean of **valid numeric** scorer values and is omitted when there are none. `scoring.passed` requires all scorers to pass and no scorer errors; it is not inferred from `overall`. An empty scorer list produces no overall value and is vacuously `passed: true`—add a real predicate if you want a meaningful gate.
+
+### One exercise, several checks
+
+Some checks share an expensive exercise: start the app the agent built, drive it, read back what it stored. Write them as **one** predicate that runs the exercise once and returns a criterion per check. Declare the checks up front, so the scenario page, the Judges page and `--dry-run` list them before any run:
+
+```ts
+import { predicate } from '@leostera/evalkit';
+
+export const notesService = predicate(
+  'notes service',
+  async ({ artifacts, attach }) => {
+    const app = await startApp(artifacts.candidate.root).catch(
+      (error) => error,
+    );
+    if (app instanceof Error)
+      // Every declared check left out is recorded as not reached.
+      return {
+        criteria: [],
+        explanation: `The app did not start: ${app.message}`,
+      };
+    try {
+      const saved = await app.saveTwice('a');
+      const history = await app.history('a');
+      return {
+        criteria: [
+          {
+            name: 'saves',
+            value: saved.every((s) => s.version) ? 1 : 0,
+            evidence: saved,
+          },
+          {
+            name: 'history',
+            value: history.length === 2 ? 1 : 0,
+            explanation: `${history.length} entries, expected 2`,
+            evidence: history,
+          },
+        ],
+      };
+    } finally {
+      await attach('logs/app.md', app.log());
+      await app.stop();
+    }
+  },
+  {
+    description: 'Saves and history of the notes service the agent built',
+    criteria: {
+      saves: 'every save answers with a version',
+      history: 'history lists each save, newest first',
+    },
+  },
+);
+```
+
+Each criterion is `{ name, value, weight?, explanation?, evidence? }`, or `{ name, reached: false }` for a check that never ran because something before it failed. A declared check the result leaves out is recorded as not reached, and one it did not declare is an error, so the checks listed before a run are the checks recorded after it. A check not reached counts as 0. The run page shows it as **not reached**, the CLI as `not reached saves, history` with the root cause once, never as a row of `0.0`s. Each criterion's evidence opens under it, and the files the predicate attached are linked from its verdict. With the default `passAt` of 1, every check must pass; give weights and a lower `passAt` to allow some to fail.
+
+### Graders that read external state
+
+A grader that checks what the agent's program did (repositories it created, rows it wrote, tokens it issued) shares that state with the agent's own testing. Leftovers from the agent's tries can make a check pass that should fail, or fail one that should pass: an extra repository makes "creates exactly one" fail, and an ID the agent already used makes "rejects duplicates" pass for the wrong reason. Two patterns avoid it:
+
+- **Reset before you exercise.** Clear or recreate the state the check reads, then drive the program from a known start. Best when the state is cheap to rebuild.
+- **Compare before and after.** Record what exists, drive the program, and judge only the difference: "one more repository, named after the tenant", not "two repositories". Best when the state cannot be reset.
+
+Put what you saw before and after in the criterion's `evidence`, so a surprising verdict explains itself.
 
 ### Metrics
 

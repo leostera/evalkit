@@ -181,6 +181,8 @@ export type VerdictDetail = {
   /** A `choices` judge's answer. */
   choice?: string;
   criteria?: CriterionResult[];
+  /** Files its scorer attached, by name. */
+  attachments?: string[];
   judge?: JudgeRunInfo;
   durationMs?: number;
 };

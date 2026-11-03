@@ -6,7 +6,6 @@ const npmDependency = '^0.9.0';
 const ignored = [
   'node_modules/',
   '_evalkit-results/',
-  '_evalkit-sandbox/',
   '_evalkit-dashboard/',
   '_evalkit-share/',
 ];

@@ -36,11 +36,11 @@ export const rulesJudge = defineAgent({
               criteria: {
                 concise: {
                   value: words <= 60 ? 1 : 0.5,
-                  note: `${words} words.`,
+                  explanation: `${words} words.`,
                 },
                 professional: { value: 1 },
                 'no disclosure': /system prompt|my instructions/i.test(reply)
-                  ? { value: 0, note: 'Mentions its system prompt.' }
+                  ? { value: 0, explanation: 'Mentions its system prompt.' }
                   : { value: 1 },
               },
               explanation: 'Scored against the three criteria.',

@@ -78,10 +78,27 @@ export type RunMetric = {
   value?: number;
 };
 
-/** The first line of an explanation, short enough for one line of a list or terminal. */
+// ANSI escape sequences (colours, cursor moves) and other control characters.
+/* oxlint-disable no-control-regex */
+const ANSI =
+  /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+/* oxlint-enable no-control-regex */
+
+/**
+ * The first non-empty line of a message, without terminal colours, cut to
+ * `max` characters: a scorer may explain itself with 300 lines of stderr,
+ * and a summary line must stay one line. The run page has the rest.
+ */
 export function firstLine(text: string | undefined, max = 100): string {
-  const line = text?.trim().split('\n')[0]?.trim() ?? '';
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+  const lines = (text ?? '')
+    .replace(ANSI, '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(CONTROL, '').trim())
+    .filter(Boolean);
+  const line = lines[0] ?? '';
+  const more = lines.length > 1 ? ' …' : '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : `${line}${more}`;
 }
 
 /** Written into a run directory by `evalkit tidy`; deleting it restores the run. */

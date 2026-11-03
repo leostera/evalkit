@@ -15,7 +15,7 @@ import {
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { CatalogEval, CheckpointResult, TrajectoryEvent } from '../api.js';
 import { checkpointScorer } from './library-entities.js';
-import { VerdictPanel } from './Verdict.js';
+import { checkpointKey, useVerdictFocus } from './RunVerdicts.js';
 import { Markdown, looksLikeMarkdown } from './Markdown.js';
 import { shellView, type ShellView } from './shell-view.js';
 import { StatusBadge } from './StatusBadge.js';
@@ -666,8 +666,9 @@ function preview(value: unknown, max = 120): string {
 }
 
 /**
- * A checkpoint in the conversation. With the run's results loaded it opens
- * in place to say why it passed or failed; one that did not pass starts open.
+ * A checkpoint in the conversation: what it checks and, when it did not
+ * pass, why in one line. Its full verdict is in the pane beside the
+ * trajectory; clicking points the pane at it.
  */
 function Checkpoint({
   item,
@@ -675,65 +676,56 @@ function Checkpoint({
   item: Extract<TrajectoryItem, { type: 'checkpoint' }>;
 }) {
   const { checkpoints, scenario } = useContext(CheckpointResults);
+  const [focused, focus] = useVerdictFocus();
   const result = checkpoints?.find(
     (entry) => entry.step === item.step && entry.name === item.name,
   );
   const scorer = checkpointScorer(scenario, item.step, item.name);
-  const label = (
-    <>
-      {result ? (
-        <CaretRightIcon
-          aria-hidden
-          className="self-center text-kumo-subtle transition-transform group-open:rotate-90"
-        />
-      ) : null}
-      <Label>Checkpoint</Label>
-      <span className="text-[13px] text-kumo-default">{item.name}</span>
-      <StatusBadge status={item.state} />
-      {item.durationMs === undefined ? null : (
-        <Meta>{formatDuration(item.durationMs)}</Meta>
-      )}
-    </>
-  );
-  if (!result)
-    return (
-      <Row
-        icon={<FlagIcon />}
-        tone={item.state === 'error' ? 'danger' : 'default'}
-        label={label}
-        at={item.at}
-      >
-        {item.error ? <ErrorText error={item.error} /> : null}
-      </Row>
-    );
-  return (
-    <details
-      className="checkpoint group"
-      open={result.status === 'failed' || result.status === 'error'}
+  const key = checkpointKey(item.step);
+  const why =
+    result && (result.status === 'failed' || result.status === 'error')
+      ? (result.error?.message ?? result.explanation)
+      : undefined;
+  const row = (
+    <Row
+      icon={<FlagIcon />}
+      tone={item.state === 'error' ? 'danger' : 'default'}
+      label={
+        <>
+          <Label>Checkpoint</Label>
+          <span className="text-[13px] text-kumo-default">{item.name}</span>
+          <StatusBadge status={item.state} />
+          {item.durationMs === undefined ? null : (
+            <Meta>{formatDuration(item.durationMs)}</Meta>
+          )}
+        </>
+      }
+      at={item.at}
     >
-      <summary className="cursor-pointer list-none rounded-md select-none focus-visible:outline-2 focus-visible:outline-kumo-brand [&::-webkit-details-marker]:hidden">
-        <Row
-          icon={<FlagIcon />}
-          tone={item.state === 'error' ? 'danger' : 'default'}
-          label={label}
-          at={item.at}
-        >
-          {scorer?.description ? (
-            <span className="text-xs text-kumo-subtle">
-              {scorer.description}
-            </span>
-          ) : null}
-        </Row>
-      </summary>
-      <div className="mb-2 ml-9 rounded-md border border-kumo-hairline bg-kumo-base px-3 py-2">
-        <VerdictPanel
-          result={{
-            ...result,
-            ...(result.status === 'skipped' ? { skipped: true as const } : {}),
-          }}
-          scorer={scorer}
-        />
-      </div>
-    </details>
+      {scorer?.description ? (
+        <span className="block text-xs text-kumo-subtle">
+          {scorer.description}
+        </span>
+      ) : null}
+      {why ? (
+        <span className="block truncate text-xs text-kumo-danger" title={why}>
+          {why.split('\n')[0]}
+        </span>
+      ) : null}
+      {!result && item.error ? <ErrorText error={item.error} /> : null}
+    </Row>
+  );
+  if (!result) return row;
+  return (
+    <button
+      type="button"
+      className={`checkpoint block w-full rounded-md text-left hover:bg-kumo-tint focus-visible:outline-2 focus-visible:outline-kumo-brand ${
+        focused === key ? 'bg-kumo-tint' : ''
+      }`}
+      aria-label={`Show the verdict of ${item.name}`}
+      onClick={() => focus(key)}
+    >
+      {row}
+    </button>
   );
 }

@@ -6,14 +6,21 @@ import { defineAgent } from '@evalkit/core';
  * A provider-free stand-in for a coding agent that builds a versioned notes
  * service. Instead of a Worker it writes the store its service would keep,
  * `notes.json`: every save of every note, as commits. With `model: small` it
- * loses the first save of a note, the kind of bug the checks must explain.
+ * loses the first save of a note, the kind of bug the checks must explain;
+ * with `model: tiny` it writes nothing, so no check is reached.
  */
 export const notesBuilder = defineAgent({
   identity: { id: 'notes-builder', kind: 'in-process', name: 'Notes builder' },
   async start({ context }) {
-    const lossy = context.parameters?.model === 'small';
+    const model = context.parameters?.model;
+    const lossy = model === 'small';
     return {
       async send() {
+        if (model === 'tiny')
+          return {
+            reply: 'I could not get the service to build.',
+            usage: { inputTokens: 1800, outputTokens: 90 },
+          };
         const saves = [
           ['a', 'first draft'],
           ['a', 'second draft'],

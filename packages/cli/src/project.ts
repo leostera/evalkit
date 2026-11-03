@@ -1,5 +1,15 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { resolve, dirname, relative, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { importProjectModule } from './runtime.js';
 import {
   defineEvalMatrix,
@@ -260,3 +270,36 @@ export async function loadProject(
   }
   return { root, config, registry, loadErrors };
 }
+
+/**
+ * Where a project's run workspaces live. By default outside the project, in
+ * the system temp directory (one directory per project, so `tidy` and `dev`
+ * find the ones it kept): an agent that looks around its workspace finds no
+ * project source, no `AGENTS.md` or skills above it, and no results.
+ * `sandboxDir` overrides it; `inside` says when that puts them back in the
+ * project, which `run` warns about.
+ */
+export function sandboxLocation(project: {
+  root: string;
+  config: { sandboxDir?: string };
+}): { path: string; inside: boolean } {
+  if (project.config.sandboxDir === undefined)
+    return { path: defaultSandboxDir(project.root), inside: false };
+  const path = resolve(project.root, project.config.sandboxDir);
+  const fromRoot = relative(project.root, path);
+  return {
+    path,
+    inside: !fromRoot.startsWith('..') && !isAbsolute(fromRoot),
+  };
+}
+
+/** `<tmp>/evalkit/<project name>-<hash of its path>`: stable per checkout. */
+export function defaultSandboxDir(root: string): string {
+  const hash = createHash('sha256').update(root).digest('hex').slice(0, 10);
+  const name = basename(root).replace(/[^A-Za-z0-9._-]/g, '-') || 'project';
+  return join(tmpdir(), 'evalkit', `${name}-${hash}`);
+}
+
+/** The warning `run` prints when workspaces sit inside the project. */
+export const SANDBOX_INSIDE_WARNING =
+  'sandboxDir is inside the project: agents can read its source, its AGENTS.md and skills, its results and other runs’ workspaces from there. Leave sandboxDir unset to keep workspaces in the system temp directory.';

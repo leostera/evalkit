@@ -1,5 +1,6 @@
 import {
   DEFAULT_ATTACHMENT_LIMITS,
+  type ScoringContext,
   type AttachmentEntry,
   type AttachmentLimits,
   type RunWriter,
@@ -119,3 +120,25 @@ export function attachmentStore(
     },
   };
 }
+
+/**
+ * An `attach` that remembers what it saved, so a score or checkpoint can
+ * link the files its scorer attached, even when the scorer then failed.
+ */
+export function trackAttachments(attach: ScoringContext['attach']): {
+  attach: ScoringContext['attach'];
+  attached: string[];
+} {
+  const attached: string[] = [];
+  return {
+    attached,
+    async attach(name, content) {
+      await attach(name, content);
+      attached.push(name);
+    },
+  };
+}
+
+/** `{ attachments }` when a scorer attached any. */
+export const attachedFields = (attached: readonly string[]) =>
+  attached.length ? { attachments: [...attached] } : {};

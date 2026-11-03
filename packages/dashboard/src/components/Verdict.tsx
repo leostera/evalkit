@@ -1,9 +1,16 @@
-import { Table, Tabs } from '@cloudflare/kumo';
-import { passMark, type JudgeAnswer } from '@evalkit/core/judge';
+import { Tabs } from '@cloudflare/kumo';
+import {
+  criterionValue,
+  passMark,
+  type JudgeAnswer,
+} from '@evalkit/core/judge';
 import { turnTokens } from '@evalkit/core/usage';
-import { useState, type ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { CatalogScorer, VerdictDetail } from '../api.js';
-import { NestedTable } from './DataTable.js';
+import { tableLinkClass } from './DataTable.js';
+import { attachmentsHref } from './links.js';
+import { RunFiles } from './run-files.js';
 import { formatDuration } from './run-columns.js';
 
 /** A score or checkpoint result, whatever was saved of it. */
@@ -67,7 +74,7 @@ export function criteriaFormula(
 ): string {
   const weights = criteria.reduce((sum, item) => sum + (item.weight ?? 1), 0);
   const terms = criteria
-    .map((item) => `${item.weight ?? 1}×${formatValue(item.value)}`)
+    .map((item) => `${item.weight ?? 1}×${formatValue(criterionValue(item))}`)
     .join(' + ');
   return `weighted mean (${terms}) / ${formatValue(weights)}`;
 }
@@ -122,7 +129,7 @@ export function VerdictPanel({
         </p>
       ) : null}
       {result.criteria?.length ? (
-        <CriteriaTable criteria={result.criteria} />
+        <CriteriaTable criteria={result.criteria} answer={scorer?.answer} />
       ) : null}
       {facts.length ? (
         <p className="text-xs text-kumo-subtle">
@@ -130,41 +137,140 @@ export function VerdictPanel({
           {facts.join(' · ')}
         </p>
       ) : null}
+      <VerdictFiles result={result} />
       <VerdictSources result={result} />
     </div>
   );
 }
 
+/**
+ * The files that explain a verdict: what its scorer attached (say, the app's
+ * log from when it would not start) and, for one that did not pass, the
+ * run's other attachments, such as the agent's transcript.
+ */
+function VerdictFiles({ result }: { result: VerdictResult }) {
+  const { runId, attachments } = useContext(RunFiles);
+  if (!runId) return null;
+  const own = result.attachments ?? [];
+  const others =
+    result.passed === false || result.error
+      ? attachments
+          .map((attachment) => attachment.name)
+          .filter((name) => !own.includes(name))
+      : [];
+  if (!own.length && !others.length) return null;
+  const link = (name: string) => (
+    <Link
+      key={name}
+      to={attachmentsHref(runId, name)}
+      className={`${tableLinkClass} font-mono text-xs`}
+    >
+      {name}
+    </Link>
+  );
+  return (
+    <p className="verdict-files flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-kumo-subtle">
+      {own.length ? (
+        <>
+          <span>Attached by this check:</span>
+          {own.map(link)}
+        </>
+      ) : null}
+      {others.length ? (
+        <>
+          <span>
+            {own.length ? 'Run files:' : 'Run files that may explain it:'}
+          </span>
+          {others.map(link)}
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/** A criterion's state, for its dot: full marks, none, or not reached. */
+function criterionState(item: NonNullable<VerdictDetail['criteria']>[number]) {
+  if (!('value' in item)) return 'not reached';
+  return item.value === 1 ? 'passed' : item.value === 0 ? 'failed' : 'partial';
+}
+
+const stateDot: Record<string, string> = {
+  passed: 'bg-kumo-success',
+  failed: 'bg-kumo-danger',
+  partial: 'bg-kumo-warning',
+  'not reached': 'border border-kumo-subtle bg-transparent',
+};
+
+/**
+ * One row per criterion: its state, what it checks (when declared), its
+ * value and why. A criterion with evidence opens to show it.
+ */
 function CriteriaTable({
   criteria,
+  answer,
 }: {
   criteria: NonNullable<VerdictDetail['criteria']>;
+  answer?: JudgeAnswer;
 }) {
+  const declared = answer?.kind === 'criteria' ? answer.criteria : [];
   return (
-    <NestedTable wrap>
-      <Table.Header variant="compact">
-        <Table.Row>
-          <Table.Head>Criterion</Table.Head>
-          <Table.Head>Weight</Table.Head>
-          <Table.Head>Value</Table.Head>
-          <Table.Head>Note</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {criteria.map((item) => (
-          <Table.Row key={item.name}>
-            <Table.Cell>{item.name}</Table.Cell>
-            <Table.Cell className="tabular-nums">{item.weight ?? 1}</Table.Cell>
-            <Table.Cell className="tabular-nums">
-              {formatValue(item.value)}
-            </Table.Cell>
-            <Table.Cell className="text-kumo-subtle">
-              {item.note ?? '—'}
-            </Table.Cell>
-          </Table.Row>
-        ))}
-      </Table.Body>
-    </NestedTable>
+    <ul className="criteria flex flex-col divide-y divide-kumo-hairline rounded-md border border-kumo-hairline">
+      {criteria.map((item) => {
+        const state = criterionState(item);
+        const description = declared.find(
+          (criterion) => criterion.name === item.name,
+        )?.description;
+        const evidence = 'evidence' in item ? item.evidence : undefined;
+        const row = (
+          <span className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span
+              aria-hidden
+              className={`inline-block size-2 shrink-0 translate-y-[-1px] rounded-full ${stateDot[state]}`}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="text-kumo-strong">{item.name}</span>
+              {description ? (
+                <span className="text-kumo-subtle"> · {description}</span>
+              ) : null}
+              {item.explanation ? (
+                <span className="block whitespace-pre-wrap text-kumo-default">
+                  {item.explanation}
+                </span>
+              ) : null}
+            </span>
+            <span className="shrink-0 text-xs text-kumo-subtle tabular-nums">
+              {state === 'not reached'
+                ? 'not reached'
+                : formatValue(criterionValue(item))}
+              {(item.weight ?? 1) !== 1 ? ` · weight ${item.weight}` : ''}
+            </span>
+          </span>
+        );
+        return (
+          <li
+            key={item.name}
+            className={`criterion px-3 py-1.5 ${state === 'not reached' ? 'text-kumo-subtle' : ''}`}
+            data-state={state}
+          >
+            {evidence === undefined ? (
+              row
+            ) : (
+              <details open={state === 'failed'}>
+                <summary className="flex cursor-pointer list-none items-baseline gap-2">
+                  {row}
+                  <span className="shrink-0 text-xs text-kumo-link">
+                    evidence
+                  </span>
+                </summary>
+                <div className="mt-1.5">
+                  <Evidence value={evidence} />
+                </div>
+              </details>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

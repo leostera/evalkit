@@ -19,7 +19,7 @@ my-project/
 
 A scenario is one concrete conversation, so a suite of a hundred scenarios is a hundred small files in `scenarios/`. Agents, datasets and judges are defined once in their own directories and imported; nothing is discovered from those directories, so a broken dataset only affects the scenarios that import it.
 
-The CLI imports each scenario module, so its imports must resolve in your project. Run commands from `my-project/`; dataset paths resolve from the project root, not from each file. Output defaults to `_evalkit-results/` and `_evalkit-sandbox/` there. When using `--config path/to/evalkit.config.ts`, the **config file's directory** becomes the project root even if the command was launched elsewhere.
+The CLI imports each scenario module, so its imports must resolve in your project. Run commands from `my-project/`; dataset paths resolve from the project root, not from each file. Reports default to `_evalkit-results/` there; run workspaces to `$TMPDIR/evalkit/<project>-<hash>/`, outside the project, so agents cannot read your source, `AGENTS.md` or skills, or other runs, by looking around their workspace. When using `--config path/to/evalkit.config.ts`, the **config file's directory** becomes the project root even if the command was launched elsewhere.
 
 ## Getting the CLI and API
 
@@ -89,7 +89,6 @@ export default defineConfig({
   exclude: ['**/experimental/**'],
   execution: { concurrency: 4, repeat: 2, maxCells: 100 },
   reportDir: '_evalkit-results',
-  sandboxDir: '_evalkit-sandbox',
   keepSandboxes: 'failed',
   // Replaces the default; spread DEFAULT_ARTIFACT_EXCLUDE to extend it.
   artifacts: { exclude: [...DEFAULT_ARTIFACT_EXCLUDE, 'dist', '*.log'] },
@@ -105,7 +104,8 @@ export default defineConfig({
 | `judge`                         | The [judge agent](/docs/manual/scoring-and-evals/#judges) for every `judge()` rule that names none. It receives each run's `parameters`, so a matrix axis can choose its model. Never the agent under test.                                                                   |
 | `discovery.suites`              | `false` stops directories from forming suites. Default `true`.                                                                                                                                                                                                                |
 | `execution`                     | Defaults for cell concurrency (4), `repeat` (overrides each scenario's), and maximum cells (100). Values must be positive integers.                                                                                                                                           |
-| `reportDir`, `sandboxDir`       | Project-root-relative local output paths. Provide your own Git ignore and retention rules.                                                                                                                                                                                    |
+| `reportDir`                     | Where reports go, relative to the project root (default `_evalkit-results`). Provide your own Git ignore and retention rules.                                                                                                                                                 |
+| `sandboxDir`                    | Where run workspaces go. Default: `$TMPDIR/evalkit/<project>-<hash>`, outside the project. Inside the project, agents can read its files and other runs, and `run` warns.                                                                                                     |
 | `keepSandboxes`                 | Which run workspaces stay in `sandboxDir` after a run: `'failed'` (default, runs that did not pass), `'all'` or `'none'`.                                                                                                                                                     |
 | `artifacts.exclude`             | Candidate paths left out of each run's saved snapshot. A pattern without `/` matches that name at any depth. Default `DEFAULT_ARTIFACT_EXCLUDE`: `.git`, `node_modules`, `.venv`, `__pycache__`, `_build`, `_opam`, `target`. A scenario's `workspace.ignore` comes after it. |
 | `artifacts.attachments`         | Size limits for [attached files](/docs/manual/agents/#attaching-files): `{ maxFileBytes, maxRunBytes }`. Default `DEFAULT_ATTACHMENT_LIMITS`: 5 MB per file (a larger one keeps its end), 20 MB per run.                                                                      |

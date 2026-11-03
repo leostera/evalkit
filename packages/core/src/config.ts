@@ -29,7 +29,11 @@ export type EvalkitConfig = {
     /** Limits for files adapters `attach()`. */
     attachments?: AttachmentLimits;
   };
-  /** Where each run's real workspace lives during a run. Default `_evalkit-sandbox`. */
+  /**
+   * Where each run's real workspace lives. Default: outside the project, in
+   * `<tmp>/evalkit/<project>-<hash>`, so agents cannot read the project or
+   * other runs by looking around. Inside the project, `run` warns.
+   */
   sandboxDir?: string;
   /** Which run workspaces to keep in `sandboxDir` afterwards. Default `'failed'`: only runs that did not pass. */
   keepSandboxes?: KeepSandboxes;

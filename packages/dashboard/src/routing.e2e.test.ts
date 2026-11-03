@@ -125,7 +125,17 @@ describe('dashboard URL routing', () => {
           ],
         },
         '/v1/runs/run-123': {
-          scores: [],
+          scores: [
+            {
+              name: 'greets',
+              kind: 'predicate',
+              value: 1,
+              passed: true,
+              passAt: 1,
+              explanation: 'Says hello',
+              durationMs: 1,
+            },
+          ],
           checkpoints: [],
           manifest: {},
           summary: {},
@@ -206,12 +216,37 @@ describe('dashboard URL routing', () => {
       'section[aria-label="Runs"] tbody tr:first-child td:nth-child(2)',
     );
     await waitForPath(page, '/runs/run-123');
-    await page.waitForSelector('.run-overview');
+    await page.waitForSelector('.run-verdicts');
     await page.waitForSelector('.trajectory');
     expect(await crumbs()).toContain('Run run-123');
     expect(
-      await page.$eval('.run-overview', (node) => node.textContent),
-    ).toContain('Run 1 of 2');
+      await page.$eval('.run-facts', (node) => node.textContent),
+    ).toContain('Batch1 of 2');
+    // What it did beside how it scored; a passing verdict starts closed,
+    // and ?verdict= opens the one it names.
+    const toggle = '[data-verdict="score:greets"] .verdict-toggle';
+    expect(
+      await page.$eval('.run-verdicts h2', (node) => node.textContent),
+    ).toBe('How it scored');
+    expect(
+      await page.$eval(toggle, (node) => node.getAttribute('aria-expanded')),
+    ).toBe('false');
+    await page.goto(`${baseUrl}/runs/run-123?verdict=score%3Agreets`, {
+      waitUntil: 'networkidle0',
+    });
+    await page.waitForFunction(
+      (selector) =>
+        document.querySelector(selector)?.getAttribute('aria-expanded') ===
+        'true',
+      {},
+      toggle,
+    );
+    expect(
+      await page.$eval(
+        '.run-verdicts .verdict-panel',
+        (node) => node.textContent,
+      ),
+    ).toContain('Says hello');
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.trajectory');
 
