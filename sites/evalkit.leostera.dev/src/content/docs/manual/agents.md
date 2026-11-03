@@ -121,7 +121,7 @@ export const myAgent = defineAgent({
 - **Size:** a file over `artifacts.attachments.maxFileBytes` (default 5 MB) keeps its **last** bytes, where a log's errors are, and is marked truncated; an attachment that would take the run past `maxRunBytes` (default 20 MB) is rejected.
 - Await it before `close()` returns; attaching after the run has finished is rejected.
 
-Scorers and checkpoints have the same `attach` on their context, for something only they can read, such as a container's log before teardown or a file the agent reported writing. Attachments appear on the run page and its **Attachments** page, are saved as `artifacts/attachments/<name>` and listed in the run's `summary.json`, and are included by `evalkit build` and `evalkit share` (not with `--no-workspace`). They may contain secrets, like any log.
+Scorers and checkpoints have the same `attach` on their context, for something only they can read, such as a container's log before teardown or a file the agent reported writing. Attachments appear on the run page, linked from the verdict that attached them, and in its **Logs** section, are saved as `artifacts/attachments/<name>` and listed in the run's `summary.json`, and are included by `evalkit build` and `evalkit share` (not with `--no-workspace`). They may contain secrets, like any log.
 If `start()`, `send()`, or `close()` throws, the runner records an error, closes an opened session, and normally skips scoring except [partial-support predicates](/docs/manual/scoring-and-evals/#partial-execution-and-errors). `close()` should release resources even after an unsuccessful turn.
 
 ## Built-in and custom integrations

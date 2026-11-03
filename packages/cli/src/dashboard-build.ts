@@ -224,11 +224,24 @@ export function staticRoutes(ids: {
       .filter(safe)
       .flatMap((id) => [
         `runs/${id}`,
-        `runs/${id}/workspace`,
-        `runs/${id}/attachments`,
+        ...RUN_SECTIONS.map((section) => `runs/${id}/${section}`),
       ]),
   ];
 }
+
+/**
+ * A run's sections, each its own page; `attachments` is the logs' URL from
+ * before 0.10, kept so old links redirect.
+ */
+const RUN_SECTIONS = [
+  'judging',
+  'metrics',
+  'workspace',
+  'logs',
+  'datasets',
+  'raw',
+  'attachments',
+];
 
 /** `runs/abc.html` is served at `<mount>/runs/abc`; its base is one level up. */
 function baseFor(route: string): string {

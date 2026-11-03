@@ -213,7 +213,12 @@ test('static routes cover evals and library pages and skip unsafe IDs', () => {
     'library/agents/greeter',
     'library/datasets/starter',
     'runs/r1',
+    'runs/r1/judging',
+    'runs/r1/metrics',
     'runs/r1/workspace',
+    'runs/r1/logs',
+    'runs/r1/datasets',
+    'runs/r1/raw',
     'runs/r1/attachments',
   ]);
 });

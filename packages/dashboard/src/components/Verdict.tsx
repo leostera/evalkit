@@ -9,7 +9,7 @@ import { useContext, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogScorer, VerdictDetail } from '../api.js';
 import { tableLinkClass } from './DataTable.js';
-import { attachmentsHref } from './links.js';
+import { logsHref } from './links.js';
 import { RunFiles } from './run-files.js';
 import { formatDuration } from './run-columns.js';
 
@@ -162,7 +162,7 @@ function VerdictFiles({ result }: { result: VerdictResult }) {
   const link = (name: string) => (
     <Link
       key={name}
-      to={attachmentsHref(runId, name)}
+      to={logsHref(runId, name)}
       className={`${tableLinkClass} font-mono text-xs`}
     >
       {name}

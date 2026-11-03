@@ -250,12 +250,30 @@ describe('dashboard URL routing', () => {
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.trajectory');
 
-    // Run: its workspace, then back up through the breadcrumbs.
-    await page.click('.open-workspace');
+    // The run page fits the window; its columns scroll on their own.
+    expect(
+      await page.evaluate(
+        () => document.scrollingElement!.scrollHeight <= window.innerHeight,
+      ),
+    ).toBe(true);
+
+    // Run: its sections from the menu and with `]`, then back up through
+    // the breadcrumbs. Attachments are called logs since 0.10.
+    await page.click('nav[aria-label="Run sections"] a[href$="/metrics"]');
+    await waitForPath(page, '/runs/run-123/metrics');
+    await page.waitForSelector('section[aria-label="Metrics"]');
+    await page.keyboard.press(']');
     await waitForPath(page, '/runs/run-123/workspace');
     await page.waitForSelector('.workspace-inspector');
-    await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs/run-123"]');
+    await page.goto(`${baseUrl}/runs/run-123/attachments`, {
+      waitUntil: 'networkidle0',
+    });
+    await waitForPath(page, '/runs/run-123/logs');
+    await page.click('nav[aria-label="Run sections"] a[href$="/workspace"]');
+    await waitForPath(page, '/runs/run-123/workspace');
+    await page.click('nav[aria-label="Run sections"] a[href="/runs/run-123"]');
     await waitForPath(page, '/runs/run-123');
+    await page.waitForSelector('.run-verdicts');
     await clickVisible(page, '.hierarchy-breadcrumbs a[href="/runs"]');
     await waitForPath(page, '/runs');
 

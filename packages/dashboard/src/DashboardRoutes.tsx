@@ -22,7 +22,8 @@ import {
   JudgesPage,
   LibraryBreadcrumbs,
 } from './components/Library.js';
-import { RunPage, type RunView } from './components/RunPage.js';
+import { RunPage } from './components/RunPage.js';
+import type { RunSection } from './components/links.js';
 import { RunTable } from './components/RunTable.js';
 import { ScenarioPage } from './components/ScenarioPage.js';
 import { ScenarioTable } from './components/ScenarioTable.js';
@@ -37,8 +38,9 @@ type Data = {
 };
 
 /**
- * Evals (results): `/scoreboard`, `/runs`, `/runs/:id` and its `/workspace`
- * and `/attachments`, `/workspaces`. Library (definitions):
+ * Evals (results): `/scoreboard`, `/runs`, `/runs/:id` and its sections
+ * (`/judging`, `/metrics`, `/workspace`, `/logs`, `/datasets`, `/raw`),
+ * `/workspaces`. Library (definitions):
  * `/library/{agents,judges,scenarios,datasets}` and `/library/…/:id`.
  * Trial URLs from before 0.9 redirect to the run the trial became.
  */
@@ -49,14 +51,15 @@ export function DashboardRoutes(data: Data) {
       <Route path="/scoreboard" element={<Scoreboard {...data} />} />
       <Route path="/runs" element={<RunsRoute {...data} />} />
       <Route path="/runs/:runId" element={<RunRoute {...data} />} />
-      <Route
-        path="/runs/:runId/workspace"
-        element={<RunRoute {...data} view="workspace" />}
-      />
-      <Route
-        path="/runs/:runId/attachments"
-        element={<RunRoute {...data} view="attachments" />}
-      />
+      {RUN_SECTIONS.map((section) => (
+        <Route
+          key={section}
+          path={`/runs/:runId/${section}`}
+          element={<RunRoute {...data} view={section} />}
+        />
+      ))}
+      {/* Attachments are called logs since 0.10. */}
+      <Route path="/runs/:runId/attachments" element={<LogsRedirect />} />
       <Route
         path="/runs/:runId/trials/:trialId/*"
         element={<TrialRedirect runs={data.runs} />}
@@ -133,7 +136,21 @@ function RunsRoute({
   );
 }
 
-function RunRoute({ view = 'run', ...data }: Data & { view?: RunView }) {
+const RUN_SECTIONS = [
+  'judging',
+  'metrics',
+  'workspace',
+  'logs',
+  'datasets',
+  'raw',
+] as const satisfies readonly RunSection[];
+
+function LogsRedirect() {
+  const { runId = '' } = useParams();
+  return <Redirect to={`/runs/${encodeURIComponent(runId)}/logs`} />;
+}
+
+function RunRoute({ view = 'run', ...data }: Data & { view?: RunSection }) {
   const { runId = '' } = useParams();
   return <RunPage {...data} runId={runId} view={view} />;
 }

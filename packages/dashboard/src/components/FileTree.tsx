@@ -152,7 +152,7 @@ export function FileTree({
   const selectedEntry = entries.find((entry) => entry.path === selected);
   return (
     <div className="file-explorer grid min-w-0 overflow-hidden rounded-lg border border-kumo-line bg-kumo-base md:grid-cols-[minmax(14rem,18rem)_1fr]">
-      <div className="max-h-[28rem] overflow-auto border-b border-kumo-line p-1.5 md:border-r md:border-b-0">
+      <div className="max-h-[calc(100vh-9rem)] overflow-auto border-b border-kumo-line p-1.5 md:border-r md:border-b-0">
         <p className="flex items-center justify-between px-1.5 pb-1 text-[11px] font-medium text-kumo-subtle">
           <span className="truncate font-mono">{rootLabel ?? 'Files'}</span>
           <span className="tabular-nums">
@@ -256,7 +256,7 @@ function FilePreview({
           {formatBytes(size)}
         </span>
       </header>
-      <div className="max-h-[28rem] min-h-32 overflow-auto">
+      <div className="max-h-[calc(100vh-9rem)] min-h-32 overflow-auto">
         {!readFile ? (
           <p className="p-3 text-[13px] text-kumo-subtle">
             File contents are not available here.

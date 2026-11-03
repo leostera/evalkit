@@ -1,7 +1,7 @@
-import { Table } from '@cloudflare/kumo';
+import { Table, Tabs } from '@cloudflare/kumo';
 import { turnTokens } from '@evalkit/core/usage';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type {
   CatalogEval,
   DashboardApi,
@@ -10,60 +10,39 @@ import type {
   TrajectoryEvent,
 } from '../api.js';
 import { agentName } from './agentName.js';
-import { ArtifactRow } from './ArtifactRow.js';
 import { monoClass, NestedTable, tableLinkClass } from './DataTable.js';
 import { DetailList } from './DetailList.js';
 import { ErrorBanner } from './ErrorBanner.js';
-import { formatBytes } from './FileTree.js';
-import { attachmentsHref, batchHref, scenarioHref } from './links.js';
+import { batchHref, scenarioHref } from './links.js';
 import { formatDuration, formatMetric, formatScore } from './run-columns.js';
 import { CommitLabel } from './RunTable.js';
-import { RunFiles } from './run-files.js';
 import { verdictEntries, VerdictList } from './RunVerdicts.js';
 import { Trajectory } from './Trajectory.js';
 import { verdictStatus } from './Verdict.js';
 
 /**
- * A run, laid out to answer two questions side by side: what did the agent
- * do (its trajectory, on the left), and why did it pass or fail (every
- * verdict, failures first and open, on the right, which stays in view while
- * the trajectory scrolls). The rest (judging, metrics, files, datasets) is
- * folded below the verdicts. `detail` is undefined while it loads.
+ * A run's trajectory, loaded once per run and again when it finishes, when
+ * its events are complete.
  */
-export function RunDetail({
-  api,
-  catalog,
-  run,
-  detail,
-}: {
-  api: DashboardApi;
-  catalog: CatalogEval[];
-  run: RunSummary;
-  detail?: RunDetailData;
-}) {
+export function useRunEvents(api: DashboardApi, run: RunSummary | undefined) {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
-  const [loadError, setLoadError] = useState<string>();
-  const [artifacts, setArtifacts] = useState<
-    Array<{ path: string; kind: string; size?: number }>
-  >([]);
-  // Reload when the run finishes: its trajectory and artifacts are complete then.
-  const signature = `${run.id}:${run.status}`;
+  const [error, setError] = useState<string>();
+  const signature = run ? `${run.id}:${run.status}` : '';
   useEffect(() => {
+    if (!run) return;
     let active = true;
-    // Clear the previous run's evidence while this one loads.
+    // Clear the previous run's events while this one loads.
     // oxlint-disable-next-line react/set-state-in-effect
-    setLoadError(undefined);
+    setError(undefined);
     setEvents([]);
-    setArtifacts([]);
-    void Promise.all([api.getRunEvents(run.id), api.listArtifacts(run.id)])
-      .then(([nextEvents, nextArtifacts]) => {
-        if (!active) return;
-        setEvents(nextEvents);
-        setArtifacts(nextArtifacts);
+    void api
+      .getRunEvents(run.id)
+      .then((next) => {
+        if (active) setEvents(next);
       })
       .catch((cause: unknown) => {
         if (active)
-          setLoadError(
+          setError(
             cause instanceof Error ? cause.message : 'Unable to load the run',
           );
       });
@@ -72,50 +51,57 @@ export function RunDetail({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, signature]);
-  const scenario = catalog.find((entry) => entry.id === run.evalId);
-  return (
-    <RunFiles.Provider
-      value={{ runId: run.id, attachments: detail?.attachments ?? [] }}
-    >
-      <RunFacts run={run} detail={detail} scenario={scenario} />
-      <section className="run-inspector grid items-start gap-6 lg:grid-cols-2">
-        <section
-          aria-label="What it did"
-          className="run-trajectory flex min-w-0 flex-col gap-2"
-        >
-          {loadError ? (
-            <ErrorBanner title="Unable to load the run" message={loadError} />
-          ) : null}
-          <Trajectory
-            events={events}
-            checkpoints={detail?.checkpoints}
-            scenario={scenario}
-          />
-        </section>
-        <aside
-          aria-label={verdictTitle(run, detail)}
-          className="run-verdicts flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1"
-        >
-          <VerdictHeading run={run} detail={detail} scenario={scenario} />
-          {run.status === 'errored' && detail?.summary ? (
-            <RunError summary={detail.summary} />
-          ) : null}
-          {detail ? (
-            <>
-              <VerdictList detail={detail} scenario={scenario} />
-              <RunDetails run={run} detail={detail} artifacts={artifacts} />
-            </>
-          ) : (
-            <output className="text-[13px] text-kumo-subtle">Loading…</output>
-          )}
-        </aside>
-      </section>
-    </RunFiles.Provider>
-  );
+  return { events, error };
 }
 
-/** One line of what the run ran: scenario, agent, parameters, commit, cost. */
-function RunFacts({
+/** The question the verdicts answer, by how the run ended. */
+export function verdictTitle(run: RunSummary, detail?: RunDetailData): string {
+  if (run.status === 'running') return 'How it is scoring';
+  if (run.status === 'errored') return 'Why it errored';
+  if (run.status === 'cancelled') return 'How far it got';
+  if (detail && run.status === 'failed') return 'Why it failed';
+  return 'How it scored';
+}
+
+/** `2 of 3 checks did not pass`, or `all 3 checks passed`. */
+export function checksSummary(
+  detail: RunDetailData | undefined,
+  scenario: CatalogEval | undefined,
+): string | undefined {
+  if (!detail) return undefined;
+  const counted = verdictEntries(detail, scenario).filter(
+    ({ result }) => verdictStatus(result) !== 'skipped',
+  );
+  if (!counted.length) return undefined;
+  const failed = counted.filter(({ result }) =>
+    ['failed', 'error'].includes(verdictStatus(result)),
+  ).length;
+  return failed
+    ? `${failed} of ${counted.length} checks did not pass`
+    : `all ${counted.length} checks passed`;
+}
+
+/** `2 failed` or `3 passed`, for the section menu. */
+export function checksCount(
+  detail: RunDetailData | undefined,
+  scenario: CatalogEval | undefined,
+): string | undefined {
+  if (!detail) return undefined;
+  const statuses = verdictEntries(detail, scenario)
+    .map(({ result }) => verdictStatus(result))
+    .filter((status) => status !== 'skipped');
+  if (!statuses.length) return undefined;
+  const failed = statuses.filter((status) =>
+    ['failed', 'error'].includes(status),
+  ).length;
+  return failed ? `${failed} failed` : `${statuses.length} passed`;
+}
+
+/**
+ * What the run ran, one fact per line for the rail: scenario, agent, each
+ * parameter, batch, commit, timing, and the agent's and judges' tokens.
+ */
+export function RunFacts({
   run,
   detail,
   scenario,
@@ -124,7 +110,6 @@ function RunFacts({
   detail?: RunDetailData;
   scenario?: CatalogEval;
 }) {
-  const parameters = Object.entries(run.parameters ?? {});
   const metric = (name: string) =>
     detail?.metrics?.find((entry) => entry.name === name)?.value;
   const tokens = metric('tokens');
@@ -141,18 +126,14 @@ function RunFacts({
       </Link>,
     ],
     ['Agent', scenario ? agentName(scenario) : (run.agent ?? '—')],
-    ...(parameters.length
-      ? ([
-          [
-            'Parameters',
-            <span key="parameters" className={monoClass}>
-              {parameters
-                .map(([key, value]) => `${key}=${String(value)}`)
-                .join(' ')}
-            </span>,
-          ],
-        ] as Array<[string, ReactNode]>)
-      : []),
+    ...Object.entries(run.parameters ?? {}).map(
+      ([key, value]): [string, ReactNode] => [
+        key,
+        <span key={key} className={monoClass}>
+          {typeof value === 'string' ? value : JSON.stringify(value)}
+        </span>,
+      ],
+    ),
     ...(run.batch
       ? ([
           [
@@ -179,6 +160,9 @@ function RunFacts({
       'Took',
       run.durationMs === undefined ? '—' : formatDuration(run.durationMs)!,
     ],
+    ...(run.score !== undefined
+      ? ([['Score', formatScore(run.score)]] as Array<[string, ReactNode]>)
+      : []),
     ...(tokens !== undefined
       ? ([['Agent tokens', tokens.toLocaleString()]] as Array<
           [string, ReactNode]
@@ -191,56 +175,114 @@ function RunFacts({
       : []),
   ];
   return (
-    <dl className="run-facts flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+    <dl className="run-facts grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[13px]">
       {facts.map(([label, value]) => (
-        <div key={label} className="flex min-w-0 items-baseline gap-1.5">
+        <div key={label} className="contents">
           <dt className="text-kumo-subtle">{label}</dt>
-          <dd className="min-w-0 text-kumo-default tabular-nums">{value}</dd>
+          <dd className="min-w-0 break-words text-kumo-default tabular-nums">
+            {value}
+          </dd>
         </div>
       ))}
     </dl>
   );
 }
 
-function verdictTitle(run: RunSummary, detail?: RunDetailData): string {
-  if (run.status === 'running') return 'How it is scoring';
-  if (run.status === 'errored') return 'Why it errored';
-  if (run.status === 'cancelled') return 'How far it got';
-  if (detail && run.status === 'failed') return 'Why it failed';
-  return 'How it scored';
-}
+type Pane = 'trajectory' | 'verdicts';
 
-/** The pane's question, and the count that answers it at a glance. */
-function VerdictHeading({
+/**
+ * What the agent did beside why it passed or failed. With room, side by
+ * side, each scrolling on its own; without, as tabs (`?pane=`), opening on
+ * the verdicts when the run did not pass.
+ */
+export function TrajectoryAndScoring({
   run,
   detail,
   scenario,
+  events,
+  eventsError,
 }: {
   run: RunSummary;
   detail?: RunDetailData;
   scenario?: CatalogEval;
+  events: TrajectoryEvent[];
+  eventsError?: string;
 }) {
-  const entries = detail ? verdictEntries(detail, scenario) : [];
-  const counted = entries.filter(
-    ({ result }) => verdictStatus(result) !== 'skipped',
-  );
-  const failed = counted.filter(({ result }) =>
-    ['failed', 'error'].includes(verdictStatus(result)),
-  ).length;
+  const [params, setParams] = useSearchParams();
+  const fallback: Pane =
+    run.status === 'failed' || run.status === 'errored'
+      ? 'verdicts'
+      : 'trajectory';
+  const pane = (params.get('pane') as Pane | null) ?? fallback;
+  const choose = (next: Pane) =>
+    setParams(
+      (current) => {
+        const updated = new URLSearchParams(current);
+        updated.set('pane', next);
+        return updated;
+      },
+      { replace: true },
+    );
+  const title = verdictTitle(run, detail);
+  const failed = detail
+    ? verdictEntries(detail, scenario).filter(({ result }) =>
+        ['failed', 'error'].includes(verdictStatus(result)),
+      ).length
+    : 0;
   return (
-    <header className="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 className="text-sm font-semibold text-kumo-strong">
-        {verdictTitle(run, detail)}
-      </h2>
-      {counted.length ? (
-        <span className="text-xs text-kumo-subtle tabular-nums">
-          {failed
-            ? `${failed} of ${counted.length} checks did not pass`
-            : `all ${counted.length} checks passed`}
-          {run.score !== undefined ? ` · score ${formatScore(run.score)}` : ''}
-        </span>
-      ) : null}
-    </header>
+    <div className="run-inspector flex min-h-0 flex-1 flex-col gap-3 xl:grid xl:grid-cols-2 xl:gap-0">
+      <div className="xl:hidden">
+        <Tabs
+          variant="segmented"
+          size="sm"
+          value={pane}
+          onValueChange={(value) => choose(value as Pane)}
+          tabs={[
+            { value: 'trajectory', label: 'Trajectory' },
+            {
+              value: 'verdicts',
+              label: failed ? `${title} · ${failed}` : title,
+            },
+          ]}
+        />
+      </div>
+      <section
+        aria-label="What it did"
+        className={`run-trajectory min-h-0 min-w-0 flex-1 overflow-y-auto xl:block xl:border-r xl:border-kumo-line xl:pr-5 ${
+          pane === 'trajectory' ? '' : 'hidden'
+        }`}
+      >
+        {eventsError ? (
+          <ErrorBanner title="Unable to load the run" message={eventsError} />
+        ) : null}
+        <Trajectory
+          events={events}
+          checkpoints={detail?.checkpoints}
+          scenario={scenario}
+        />
+      </section>
+      <section
+        aria-label={title}
+        className={`run-verdicts flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto xl:flex xl:pl-5 ${
+          pane === 'verdicts' ? '' : 'hidden'
+        }`}
+      >
+        <header className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-kumo-strong">{title}</h2>
+          <span className="text-xs text-kumo-subtle tabular-nums">
+            {checksSummary(detail, scenario)}
+          </span>
+        </header>
+        {run.status === 'errored' && detail?.summary ? (
+          <RunError summary={detail.summary} />
+        ) : null}
+        {detail ? (
+          <VerdictList detail={detail} scenario={scenario} />
+        ) : (
+          <output className="text-[13px] text-kumo-subtle">Loading…</output>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -261,162 +303,52 @@ function RunError({ summary }: { summary: unknown }) {
   );
 }
 
-/** What the run cost and used, folded: none of it says why it failed. */
-function RunDetails({
-  run,
-  detail,
-  artifacts,
-}: {
-  run: RunSummary;
-  detail: RunDetailData;
-  artifacts: ReadonlyArray<{ path: string; kind: string; size?: number }>;
-}) {
-  const datasets = runDatasets(detail.manifest);
-  // Judging is reported in its own section, never as the agent's own cost.
-  const agentMetrics = (detail.metrics ?? []).filter(
-    (metric) => metric.name !== 'judge tokens',
-  );
-  return (
-    <div className="run-details flex flex-col divide-y divide-kumo-hairline rounded-md border border-kumo-line text-[13px]">
-      <JudgingSection detail={detail} />
-      {agentMetrics.length ? (
-        <Fold title="Metrics" summary={`${agentMetrics.length}`}>
-          <DetailList
-            items={agentMetrics.map(
-              (metric) =>
-                [
-                  metric.name,
-                  metric.error ? (
-                    <span key={metric.name} className="text-kumo-danger">
-                      {metric.error.message}
-                    </span>
-                  ) : (
-                    <span key={metric.name} className="tabular-nums">
-                      {metric.value === undefined ? (
-                        <span className="text-kumo-subtle">not measured</span>
-                      ) : (
-                        formatMetric(metric.value, metric.unit)
-                      )}
-                    </span>
-                  ),
-                ] as [string, ReactNode],
-            )}
-          />
-        </Fold>
-      ) : null}
-      {detail.attachments?.length ? (
-        <Fold title="Attachments" summary={`${detail.attachments.length}`}>
-          <ul className="flex flex-col gap-1">
-            {detail.attachments.map((attachment) => (
-              <li
-                key={attachment.name}
-                className="flex items-baseline justify-between gap-3"
-              >
-                <Link
-                  to={attachmentsHref(run.id, attachment.name)}
-                  className={`${tableLinkClass} ${monoClass} min-w-0 truncate`}
-                  title={attachment.name}
-                >
-                  {attachment.name}
-                </Link>
-                <span className="shrink-0 text-xs text-kumo-subtle tabular-nums">
-                  {attachment.truncatedFrom
-                    ? `last ${formatBytes(attachment.size)} of ${formatBytes(attachment.truncatedFrom)}`
-                    : formatBytes(attachment.size)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Fold>
-      ) : null}
-      {datasets.length ? (
-        <Fold title="Datasets" summary={`${datasets.length}`}>
-          <DetailList
-            items={datasets.map(
-              (dataset) =>
-                [
-                  dataset.id,
-                  <span key={dataset.id} title={dataset.digest}>
-                    {dataset.visibility} · {dataset.source} ·{' '}
-                    <span className={monoClass}>
-                      {dataset.digest.replace('sha256:', '').slice(0, 12)}
-                    </span>
-                  </span>,
-                ] as [string, ReactNode],
-            )}
-          />
-        </Fold>
-      ) : null}
-      {artifacts.length ? (
-        <Fold title="Artifacts" summary={`${artifacts.length}`}>
-          <NestedTable wrap>
-            <Table.Header variant="compact">
-              <Table.Row>
-                <Table.Head>Path</Table.Head>
-                <Table.Head>Kind</Table.Head>
-                <Table.Head>Size</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {artifacts.map((artifact) => (
-                <ArtifactRow key={artifact.path} artifact={artifact} />
-              ))}
-            </Table.Body>
-          </NestedTable>
-        </Fold>
-      ) : null}
-      <Fold title="Raw run report" className="raw-details">
-        <pre className="overflow-x-auto rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs">
-          {JSON.stringify(
-            { manifest: detail.manifest, summary: detail.summary },
-            null,
-            2,
-          )}
-        </pre>
-      </Fold>
-    </div>
-  );
-}
-
-function Fold({
+/** A section of the run page with its heading and what it holds, in one sentence. */
+export function RunSectionBody({
   title,
-  summary,
-  className = '',
+  about,
   children,
 }: {
   title: string;
-  summary?: string;
-  className?: string;
+  about?: string;
   children: ReactNode;
 }) {
   return (
-    <details className={`group ${className}`}>
-      <summary className="flex cursor-pointer items-baseline justify-between gap-2 px-3 py-2 font-medium text-kumo-strong select-none">
-        {title}
-        {summary ? (
-          <span className="text-xs font-normal text-kumo-subtle tabular-nums">
-            {summary}
-          </span>
-        ) : null}
-      </summary>
-      <div className="flex flex-col gap-2 px-3 pb-3">{children}</div>
-    </details>
+    <section
+      aria-label={title}
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
+    >
+      <header className="flex flex-col gap-0.5">
+        <h2 className="text-sm font-semibold text-kumo-strong">{title}</h2>
+        {about ? <p className="text-[13px] text-kumo-subtle">{about}</p> : null}
+      </header>
+      {children}
+    </section>
   );
 }
 
-/**
- * What judging this run cost: each judge's model, tokens and time. Kept apart
- * from the agent's own metrics, so a judge's tokens never inflate the agent's.
- */
-function JudgingSection({ detail }: { detail: RunDetailData }) {
-  const judged = [
+/** The judges that ran, with what each did. */
+export function judgedResults(detail: RunDetailData | undefined) {
+  if (!detail) return [];
+  return [
     ...(detail.checkpoints ?? []).map((check) => ({
       label: `${check.name} (step ${check.step + 1})`,
       result: check,
     })),
     ...detail.scores.map((score) => ({ label: score.name, result: score })),
   ].filter(({ result }) => result.judge);
-  if (!judged.length) return null;
+}
+
+/**
+ * What judging this run cost: each judge's model, tokens and time. Kept apart
+ * from the agent's own metrics, so a judge's tokens never inflate the agent's.
+ */
+export function JudgingTable({ detail }: { detail: RunDetailData }) {
+  const judged = judgedResults(detail);
+  if (!judged.length)
+    return (
+      <p className="text-[13px] text-kumo-subtle">No judges ran in this run.</p>
+    );
   const tokensOf = (result: (typeof judged)[number]['result']) =>
     result.judge?.usage ? turnTokens(result.judge.usage) : undefined;
   const totalTokens = judged.reduce(
@@ -428,51 +360,127 @@ function JudgingSection({ detail }: { detail: RunDetailData }) {
     0,
   );
   return (
-    <Fold
-      title="Judging"
-      summary={`${totalTokens.toLocaleString()} tokens · never counted as the agent's`}
-    >
-      <NestedTable wrap>
-        <Table.Header variant="compact">
-          <Table.Row>
-            <Table.Head>Judge</Table.Head>
-            <Table.Head>Model</Table.Head>
-            <Table.Head>Tokens</Table.Head>
-            <Table.Head>Time</Table.Head>
+    <NestedTable wrap>
+      <Table.Header variant="compact">
+        <Table.Row>
+          <Table.Head>Judge</Table.Head>
+          <Table.Head>Agent</Table.Head>
+          <Table.Head>Model</Table.Head>
+          <Table.Head>Tokens</Table.Head>
+          <Table.Head>Time</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {judged.map(({ label, result }) => (
+          <Table.Row key={label}>
+            <Table.Cell>{label}</Table.Cell>
+            <Table.Cell>
+              {result.judge?.agent?.name ?? result.judge?.agent?.id ?? '—'}
+            </Table.Cell>
+            <Table.Cell className={monoClass}>
+              {result.judge?.model ?? '—'}
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {tokensOf(result)?.toLocaleString() ?? '—'}
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {result.durationMs === undefined
+                ? '—'
+                : formatDuration(result.durationMs)}
+            </Table.Cell>
           </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {judged.map(({ label, result }) => (
-            <Table.Row key={label}>
-              <Table.Cell>{label}</Table.Cell>
-              <Table.Cell className={monoClass}>
-                {result.judge?.model ?? '—'}
-              </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {tokensOf(result)?.toLocaleString() ?? '—'}
-              </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {result.durationMs === undefined
-                  ? '—'
-                  : formatDuration(result.durationMs)}
-              </Table.Cell>
-            </Table.Row>
-          ))}
-          {judged.length > 1 ? (
-            <Table.Row className="font-medium">
-              <Table.Cell>Total</Table.Cell>
-              <Table.Cell />
-              <Table.Cell className="tabular-nums">
-                {totalTokens.toLocaleString()}
-              </Table.Cell>
-              <Table.Cell className="tabular-nums">
-                {formatDuration(totalTime)}
-              </Table.Cell>
-            </Table.Row>
-          ) : null}
-        </Table.Body>
-      </NestedTable>
-    </Fold>
+        ))}
+        {judged.length > 1 ? (
+          <Table.Row className="font-medium">
+            <Table.Cell>Total</Table.Cell>
+            <Table.Cell />
+            <Table.Cell />
+            <Table.Cell className="tabular-nums">
+              {totalTokens.toLocaleString()}
+            </Table.Cell>
+            <Table.Cell className="tabular-nums">
+              {formatDuration(totalTime)}
+            </Table.Cell>
+          </Table.Row>
+        ) : null}
+      </Table.Body>
+    </NestedTable>
+  );
+}
+
+/** The run's own metrics; judging is its own section. */
+export function agentMetrics(detail: RunDetailData | undefined) {
+  return (detail?.metrics ?? []).filter(
+    (metric) => metric.name !== 'judge tokens',
+  );
+}
+
+export function MetricsList({ detail }: { detail: RunDetailData }) {
+  const metrics = agentMetrics(detail);
+  if (!metrics.length)
+    return (
+      <p className="text-[13px] text-kumo-subtle">
+        This run recorded no metrics.
+      </p>
+    );
+  return (
+    <DetailList
+      items={metrics.map(
+        (metric) =>
+          [
+            metric.name,
+            metric.error ? (
+              <span key={metric.name} className="text-kumo-danger">
+                {metric.error.message}
+              </span>
+            ) : (
+              <span key={metric.name} className="tabular-nums">
+                {metric.value === undefined ? (
+                  <span className="text-kumo-subtle">not measured</span>
+                ) : (
+                  formatMetric(metric.value, metric.unit)
+                )}
+              </span>
+            ),
+          ] as [string, ReactNode],
+      )}
+    />
+  );
+}
+
+export function DatasetsList({ detail }: { detail: RunDetailData }) {
+  const datasets = runDatasets(detail.manifest);
+  if (!datasets.length)
+    return (
+      <p className="text-[13px] text-kumo-subtle">This run used no datasets.</p>
+    );
+  return (
+    <DetailList
+      items={datasets.map(
+        (dataset) =>
+          [
+            dataset.id,
+            <span key={dataset.id} title={dataset.digest}>
+              {dataset.visibility} · {dataset.source} ·{' '}
+              <span className={monoClass}>
+                {dataset.digest.replace('sha256:', '').slice(0, 12)}
+              </span>
+            </span>,
+          ] as [string, ReactNode],
+      )}
+    />
+  );
+}
+
+export function RawReport({ detail }: { detail: RunDetailData }) {
+  return (
+    <pre className="raw-report overflow-x-auto rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs">
+      {JSON.stringify(
+        { manifest: detail.manifest, summary: detail.summary },
+        null,
+        2,
+      )}
+    </pre>
   );
 }
 
@@ -484,7 +492,7 @@ type RunDatasetEntry = {
 };
 
 /** The datasets a run used, from its manifest. */
-function runDatasets(manifest: unknown): RunDatasetEntry[] {
+export function runDatasets(manifest: unknown): RunDatasetEntry[] {
   const datasets = (manifest as { datasets?: unknown } | undefined)?.datasets;
   if (!Array.isArray(datasets)) return [];
   return datasets.filter(

@@ -7,18 +7,10 @@ import { runHref, runsListHref } from './links.js';
  * Where a result page sits: Runs › Run › Workspace (or Attachments). Every
  * level above the current one links back up.
  */
-export function HierarchyBreadcrumbs({
-  run,
-  view,
-}: {
-  run: RunSummary;
-  /** A page below the run. */
-  view?: 'Workspace' | 'Attachments';
-}) {
+export function HierarchyBreadcrumbs({ run }: { run: RunSummary }) {
   const levels: Array<{ label: ReactNode; href?: string }> = [
     { label: 'Runs', href: runsListHref },
     { label: `Run ${run.id.slice(0, 8)}`, href: runHref(run.id) },
-    ...(view ? [{ label: view }] : []),
   ];
   // Kumo's breadcrumbs grow to fill a flex column; the wrapper keeps them one line tall.
   return (

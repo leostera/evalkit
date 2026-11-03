@@ -56,15 +56,13 @@ const groups: ReadonlyArray<{ label: string; sections: readonly Section[] }> = [
         label: 'Runs',
         href: '/runs',
         icon: ClockCounterClockwiseIcon,
-        matches: (pathname) =>
-          under('/runs')(pathname) && !pathname.endsWith('/workspace'),
+        matches: under('/runs'),
       },
       {
         label: 'Workspaces',
         href: '/workspaces',
         icon: FolderOpenIcon,
-        matches: (pathname) =>
-          under('/workspaces')(pathname) || pathname.endsWith('/workspace'),
+        matches: under('/workspaces'),
       },
     ],
   },
@@ -199,7 +197,7 @@ export function DashboardShell({
           {/* No title bar: each page's breadcrumb says where you are, and the
               room goes to the page. The title stays for screen readers. */}
           <h1 className="sr-only">{screenTitle(pathname)}</h1>
-          <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 md:px-6">
+          <div className="flex min-w-0 flex-1 shrink-0 flex-col gap-4 px-4 py-4 md:px-6">
             <Sidebar.Trigger className="self-start md:hidden" />
             {children}
           </div>
