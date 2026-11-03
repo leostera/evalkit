@@ -13,6 +13,8 @@ import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
   agentRuntimes,
+  assertJudgesIndependent,
+  type AutAdapter,
   DEFAULT_ARTIFACT_EXCLUDE,
   normalizeAutEvent,
   recordError,
@@ -84,8 +86,10 @@ export type RunEvalOptions = {
   suiteId?: string;
   /** Overrides the scenario's `repeat`: how many runs to start, as one batch. */
   repeat?: number;
-  /** Parameters made available to the AUT for this invocation. */
+  /** Parameters made available to the AUT, and to judges, for this invocation. */
   parameters?: JsonObject;
+  /** The agent for judges that name none (`judge` in evalkit.config.ts). */
+  judge?: AutAdapter;
   /** Matrix provenance recorded in every run's manifest. */
   matrix?: RunMetadata['matrix'];
   /** Selects a declared AUT runtime such as local, sandbox, or remote. */
@@ -237,9 +241,13 @@ async function executeBatch(
     else if (step.kind !== 'agent' && !hasUser)
       throw new Error('Checkpoint requires a preceding user step');
   }
-  if (definition.judge && definition.judge === definition.agent)
-    throw new Error('Judge agent must be distinct from the agent under test');
   assertNoRemovedOptions(definition);
+  assertJudgesIndependent(definition, options.judge);
+  for (const rule of [...definition.transcript, ...definition.scoring])
+    if (rule.kind === 'judge' && !rule.agent && !options.judge)
+      throw new Error(
+        `Judge ${rule.name} in ${definition.id} has no agent: pass judge(name, { agent }) or set judge in evalkit.config.ts`,
+      );
   if (options.runId) assertUuid(options.runId, 'runId');
   const repeat = options.repeat ?? definition.repeat ?? 1;
   if (!Number.isInteger(repeat) || repeat < 1)
@@ -467,6 +475,7 @@ async function runOnce(
                 signal,
                 progress,
                 attach: attachments.attach,
+                defaultJudge: options.judge,
               }),
             catch: (cause) => cause,
           }),
@@ -519,11 +528,12 @@ async function runOnce(
       data: scoringData,
       checkpoints,
       attach: attachments.attach,
+      defaultJudge: options.judge,
       now,
       emitRunner,
     });
 
-    metrics.push(...builtInMetrics(events));
+    metrics.push(...builtInMetrics(events, [...scoreResults, ...checkpoints]));
     if (context && workspace && !wasCancelled)
       metrics.push(
         ...(await evaluateMetrics(

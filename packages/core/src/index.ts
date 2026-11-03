@@ -11,6 +11,16 @@ import {
 import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);
+import type { CriterionResult, JudgeAnswer } from './judge.js';
+export {
+  choices,
+  criteria,
+  passMark,
+  type CriterionResult,
+  type JudgeAnswer,
+  type JudgeChoice,
+  type JudgeCriterion,
+} from './judge.js';
 export {
   DEFAULT_ARTIFACT_EXCLUDE,
   DEFAULT_ATTACHMENT_LIMITS,
@@ -86,6 +96,8 @@ export type AutEvent =
       timestamp: string;
       latencyMs?: number;
       usage?: Usage;
+      /** The model that answered this turn, when the agent knows it. */
+      model?: string;
     }
   | { kind: 'completed'; output?: JsonValue; timestamp: string }
   | { kind: 'error'; error: RecordedError; timestamp: string };
@@ -286,9 +298,23 @@ export function agent(expectation: JsonObject): AgentStep {
   return { kind: 'agent', expectation };
 }
 
+/**
+ * What a judge saw and said. The built-in `judge()` records all of it; a
+ * predicate that calls a model itself can report `model`, `prompt` and
+ * `reply` so the dashboard shows them the same way.
+ */
 export type JudgeRunInfo = {
   agent?: AutIdentity;
+  /** The model the judge reported using (`turn-completed` `model`). */
+  model?: string;
+  /** Tokens the judge used: never counted in the agent's `tokens`. */
   usage?: Usage;
+  /** The exact prompt the judge received. */
+  prompt?: string;
+  /** Its reply, as text or JSON. */
+  reply?: JsonValue;
+  /** 2 when its first reply was not in the format asked for and it was asked again. */
+  attempts?: number;
   /** Judge-agent observations; never attributed to the AUT trajectory. */
   events?: JsonValue[];
 };
@@ -300,7 +326,8 @@ export type ScoreValue<Evidence = unknown> =
   | number
   | SkippedScore
   | {
-      value: number;
+      /** From 0 to 1. Without it, the weighted mean of `criteria`. */
+      value?: number;
       passed?: boolean;
       explanation?: string;
       /**
@@ -308,7 +335,9 @@ export type ScoreValue<Evidence = unknown> =
        * evidence reaches later scorers through `checkpoint(rule)`.
        */
       evidence?: Evidence;
-      /** Judge-agent evidence, never inferred from AUT usage. */
+      /** Per-criterion values, shown on the run page; see `CriterionResult`. */
+      criteria?: CriterionResult[];
+      /** What a model-backed scorer saw and said; never counted as AUT usage. */
       judge?: JudgeRunInfo;
     };
 
@@ -326,8 +355,13 @@ export type ScoreResult = {
   kind: 'predicate' | 'judge';
   value?: number;
   passed?: boolean;
+  /** The pass mark the value was held to (1 unless the rule set `passAt`). */
+  passAt?: number;
   explanation?: string;
   evidence?: JsonValue;
+  /** A `choices` judge's answer, such as `B`. */
+  choice?: string;
+  criteria?: CriterionResult[];
   judge?: JudgeRunInfo;
   durationMs: number;
   error?: RecordedError;
@@ -388,6 +422,8 @@ export type CheckpointOutcome<Evidence> = Omit<CheckpointResult, 'evidence'> & {
 export type PredicateScorer<Evidence = unknown> = {
   kind: 'predicate';
   name: string;
+  /** What it checks, in a sentence, shown wherever the scorer is. */
+  description?: string;
   supportsPartial?: boolean;
   /** A numeric result passes when it is at least this value. Default: only 1 passes. */
   passAt?: number;
@@ -396,10 +432,38 @@ export type PredicateScorer<Evidence = unknown> = {
   ): boolean | ScoreValue<Evidence> | Promise<boolean | ScoreValue<Evidence>>;
 };
 
+/** What a judge sees: one named input, read from the run. */
+export type JudgeInput = (
+  scoring: ScoringContext,
+) => JsonValue | undefined | Promise<JsonValue | undefined>;
+
+/**
+ * A rubric-graded scorer. EvalKit builds the prompt from the rubric, the
+ * inputs and the answer format, runs the judge agent, checks its answer
+ * (asking once more if it is not in the format asked for), and records
+ * what it saw and said.
+ */
 export type JudgeRule = {
   kind: 'judge';
   name: string;
   rubric: string;
+  /** What it checks, in a sentence, shown wherever the judge is. */
+  description?: string;
+  /**
+   * The agent that judges, made with `defineAgent()`. Default: `judge` in
+   * evalkit.config.ts. It gets the run's parameters, so a matrix axis can
+   * choose its model.
+   */
+  agent?: AutAdapter;
+  /**
+   * What the judge sees, by name. Default: `conversation` (this turn at a
+   * checkpoint, the whole run in final scoring) and `reply` (the last reply).
+   */
+  inputs?: Readonly<Record<string, JudgeInput>>;
+  /** How it answers. Default `verdict`: a value from 0 to 1 and a reason. */
+  answer: JudgeAnswer;
+  /** A value passes when it is at least this. Default: only 1 passes. */
+  passAt?: number;
   /** Run even when the scenario stopped early or execution failed. */
   supportsPartial?: boolean;
 };
@@ -410,20 +474,13 @@ export type ScoringRule = PredicateScorer | JudgeRule;
 export function predicate<Evidence = unknown>(
   name: string,
   run: PredicateScorer<Evidence>['run'],
-  options: Pick<PredicateScorer, 'supportsPartial' | 'passAt'> = {},
+  options: Pick<
+    PredicateScorer,
+    'supportsPartial' | 'passAt' | 'description'
+  > = {},
 ): PredicateScorer<Evidence> {
   if (!name.trim()) throw new Error('Predicate name must not be empty');
-  if (
-    options.passAt !== undefined &&
-    !(
-      Number.isFinite(options.passAt) &&
-      options.passAt >= 0 &&
-      options.passAt <= 1
-    )
-  )
-    throw new Error(
-      `Predicate ${name} passAt must be a number from 0 to 1; received ${options.passAt}`,
-    );
+  assertPassAt(`Predicate ${name}`, options.passAt);
   return markDefinitionSite({ kind: 'predicate', name, run, ...options });
 }
 
@@ -466,13 +523,42 @@ export type MetricResult = {
   error?: RecordedError;
 };
 
+const INPUT_NAME = /^[a-z][a-zA-Z0-9_-]{0,31}$/;
+
 export function judge(
   name: string,
-  options: Pick<JudgeRule, 'rubric' | 'supportsPartial'>,
+  options: Omit<JudgeRule, 'kind' | 'name' | 'answer'> & {
+    answer?: JudgeAnswer;
+  },
 ): JudgeRule {
-  if (!name.trim() || !options.rubric.trim())
+  if (!name.trim() || !options.rubric?.trim())
     throw new Error('Judge name and rubric must not be empty');
-  return markDefinitionSite({ kind: 'judge', name, ...options });
+  assertPassAt(`Judge ${name}`, options.passAt);
+  for (const input of Object.keys(options.inputs ?? {}))
+    if (!INPUT_NAME.test(input))
+      throw new Error(
+        `Judge ${name} input ${JSON.stringify(input)} must start with a lowercase letter and use letters, digits, "-" or "_"`,
+      );
+  if (options.inputs && !Object.keys(options.inputs).length)
+    throw new Error(`Judge ${name} inputs must name at least one input`);
+  if (options.agent && typeof options.agent.start !== 'function')
+    throw new Error(`Judge ${name} agent must be made with defineAgent()`);
+  return markDefinitionSite({
+    kind: 'judge',
+    name,
+    ...options,
+    answer: options.answer ?? { kind: 'verdict' },
+  });
+}
+
+function assertPassAt(owner: string, passAt: number | undefined): void {
+  if (
+    passAt !== undefined &&
+    !(Number.isFinite(passAt) && passAt >= 0 && passAt <= 1)
+  )
+    throw new Error(
+      `${owner} passAt must be a number from 0 to 1; received ${passAt}`,
+    );
 }
 
 export type EvalPolicy = {
@@ -485,8 +571,6 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
   id: string;
   name?: string;
   agent: TAgent;
-  /** Separate judge agent; its model and tools are never inherited from the AUT. */
-  judge?: AutAdapter;
   /** Data and files the scenario uses; each run gets its own copy. */
   datasets?: readonly Dataset[];
   transcript: TranscriptStep[];
@@ -557,15 +641,25 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
     else if (step.kind !== 'agent' && !hasUser)
       throw new Error('Checkpoint requires a preceding user step');
   }
-  if (
-    (definition.transcript.some((step) => step.kind === 'judge') ||
-      definition.scoring.some((rule) => rule.kind === 'judge')) &&
-    !definition.judge
-  )
-    throw new Error('Judge rules require an eval judge agent');
-  if (definition.judge && definition.judge === definition.agent)
-    throw new Error('Judge agent must be distinct from the agent under test');
+  assertJudgesIndependent(definition);
   return markDefinitionSite(definition);
+}
+
+/** A judge never grades with the agent it is judging. */
+export function assertJudgesIndependent(
+  definition: Pick<EvalDefinition, 'agent' | 'transcript' | 'scoring'> & {
+    id: string;
+  },
+  defaultJudge?: AutAdapter,
+): void {
+  for (const rule of [...definition.transcript, ...definition.scoring])
+    if (
+      rule.kind === 'judge' &&
+      (rule.agent ?? defaultJudge) === definition.agent
+    )
+      throw new Error(
+        `Judge ${rule.name} in ${definition.id} uses the agent under test; a judge needs its own agent`,
+      );
 }
 
 export { defineEvalMatrix, canonicalParameters } from './matrix.js';
@@ -788,8 +882,11 @@ export type CheckpointResult = {
   status: 'passed' | 'failed' | 'error' | 'skipped';
   value?: number;
   passed?: boolean;
+  passAt?: number;
   explanation?: string;
   evidence?: JsonValue;
+  choice?: string;
+  criteria?: CriterionResult[];
   judge?: JudgeRunInfo;
   durationMs?: number;
   error?: RecordedError;
@@ -806,7 +903,12 @@ export type CheckpointResult = {
  *   usage, cached input included. Absent when no turn reported any.
  * - `tool calls`: the agent's `tool-call` events.
  */
-export const BUILT_IN_METRICS = ['agent time', 'tokens', 'tool calls'] as const;
+export const BUILT_IN_METRICS = [
+  'agent time',
+  'tokens',
+  'tool calls',
+  'judge tokens',
+] as const;
 export type BuiltInMetricName = (typeof BUILT_IN_METRICS)[number];
 /** A built-in metric's name (suggested by editors), or a scenario's own. */
 export type MetricName = BuiltInMetricName | (string & {});

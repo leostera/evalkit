@@ -34,6 +34,8 @@ export type AutEventInput =
       timestamp?: string;
       latencyMs?: number;
       usage?: Usage;
+      /** The model that answered this turn, when the agent knows it. */
+      model?: string;
     }
   | { kind: 'completed'; output?: unknown; timestamp?: string }
   | { kind: 'error'; error: RecordedError; timestamp?: string };
@@ -53,6 +55,8 @@ export type TurnResult =
       reply?: unknown;
       toolCalls?: readonly TurnToolCall[];
       usage?: Usage;
+      /** The model that answered, recorded with the usage. */
+      model?: string;
     };
 
 /** Converts an adapter event into a recorded `AutEvent`. */
@@ -149,10 +153,15 @@ export function turnResultEvents(
         now,
       ),
     );
-  if (result.usage)
+  if (result.usage || result.model)
     events.push(
       normalizeAutEvent(
-        { kind: 'turn-completed', turn, usage: result.usage },
+        {
+          kind: 'turn-completed',
+          turn,
+          ...(result.usage ? { usage: result.usage } : {}),
+          ...(result.model ? { model: result.model } : {}),
+        },
         now,
       ),
     );

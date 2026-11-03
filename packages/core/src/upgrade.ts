@@ -142,6 +142,10 @@ export function assertNoRemovedOptions(definition: {
     throw new Error(
       `Eval ${String(definition.id)} uses fixtures, which were replaced by datasets: [defineDataset(...)]`,
     );
+  if ('judge' in definition)
+    throw new Error(
+      `Eval ${String(definition.id)} sets judge, which moved to each rule: judge(name, { agent, rubric }), or judge in evalkit.config.ts for every judge (EvalKit 0.10)`,
+    );
   if (isRecord(definition.policy) && 'trials' in definition.policy)
     throw new Error(
       `Eval ${String(definition.id)} sets policy.trials, which was replaced by repeat: ${JSON.stringify(definition.policy.trials)} (EvalKit 0.9)`,

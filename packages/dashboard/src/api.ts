@@ -1,5 +1,7 @@
 import type {
   AttachmentEntry,
+  CriterionResult,
+  JudgeRunInfo,
   EvalCatalogAgent,
   EvalCatalogDataset,
   EvalCatalogEntry,
@@ -31,12 +33,7 @@ export type CatalogEval = EvalSummary &
   Partial<
     Pick<
       EvalCatalogEntry,
-      | 'datasets'
-      | 'judgeAgent'
-      | 'policy'
-      | 'transcript'
-      | 'metadata'
-      | 'definedAt'
+      'datasets' | 'policy' | 'transcript' | 'metadata' | 'definedAt'
     >
   >;
 
@@ -96,7 +93,16 @@ export type RunScorer = {
   name: string;
   kind: 'predicate' | 'judge';
   value?: number;
+  passed?: boolean;
   skipped?: true;
+  /** The scorer failed to run. */
+  errored?: true;
+  /** A `choices` judge's answer. */
+  choice?: string;
+  /** The first line of its explanation. */
+  explanation?: string;
+  /** The model a judge reported using. */
+  model?: string;
 };
 
 /** Runs launched together as repeats of one configuration. */
@@ -162,21 +168,38 @@ export type CheckpointResult = {
   explanation?: string;
   error?: { name: string; message: string };
   matchedToolCall?: { eventIndex: number; id: string };
+} & VerdictDetail;
+
+/**
+ * Everything a score or checkpoint can say about its verdict. Results saved
+ * before EvalKit 0.10 have none of these; they show what they have.
+ */
+export type VerdictDetail = {
+  /** The pass mark the value was held to. */
+  passAt?: number;
+  evidence?: unknown;
+  /** A `choices` judge's answer. */
+  choice?: string;
+  criteria?: CriterionResult[];
+  judge?: JudgeRunInfo;
+  durationMs?: number;
 };
+
+/** One final scorer's result, as the run page shows it. */
+export type RunScore = {
+  name: string;
+  kind?: 'predicate' | 'judge';
+  value?: number;
+  passed?: boolean;
+  explanation?: string;
+  error?: { name: string; message: string };
+  /** The scorer returned skip(); `explanation` is the reason. */
+  skipped?: true;
+} & VerdictDetail;
 
 /** What a run's page shows beyond its listing: every score and check. */
 export type RunDetail = {
-  scores: Array<{
-    name: string;
-    kind?: 'predicate' | 'judge';
-    value?: number;
-    passed?: boolean;
-    explanation?: string;
-    error?: { name: string; message: string };
-    durationMs: number;
-    /** The scorer returned skip(); `explanation` is the reason. */
-    skipped?: true;
-  }>;
+  scores: RunScore[];
   metrics?: MetricResult[];
   checkpoints?: CheckpointResult[];
   /** Files the adapter or scorers attached; read them with `getAttachment`. */

@@ -7,7 +7,7 @@ A scenario (`defineEval`) joins an [AUT adapter](/docs/manual/agents/), an order
 
 ## Write a reusable predicate
 
-`predicate(name, callback)` is a deterministic scoring rule that works both between turns and after the session closes. The same `judge(name, { rubric })` descriptor works in either position when the eval supplies a separate `judge` agent. The callback receives `{ context, output, data, trajectory, artifacts, turn? }`: the same per-run context given to the adapter, the content of the last assistant message, the values of all the scenario's datasets by ID, a read-only array of AUT and runner events, candidate/evaluator workspace roots, and the most recent completed turn if available. It can be async, read files, and use the effective matrix parameters.
+`predicate(name, callback)` is a deterministic scoring rule that works both between turns and after the session closes. The same `judge(name, { rubric })` descriptor works in either position; a separate [judge agent](#judges) grades it. The callback receives `{ context, output, data, trajectory, artifacts, turn? }`: the same per-run context given to the adapter, the content of the last assistant message, the values of all the scenario's datasets by ID, a read-only array of AUT and runner events, candidate/evaluator workspace roots, and the most recent completed turn if available. It can be async, read files, and use the effective matrix parameters.
 
 ```ts
 // judges/greeting.ts
@@ -136,34 +136,86 @@ For a missing file to count as a **failed assertion** rather than an execution e
 
 A predicate can return `true`/`false`, a numeric score in `[0, 1]`, or a score object as below in **either** position. A failed inline assertion persists as a checkpoint failure and keeps the run from passing even if later rules pass. With `policy.failfast: true`, the runner skips remaining authored steps, closes the session, and attempts final scoring and reporting; without it, later steps run. A throwing/invalid inline rule is an execution error and stops regardless of `failfast`. After failfast, only final rules declared with `{ supportsPartial: true }` run. `scoring.overall` still averages **final** predicate and judge values, never checkpoints. See [Results and reports](/docs/manual/results/) for checkpoint status and the report format. Checkpoints do not enforce `policy.timeoutMs` or process-wide egress/cancellation guards.
 
-### Judge agents
+### Judges
 
-`judge(name, { rubric, supportsPartial? })` declares a rule. Supply a **separate agent** in the eval's `judge` field to execute it. Passing the same adapter object as `agent` and `judge` is rejected. The same judge descriptor can be placed in `transcript` and `scoring`:
+`judge(name, { rubric })` is a scorer graded by a model. You write the rubric and say what the judge sees and how it answers; EvalKit builds the prompt, sends it to a **judge agent**, reads the answer, and asks once more if it cannot. How the agent calls its model is up to the agent: it is an ordinary [`defineAgent()`](/docs/manual/agents/) agent, never the one being measured.
 
 ```ts
-import { defineEval, judge, piAgent, user } from '@leostera/evalkit';
+// judges/correctness.ts
+import { choices, judge } from '@leostera/evalkit';
 
-const clarity = judge('clarity', {
-  rubric: 'Is the reply clear and accurate?',
-});
-
-export default defineEval({
-  id: 'judge-clarity',
-  agent: myAgent, // the system being measured
-  judge: piAgent(), // separate, tool-free local judge agent; requires Pi/model access
-  transcript: [user('Explain the change.'), clarity],
-  scoring: [clarity],
-  policy: { failfast: true },
+export const correctness = judge('correctness', {
+  description: 'Is the answer factually correct and useful?',
+  rubric:
+    "Is the assistant's response factually correct and useful for what the user asked?",
+  inputs: {
+    question: ({ trajectory }) => firstUserMessage(trajectory),
+    expected: ({ data }) => data.expectations?.answer ?? null,
+    reply: ({ output }) => output ?? null,
+  },
+  answer: choices({
+    A: ['Accurate and helpful.', 1],
+    B: ['Partially correct or missing key detail.', 0.5],
+    C: ['Wrong, misleading or unhelpful.', 0],
+  }),
+  passAt: 0.5,
 });
 ```
 
-For each assessment, EvalKit starts a **fresh judge session**, sends a JSON prompt with the rubric plus either the just-completed AUT turn (`transcript`) or the accumulated trajectory (`scoring`), then closes the judge session. The judge must emit a structured verdict as `completed.output` or an assistant `message` containing JSON, for example `{ "value": 0.9, "passed": true, "explanation": "..." }`. Missing, malformed, or out-of-range verdicts are errors—not passing scores. `piAgent()` invokes a no-tools Pi process; other judge adapters may use their own tools. Judge tools run in the **evaluator** workspace, not the candidate workspace, and judge events are saved inside the judge score rather than attributed to AUT events.
+| Option        | Meaning                                                                                                                                                                                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rubric`      | What to judge, in the judge's words.                                                                                                                                                                                                                                                                     |
+| `description` | What it checks, in yours: shown in the dashboard, `--dry-run` and the Judges page.                                                                                                                                                                                                                       |
+| `inputs`      | What the judge sees: `{ name: (ctx) => value }`, each given the [scoring context](/docs/reference/api/#scoring). Default: `conversation` (the turn at a checkpoint, the whole run in final scoring) and `reply`. Only these reach the judge; evaluator datasets stay hidden unless an input passes them. |
+| `answer`      | `choices({ A: [label, value], ... })`: one letter, worth its value. `criteria({ name: weight })`: a value per criterion, scored as their weighted mean. Default: a value from 0 to 1 and why.                                                                                                            |
+| `passAt`      | The lowest value that passes. Default: only 1. `choices` and `criteria` usually want lower.                                                                                                                                                                                                              |
+| `agent`       | The judge agent. Default: `judge` in `evalkit.config.ts`.                                                                                                                                                                                                                                                |
 
-The runner records the judge agent's identity, emitted events, and token usage **when the adapter emits it**. Cost is not measured automatically. Judge prompts and events can contain sensitive data; a custom judge adapter controls its model, tools, and external disclosure. A failed inline verdict participates in `failfast`; a judge execution error is a checkpoint error inline or a scorer error after close. EvalKit does not enforce judge timeouts or cancel a hung call. The [provider-free fake judge example](https://github.com/leostera/evalkit/blob/main/examples/interleaved-scenario/scenarios/judged-reply.eval.ts) runs both placements without model credentials.
+Most projects set one judge agent for all their judges, and give a rule its own `agent` only when it needs a different one:
+
+```ts
+// evalkit.config.ts
+import { defineConfig } from '@leostera/evalkit';
+import { judgeAgent } from './agents/judge.js';
+
+export default defineConfig({ judge: judgeAgent });
+```
+
+The judge agent gets the prompt as its message, and replies as any agent does; it should report `usage` and the `model` it used. Like the agent under test, it receives the matrix cell's `context.parameters`, so **a matrix can choose the judge's model** separately from the agent's, for example a cheaper agent judged by a stronger model:
+
+```ts
+// agents/judge.ts
+export const judgeAgent = defineAgent({
+  identity: { id: 'judge', kind: 'in-process' },
+  async start({ context }) {
+    const model = String(context.parameters?.judgeModel ?? 'large-model');
+    return {
+      async send(prompt) {
+        const { text, usage } = await callYourModel(model, prompt);
+        return { reply: text, usage, model };
+      },
+    };
+  },
+});
+
+// evalkit.config.ts
+export default defineConfig({
+  judge: judgeAgent,
+  matrix: {
+    id: 'models',
+    parameters: {
+      model: ['small-model', 'large-model'],
+      judgeModel: ['large-model'],
+    },
+  },
+});
+```
+
+Each judge result saves the prompt it saw, its reply, its conversation, its usage, the model it reported, and the pass mark applied. The run page shows them when you open a verdict, and a **Judging** section totals what judging cost, apart from the agent's own tokens. The built-in `judge tokens` metric is that total, so the scoreboard can compare it. A reply EvalKit still cannot read after asking twice is a scorer error, never a pass. Every judge session is new, runs in the evaluator workspace, and its events stay inside its result. EvalKit does not enforce judge timeouts. The [judges example](https://github.com/leostera/evalkit/tree/main/examples/judges) runs choices, criteria and predicate judges without model credentials.
 
 ### Score return values
 
-A predicate returns a boolean, a number in `[0, 1]`, `{ value, passed?, explanation?, evidence? }`, or `skip(reason)`. Values must be finite and within that interval. Without an explicit `passed`, **only a value of exactly `1` passes**; a score of `0.9` does not. Give `passAt` to pass numeric scores at a threshold; an explicit `passed` in a returned object still wins:
+A predicate returns a boolean, a number in `[0, 1]`, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. Without a `value`, the score is the weighted mean of `criteria`, a list of `{ name, value, weight?, note? }` (weight 1 by default), and the run page shows the formula. Values must be finite and within that interval. Without an explicit `passed`, **only a value of exactly `1` passes**; a score of `0.9` does not. Give `passAt` to pass numeric scores at a threshold; an explicit `passed` in a returned object still wins:
 
 ```ts
 import { predicate, skip } from '@leostera/evalkit';
@@ -212,13 +264,14 @@ export default defineEval({
 
 A metric receives the same context as a final scorer and runs after the scorers. Return `undefined` when there is nothing to measure; a thrown error is recorded on that metric and the others still run. `unit` labels the value (`ms` formats as a duration) and `better: 'lower' | 'higher'` says which direction is an improvement.
 
-EvalKit also records three **built-in metrics** for every run. Their names are the type `BuiltInMetricName`, and reusing one for a scenario metric is a type error and a definition error.
+EvalKit also records four **built-in metrics** for every run. Their names are the type `BuiltInMetricName`, and reusing one for a scenario metric is a type error and a definition error.
 
-| Name         | Unit   | What it counts                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent time` | ms     | From the run's first recorded event to its last one before final scoring: the agent's turns and the checkpoints between them.                                                                                                                                                                                                                                                                     |
-| `tokens`     | tokens | The sum over turns of `inputTokens + outputTokens` from each `turn-completed` event's `usage`, or the turn's `totalTokens` when it reports neither. **Cached input counts**: `inputTokens` is every input token the model read, from a cache or not (`cachedInputTokens` says how many were cached, for information). Not recorded when no turn reported usage, so it is never a misleading zero. |
-| `tool calls` | —      | The agent's `tool-call` events.                                                                                                                                                                                                                                                                                                                                                                   |
+| Name           | Unit   | What it counts                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent time`   | ms     | From the run's first recorded event to its last one before final scoring: the agent's turns and the checkpoints between them.                                                                                                                                                                                                                                                                     |
+| `tokens`       | tokens | The sum over turns of `inputTokens + outputTokens` from each `turn-completed` event's `usage`, or the turn's `totalTokens` when it reports neither. **Cached input counts**: `inputTokens` is every input token the model read, from a cache or not (`cachedInputTokens` says how many were cached, for information). Not recorded when no turn reported usage, so it is never a misleading zero. |
+| `tool calls`   | —      | The agent's `tool-call` events.                                                                                                                                                                                                                                                                                                                                                                   |
+| `judge tokens` | tokens | The tokens the run's judges reported, counted as `tokens` is. Kept apart from the agent's tokens. Not recorded when no judge reported usage.                                                                                                                                                                                                                                                      |
 
 Tokens are only what the adapter reports; EvalKit does not count them itself. See [reporting usage](/docs/manual/agents/#reporting-token-usage).
 
@@ -230,4 +283,4 @@ A metric a run did not record, because it predates the metric, its agent reporte
 
 If dataset setup or the adapter fails, the run is `errored`. By default, scorers are skipped after a primary execution error. `predicate(name, fn, { supportsPartial: true })` can inspect a partial trajectory **if the run context and workspace were created**; this does not make the failed execution pass. A session close error is also recorded. A scoring failure, on the other hand, makes the run `failed`, with `scoring.passed: false`. For a CI gate, use the CLI exit status or count the runs that passed; see [Results and reports](/docs/manual/results/#understanding-status-and-scores).
 
-`agent(...)` is still declared but **not executable**; inserting it into a transcript fails execution. The executable transcript steps are `user(...)`, `predicate(...)`, `judge(...)`, and `expectToolCall(...)`. Both `predicate(...)` and `judge(...)` also work in final `scoring`. A judge rule without an eval-level `judge` agent is rejected at definition time rather than silently passing.
+`agent(...)` is still declared but **not executable**; inserting it into a transcript fails execution. The executable transcript steps are `user(...)`, `predicate(...)`, `judge(...)`, and `expectToolCall(...)`. Both `predicate(...)` and `judge(...)` also work in final `scoring`. A judge rule with no `agent` and no project `judge` is rejected before the run starts rather than silently passing.

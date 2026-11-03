@@ -1,5 +1,5 @@
-import { Badge, LayerCard, Table } from '@cloudflare/kumo';
-import type { ReactNode } from 'react';
+import { Badge, LayerCard, Table, Tabs } from '@cloudflare/kumo';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   CatalogAgent,
@@ -24,8 +24,11 @@ import {
   libraryAgents,
   libraryDatasets,
   libraryJudges,
+  recentVerdicts,
   type JudgeUse,
 } from './library-entities.js';
+import { StatusBadge } from './StatusBadge.js';
+import { passText, shownValue } from './Verdict.js';
 import {
   agentHref,
   datasetHref,
@@ -323,18 +326,41 @@ function KindBadge({ scorer }: { scorer: CatalogScorer }) {
   );
 }
 
-function threshold(scorer: CatalogScorer): string {
-  if (scorer.kind === 'judge') return 'its verdict';
-  return scorer.passAt === undefined ? 'only 1' : `≥ ${scorer.passAt}`;
-}
-
 function placement(use: JudgeUse): string {
   return use.placement === 'final'
     ? 'final scoring'
     : `checkpoint after step ${(use.step ?? 0) + 1}`;
 }
 
-export function JudgesPage({ catalog }: Data) {
+const agentLabel = (agent: CatalogAgent) =>
+  agent.name ?? agent.id ?? agent.kind;
+
+/** Passed of the newest finished runs, as a bar and a count. */
+function PassBar({ passed, total }: { passed: number; total: number }) {
+  if (!total) return <span className="text-kumo-subtle">—</span>;
+  const share = passed / total;
+  return (
+    <span className="pass-bar inline-flex items-center gap-2 tabular-nums">
+      <span
+        aria-hidden
+        className="inline-block h-1.5 w-20 overflow-hidden rounded-full bg-kumo-fill"
+      >
+        <span
+          className={`block h-full ${share >= 0.5 ? 'bg-kumo-success' : 'bg-kumo-danger'}`}
+          style={{ width: `${share * 100}%` }}
+        />
+      </span>
+      {passed}/{total}
+    </span>
+  );
+}
+
+/** The model a judge used most recently, as its runs reported it. */
+function recentModel(verdicts: ReturnType<typeof recentVerdicts>) {
+  return verdicts.find(({ scorer }) => scorer.model)?.scorer.model;
+}
+
+export function JudgesPage({ catalog, runs }: Data) {
   const judges = libraryJudges(catalog);
   return (
     <>
@@ -346,36 +372,66 @@ export function JudgesPage({ catalog }: Data) {
               <Table.Head>Judge</Table.Head>
               <Table.Head>Kind</Table.Head>
               <Table.Head>Passes at</Table.Head>
+              <Table.Head>Model</Table.Head>
+              <Table.Head>Last 10 runs</Table.Head>
               <Table.Head>Scenarios</Table.Head>
-              <Table.Head>Defined in</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {judges.map(({ key, scorer, uses }) => (
-              <Table.Row key={key} {...rowLinkProps}>
-                <Table.Cell>
-                  <Link
-                    to={judgeHref(key)}
-                    data-row-link
-                    className={tableLinkClass}
-                  >
-                    {scorer.name}
-                  </Link>
-                </Table.Cell>
-                <Table.Cell>
-                  <KindBadge scorer={scorer} />
-                </Table.Cell>
-                <Table.Cell className="tabular-nums">
-                  {threshold(scorer)}
-                </Table.Cell>
-                <Table.Cell className="tabular-nums">
-                  {new Set(uses.map((use) => use.scenario.id)).size}
-                </Table.Cell>
-                <Table.Cell>
-                  <DefinedAt at={scorer.definedAt} />
-                </Table.Cell>
-              </Table.Row>
-            ))}
+            {judges.map(({ key, scorer, uses }) => {
+              const verdicts = recentVerdicts(runs, uses, scorer.name);
+              const model = recentModel(verdicts);
+              return (
+                <Table.Row key={key} {...rowLinkProps}>
+                  <Table.Cell className="max-w-md whitespace-normal">
+                    <Link
+                      to={judgeHref(key)}
+                      data-row-link
+                      className={tableLinkClass}
+                    >
+                      {scorer.name}
+                    </Link>
+                    <span className="block text-xs text-kumo-subtle">
+                      {scorer.description ?? (
+                        <span className="italic">
+                          No description. Add {'{ description }'} to say what it
+                          checks.
+                        </span>
+                      )}
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <KindBadge scorer={scorer} />
+                  </Table.Cell>
+                  <Table.Cell>
+                    {passText(scorer.passAt, scorer.answer)}
+                  </Table.Cell>
+                  <Table.Cell className={monoClass}>
+                    {model ??
+                      (scorer.agent ? (
+                        agentLabel(scorer.agent)
+                      ) : (
+                        <span className="text-kumo-subtle">—</span>
+                      ))}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <PassBar
+                      passed={
+                        verdicts.filter(({ scorer: s }) => s.passed).length
+                      }
+                      total={
+                        verdicts.filter(
+                          ({ scorer: s }) => s.passed !== undefined,
+                        ).length
+                      }
+                    />
+                  </Table.Cell>
+                  <Table.Cell className="tabular-nums">
+                    {new Set(uses.map((use) => use.scenario.id)).size}
+                  </Table.Cell>
+                </Table.Row>
+              );
+            })}
           </Table.Body>
         </DataTable>
       ) : (
@@ -385,48 +441,288 @@ export function JudgesPage({ catalog }: Data) {
   );
 }
 
+/** What a judge's answer can be, and what each answer is worth. */
+function AnswerTable({ scorer }: { scorer: CatalogScorer }) {
+  const answer = scorer.answer;
+  if (answer?.kind === 'choices')
+    return (
+      <DataTable>
+        <Table.Header variant="compact">
+          <Table.Row>
+            <Table.Head>Choice</Table.Head>
+            <Table.Head>Means</Table.Head>
+            <Table.Head>Value</Table.Head>
+            <Table.Head>Result</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {answer.choices.map((choice) => (
+            <Table.Row key={choice.key}>
+              <Table.Cell className="font-semibold">{choice.key}</Table.Cell>
+              <Table.Cell className="whitespace-normal">
+                {choice.label}
+              </Table.Cell>
+              <Table.Cell className="tabular-nums">{choice.value}</Table.Cell>
+              <Table.Cell>
+                <StatusBadge
+                  status={
+                    choice.value >= (scorer.passAt ?? 1) ? 'passed' : 'failed'
+                  }
+                />
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </DataTable>
+    );
+  if (answer?.kind === 'criteria')
+    return (
+      <DataTable>
+        <Table.Header variant="compact">
+          <Table.Row>
+            <Table.Head>Criterion</Table.Head>
+            <Table.Head>Weight</Table.Head>
+            <Table.Head>Means</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {answer.criteria.map((criterion) => (
+            <Table.Row key={criterion.name}>
+              <Table.Cell>{criterion.name}</Table.Cell>
+              <Table.Cell className="tabular-nums">
+                {criterion.weight}
+              </Table.Cell>
+              <Table.Cell className="whitespace-normal text-kumo-subtle">
+                {criterion.description ?? '—'}
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </DataTable>
+    );
+  return null;
+}
+
+function answerSummary(scorer: CatalogScorer): string {
+  switch (scorer.answer?.kind) {
+    case 'choices':
+      return `one of ${scorer.answer.choices.map((choice) => choice.key).join(', ')}, and why. EvalKit checks the answer and asks once more if it is not one of them`;
+    case 'criteria':
+      return `a value from 0 to 1 per criterion; the score is their weighted mean`;
+    default:
+      return 'a value from 0 to 1 and why, as JSON. EvalKit checks it and asks once more if it cannot read it';
+  }
+}
+
+/** The prompt EvalKit sends: as a template, or exactly as a recent run sent it. */
+function JudgePrompt({
+  api,
+  scorer,
+  verdicts,
+}: {
+  api?: DashboardApi;
+  scorer: CatalogScorer;
+  verdicts: ReturnType<typeof recentVerdicts>;
+}) {
+  const [mode, setMode] = useState<'template' | 'run'>('template');
+  const [sent, setSent] = useState<string>();
+  const latest = verdicts.find(({ scorer: entry }) => !entry.skipped)?.run;
+  useEffect(() => {
+    if (mode !== 'run' || !latest || !api) return;
+    let active = true;
+    void api.getRun(latest.id).then((detail) => {
+      if (!active) return;
+      const score = detail.scores.find((entry) => entry.name === scorer.name);
+      setSent(score?.judge?.prompt ?? 'This run did not record its prompt.');
+    });
+    return () => {
+      active = false;
+    };
+  }, [api, latest, mode, scorer.name]);
+  if (!scorer.prompt) return null;
+  return (
+    <figure className="judge-prompt flex min-w-0 flex-col gap-1">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-kumo-subtle">
+        <span>
+          Prompt EvalKit sends · built from the rubric, inputs and answer format
+        </span>
+        {latest && api ? (
+          <Tabs
+            variant="segmented"
+            size="sm"
+            value={mode}
+            onValueChange={(value) => setMode(value as 'template' | 'run')}
+            tabs={[
+              { value: 'template', label: 'Template' },
+              { value: 'run', label: `With run ${latest.id.slice(0, 8)}` },
+            ]}
+          />
+        ) : null}
+      </figcaption>
+      <pre className="max-h-[28rem] overflow-auto rounded-md border border-kumo-hairline bg-kumo-elevated px-3 py-2 font-mono text-xs whitespace-pre-wrap">
+        {mode === 'run' ? (sent ?? 'Loading…') : scorer.prompt}
+      </pre>
+      <p className="text-xs text-kumo-subtle">
+        The judge agent receives this prompt and decides how to call its model.
+        Placeholders are filled from each run.
+      </p>
+    </figure>
+  );
+}
+
 export function JudgePage({
+  api,
   catalog,
   runs,
   judgeKey,
-}: Data & { judgeKey: string }) {
+}: Data & { api?: DashboardApi; judgeKey: string }) {
   const found = libraryJudges(catalog).find((entry) => entry.key === judgeKey);
   if (!found) return <Empty message={`Judge not found: ${judgeKey}`} />;
   const { scorer, uses } = found;
+  const verdicts = recentVerdicts(runs, uses, scorer.name);
+  const isJudge = scorer.kind === 'judge';
   return (
     <>
       <LibraryBreadcrumbs section="judges" current={scorer.name} />
       <PageHeading title={scorer.name} status={<KindBadge scorer={scorer} />} />
-      <Card>
-        <DetailList
-          items={[
-            [
-              'Kind',
-              scorer.kind === 'judge'
-                ? 'LLM judge: the scenario’s judge agent grades the run against the rubric'
-                : 'Predicate: a function scores the run from 0 to 1',
-            ],
-            ['Passes at', threshold(scorer)],
-            [
-              'Partial runs',
-              scorer.supportsPartial
-                ? 'Also scores runs that stopped early or failed'
-                : 'Only scores runs that ran to the end',
-            ],
-            ['Defined in', <DefinedAt key="at" at={scorer.definedAt} />],
-          ]}
-        />
-        {scorer.rubric ? (
-          <figure className="flex flex-col gap-1">
-            <figcaption className="text-xs font-medium text-kumo-subtle">
-              Rubric
-            </figcaption>
-            <blockquote className="rounded-md border-l-2 border-kumo-brand bg-kumo-elevated px-3 py-2 text-[13px] whitespace-pre-wrap">
-              {scorer.rubric}
-            </blockquote>
-          </figure>
+      {scorer.description ? (
+        <p className="judge-description max-w-3xl text-sm text-kumo-default">
+          {scorer.description}
+        </p>
+      ) : null}
+      <div
+        className={
+          isJudge
+            ? 'grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
+            : 'max-w-3xl'
+        }
+      >
+        <div className="flex min-w-0 flex-col gap-4">
+          <Card>
+            <DetailList
+              items={[
+                ...(isJudge
+                  ? ([
+                      [
+                        'Judge agent',
+                        scorer.agent ? (
+                          <span key="agent">
+                            {agentLabel(scorer.agent)}
+                            {recentModel(verdicts) ? (
+                              <span className={`${monoClass} text-kumo-subtle`}>
+                                {' '}
+                                · {recentModel(verdicts)}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          'none: set judge in evalkit.config.ts'
+                        ),
+                      ],
+                      [
+                        'It sees',
+                        <span key="inputs" className={monoClass}>
+                          {(scorer.inputs ?? []).join(' · ')}
+                        </span>,
+                      ],
+                      ['It answers', answerSummary(scorer)],
+                    ] as const)
+                  : ([
+                      [
+                        'Kind',
+                        'Predicate: a function scores the run from 0 to 1',
+                      ],
+                    ] as const)),
+                ['Passes at', passText(scorer.passAt, scorer.answer)],
+                [
+                  'Partial runs',
+                  scorer.supportsPartial
+                    ? 'Also scores runs that stopped early or failed'
+                    : 'Only scores runs that ran to the end',
+                ],
+                ['Defined in', <DefinedAt key="at" at={scorer.definedAt} />],
+              ]}
+            />
+          </Card>
+          <AnswerTable scorer={scorer} />
+        </div>
+        {isJudge ? (
+          <div className="flex min-w-0 flex-col gap-4">
+            {scorer.rubric ? (
+              <figure className="flex flex-col gap-1">
+                <figcaption className="text-xs font-medium text-kumo-subtle">
+                  Rubric
+                </figcaption>
+                <blockquote className="rounded-md border-l-2 border-kumo-brand bg-kumo-elevated px-3 py-2 text-[13px] whitespace-pre-wrap">
+                  {scorer.rubric}
+                </blockquote>
+              </figure>
+            ) : null}
+            <JudgePrompt api={api} scorer={scorer} verdicts={verdicts} />
+          </div>
         ) : null}
-      </Card>
+      </div>
+      <section aria-label="Recent verdicts" className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold text-kumo-strong">
+          Recent verdicts
+        </h3>
+        {verdicts.length ? (
+          <DataTable>
+            <Table.Header variant="compact">
+              <Table.Row>
+                <Table.Head>Run</Table.Head>
+                <Table.Head>Scenario</Table.Head>
+                <Table.Head>Value</Table.Head>
+                <Table.Head>Result</Table.Head>
+                <Table.Head>Why</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {verdicts.map(({ run, scorer: verdict }) => (
+                <Table.Row key={run.id} {...rowLinkProps}>
+                  <Table.Cell>
+                    <Link
+                      to={runHref(run.id)}
+                      data-row-link
+                      className={`${tableLinkClass} ${monoClass}`}
+                    >
+                      {run.id.slice(0, 8)}
+                    </Link>
+                  </Table.Cell>
+                  <Table.Cell>{run.evalId}</Table.Cell>
+                  <Table.Cell className="tabular-nums">
+                    {shownValue(verdict)}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <StatusBadge
+                      status={
+                        verdict.errored
+                          ? 'error'
+                          : verdict.skipped
+                            ? 'skipped'
+                            : verdict.passed
+                              ? 'passed'
+                              : 'failed'
+                      }
+                    />
+                  </Table.Cell>
+                  <Table.Cell
+                    className="max-w-lg truncate text-kumo-subtle"
+                    title={verdict.explanation}
+                  >
+                    {verdict.explanation ?? '—'}
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </DataTable>
+        ) : (
+          <p className="text-[13px] text-kumo-subtle">
+            No finished runs have recorded this {isJudge ? 'judge' : 'scorer'}{' '}
+            yet.
+          </p>
+        )}
+      </section>
       <UsedBy
         runs={runs}
         scenarios={uses.map((use) => ({

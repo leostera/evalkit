@@ -8,10 +8,12 @@ import {
   type EvalDefinition,
   type EvalSuite,
   type JsonValue,
+  type JudgeRule,
   type ScoringRule,
   type TranscriptStep,
 } from './index.js';
 import { toJson } from './json.js';
+import { judgeInputNames, judgePrompt, type JudgeAnswer } from './judge.js';
 
 /**
  * What the dashboard's Library shows about each definition. Only definition
@@ -22,6 +24,8 @@ import { toJson } from './json.js';
 export type CatalogOptions = {
   /** Project root; definition sites are reported relative to it, never absolute. */
   root?: string;
+  /** The project's default judge agent (`judge` in evalkit.config.ts). */
+  judge?: AutAdapter;
 };
 
 export type EvalCatalogAgent = {
@@ -58,10 +62,20 @@ export type EvalCatalogDataset = {
 export type EvalCatalogScorer = {
   name: string;
   kind: ScoringRule['kind'];
+  /** What it checks, in the author's words. */
+  description?: string;
   passAt?: number;
   supportsPartial?: boolean;
   /** Judges only. */
   rubric?: string;
+  /** Judges only: the agent that judges (its own, or the project's default). */
+  agent?: EvalCatalogAgent;
+  /** Judges only: the names of the inputs it sees. */
+  inputs?: string[];
+  /** Judges only: how it answers. */
+  answer?: JudgeAnswer;
+  /** Judges only: the prompt it receives, with `{input}` placeholders. */
+  prompt?: string;
   definedAt?: string;
 };
 
@@ -100,9 +114,6 @@ export function catalogEntry(
   const at = (value: unknown) =>
     relativeSite(definitionSite(value), options.root);
   const definedAt = at(evaluation);
-  const judgeAgent = evaluation.judge
-    ? catalogAgent(evaluation.judge, at)
-    : undefined;
   const policy = evaluation.policy ?? {};
   return {
     id: evaluation.id,
@@ -110,7 +121,6 @@ export function catalogEntry(
     ...(evaluation.name ? { name: evaluation.name } : {}),
     ...(suite ? { suiteId: authoringId(suite) } : {}),
     agent: catalogAgent(evaluation.agent, at),
-    ...(judgeAgent ? { judgeAgent } : {}),
     datasets: (evaluation.datasets ?? []).map((dataset) =>
       catalogDataset(dataset, at),
     ),
@@ -121,8 +131,12 @@ export function catalogEntry(
         : {}),
       ...(policy.failfast !== undefined ? { failfast: policy.failfast } : {}),
     },
-    transcript: evaluation.transcript.map((step) => catalogStep(step, at)),
-    scorers: evaluation.scoring.map((rule) => catalogScorer(rule, at)),
+    transcript: evaluation.transcript.map((step) =>
+      catalogStep(step, at, options.judge),
+    ),
+    scorers: evaluation.scoring.map((rule) =>
+      catalogScorer(rule, at, options.judge),
+    ),
     ...(evaluation.metadata !== undefined
       ? { metadata: toJson(evaluation.metadata, `${evaluation.id}.metadata`) }
       : {}),
@@ -176,23 +190,46 @@ function catalogDataset(dataset: Dataset, at: At): EvalCatalogDataset {
   };
 }
 
-function catalogScorer(rule: ScoringRule, at: At): EvalCatalogScorer {
+function catalogScorer(
+  rule: ScoringRule,
+  at: At,
+  defaultJudge: AutAdapter | undefined,
+): EvalCatalogScorer {
   const definedAt = at(rule);
   return {
     name: rule.name,
     kind: rule.kind,
-    ...(rule.kind === 'predicate' && rule.passAt !== undefined
-      ? { passAt: rule.passAt }
-      : {}),
+    ...(rule.description ? { description: rule.description } : {}),
+    ...(rule.passAt !== undefined ? { passAt: rule.passAt } : {}),
     ...(rule.supportsPartial !== undefined
       ? { supportsPartial: rule.supportsPartial }
       : {}),
-    ...(rule.kind === 'judge' ? { rubric: rule.rubric } : {}),
+    ...(rule.kind === 'judge' ? catalogJudge(rule, at, defaultJudge) : {}),
     ...(definedAt ? { definedAt } : {}),
   };
 }
 
-function catalogStep(step: TranscriptStep, at: At): EvalCatalogStep {
+function catalogJudge(
+  rule: JudgeRule,
+  at: At,
+  defaultJudge: AutAdapter | undefined,
+): Partial<EvalCatalogScorer> {
+  const agent = rule.agent ?? defaultJudge;
+  const inputs = judgeInputNames(rule);
+  return {
+    rubric: rule.rubric,
+    ...(agent ? { agent: catalogAgent(agent, at) } : {}),
+    inputs,
+    answer: rule.answer,
+    prompt: judgePrompt({ rubric: rule.rubric, answer: rule.answer, inputs }),
+  };
+}
+
+function catalogStep(
+  step: TranscriptStep,
+  at: At,
+  defaultJudge: AutAdapter | undefined,
+): EvalCatalogStep {
   switch (step.kind) {
     case 'user':
       return typeof step.message === 'string'
@@ -209,7 +246,10 @@ function catalogStep(step: TranscriptStep, at: At): EvalCatalogStep {
           : {}),
       };
     default:
-      return { kind: 'checkpoint', scorer: catalogScorer(step, at) };
+      return {
+        kind: 'checkpoint',
+        scorer: catalogScorer(step, at, defaultJudge),
+      };
   }
 }
 

@@ -12,8 +12,10 @@ import {
   WarningOctagonIcon,
   WrenchIcon,
 } from '@phosphor-icons/react';
-import { useState, type ReactNode } from 'react';
-import type { TrajectoryEvent } from '../api.js';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { CatalogEval, CheckpointResult, TrajectoryEvent } from '../api.js';
+import { checkpointScorer } from './library-entities.js';
+import { VerdictPanel } from './Verdict.js';
 import { Markdown, looksLikeMarkdown } from './Markdown.js';
 import { shellView, type ShellView } from './shell-view.js';
 import { StatusBadge } from './StatusBadge.js';
@@ -29,41 +31,60 @@ import {
 
 type Mode = 'conversation' | 'events';
 
+/** The run's checkpoint results and scenario, for checkpoints that show why. */
+const CheckpointResults = createContext<{
+  checkpoints?: CheckpointResult[];
+  scenario?: CatalogEval;
+}>({});
+
 /** A run's trajectory: the conversation by default, every raw event on demand. */
-export function Trajectory({ events }: { events: TrajectoryEvent[] }) {
+export function Trajectory({
+  events,
+  checkpoints,
+  scenario,
+}: {
+  events: TrajectoryEvent[];
+  /** The run's checkpoint results, so a checkpoint can show why. */
+  checkpoints?: CheckpointResult[];
+  scenario?: CatalogEval;
+}) {
   const [mode, setMode] = useState<Mode>('conversation');
   const view = trajectoryView(events);
   return (
-    <section className="trajectory flex min-w-0 flex-col gap-3">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-kumo-strong">Trajectory</h3>
-        <Tabs
-          variant="segmented"
-          size="sm"
-          value={mode}
-          onValueChange={(value) => setMode(value as Mode)}
-          tabs={[
-            { value: 'conversation', label: 'Conversation' },
-            { value: 'events', label: `All events (${events.length})` },
-          ]}
-        />
-      </header>
-      {mode === 'events' ? (
-        <RawEvents events={events} />
-      ) : (
-        <div className="flex flex-col">
-          {view.preamble.length ? <Timeline items={view.preamble} /> : null}
-          {view.turns.map((turn, index) => (
-            <Turn key={index} turn={turn} index={index} />
-          ))}
-          {!events.length ? (
-            <p className="text-[13px] text-kumo-subtle">No events recorded.</p>
-          ) : (
-            <Finish durationMs={view.durationMs} scorers={view.scorers} />
-          )}
-        </div>
-      )}
-    </section>
+    <CheckpointResults.Provider value={{ checkpoints, scenario }}>
+      <section className="trajectory flex min-w-0 flex-col gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-kumo-strong">Trajectory</h3>
+          <Tabs
+            variant="segmented"
+            size="sm"
+            value={mode}
+            onValueChange={(value) => setMode(value as Mode)}
+            tabs={[
+              { value: 'conversation', label: 'Conversation' },
+              { value: 'events', label: `All events (${events.length})` },
+            ]}
+          />
+        </header>
+        {mode === 'events' ? (
+          <RawEvents events={events} />
+        ) : (
+          <div className="flex flex-col">
+            {view.preamble.length ? <Timeline items={view.preamble} /> : null}
+            {view.turns.map((turn, index) => (
+              <Turn key={index} turn={turn} index={index} />
+            ))}
+            {!events.length ? (
+              <p className="text-[13px] text-kumo-subtle">
+                No events recorded.
+              </p>
+            ) : (
+              <Finish durationMs={view.durationMs} scorers={view.scorers} />
+            )}
+          </div>
+        )}
+      </section>
+    </CheckpointResults.Provider>
   );
 }
 
@@ -177,25 +198,7 @@ function Item({ item }: { item: TrajectoryItem }) {
     case 'tool':
       return <ToolCall item={item} />;
     case 'checkpoint':
-      return (
-        <Row
-          icon={<FlagIcon />}
-          tone={item.state === 'error' ? 'danger' : 'default'}
-          label={
-            <>
-              <Label>Checkpoint</Label>
-              <span className="text-[13px] text-kumo-default">{item.name}</span>
-              <StatusBadge status={item.state} />
-              {item.durationMs === undefined ? null : (
-                <Meta>{formatDuration(item.durationMs)}</Meta>
-              )}
-            </>
-          }
-          at={item.at}
-        >
-          {item.error ? <ErrorText error={item.error} /> : null}
-        </Row>
-      );
+      return <Checkpoint item={item} />;
     case 'skipped-step':
       return (
         <Row
@@ -660,4 +663,77 @@ function preview(value: unknown, max = 120): string {
         ? value
         : JSON.stringify(value);
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/**
+ * A checkpoint in the conversation. With the run's results loaded it opens
+ * in place to say why it passed or failed; one that did not pass starts open.
+ */
+function Checkpoint({
+  item,
+}: {
+  item: Extract<TrajectoryItem, { type: 'checkpoint' }>;
+}) {
+  const { checkpoints, scenario } = useContext(CheckpointResults);
+  const result = checkpoints?.find(
+    (entry) => entry.step === item.step && entry.name === item.name,
+  );
+  const scorer = checkpointScorer(scenario, item.step, item.name);
+  const label = (
+    <>
+      {result ? (
+        <CaretRightIcon
+          aria-hidden
+          className="self-center text-kumo-subtle transition-transform group-open:rotate-90"
+        />
+      ) : null}
+      <Label>Checkpoint</Label>
+      <span className="text-[13px] text-kumo-default">{item.name}</span>
+      <StatusBadge status={item.state} />
+      {item.durationMs === undefined ? null : (
+        <Meta>{formatDuration(item.durationMs)}</Meta>
+      )}
+    </>
+  );
+  if (!result)
+    return (
+      <Row
+        icon={<FlagIcon />}
+        tone={item.state === 'error' ? 'danger' : 'default'}
+        label={label}
+        at={item.at}
+      >
+        {item.error ? <ErrorText error={item.error} /> : null}
+      </Row>
+    );
+  return (
+    <details
+      className="checkpoint group"
+      open={result.status === 'failed' || result.status === 'error'}
+    >
+      <summary className="cursor-pointer list-none rounded-md select-none focus-visible:outline-2 focus-visible:outline-kumo-brand [&::-webkit-details-marker]:hidden">
+        <Row
+          icon={<FlagIcon />}
+          tone={item.state === 'error' ? 'danger' : 'default'}
+          label={label}
+          at={item.at}
+        >
+          {scorer?.description ? (
+            <span className="text-xs text-kumo-subtle">
+              {scorer.description}
+            </span>
+          ) : null}
+        </Row>
+      </summary>
+      <div className="mb-2 ml-9 rounded-md border border-kumo-hairline bg-kumo-base px-3 py-2">
+        <VerdictPanel
+          result={{
+            ...result,
+            ...(result.status === 'skipped' ? { skipped: true as const } : {}),
+          }}
+          scorer={scorer}
+        />
+      </div>
+    </details>
+  );
 }

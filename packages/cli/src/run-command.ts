@@ -4,6 +4,8 @@ import { Effect } from 'effect';
 import {
   authoringId,
   defineEvalMatrix,
+  passMark,
+  type EvalCatalogEntry,
   type JsonObject,
   type JsonValue,
   type EvalRegistry,
@@ -255,6 +257,15 @@ export async function runProjectCommand(
     parameters: selection.parameters,
     overrides: selection.overrides,
     repeat: repeat ?? 'scenario',
+    // What each scenario checks, before anything runs.
+    scoring: Object.fromEntries(
+      registry
+        .catalog({ root: project.root })
+        .filter((entry) =>
+          matrix.evals.some((definition) => definition.id === entry.id),
+        )
+        .map((entry) => [entry.id, plannedChecks(entry)]),
+    ),
   };
   if (values['dry-run']) {
     console.log(JSON.stringify(plan, null, 2));
@@ -345,6 +356,7 @@ export async function runProjectCommand(
           keepWorkspaces: project.config.keepSandboxes,
           artifactExclude: project.config.artifacts?.exclude,
           attachmentLimits: project.config.artifacts?.attachments,
+          judge: project.config.judge,
           signal: controller.signal,
           onEvent: (run, event) => reporter.onEvent(run, event),
           onResult: (cell, results) => {
@@ -396,4 +408,26 @@ export async function runProjectCommand(
   }
   if (controller.signal.aborted) process.exitCode = 130;
   else if (summary.failed || broken.length) process.exitCode = 1;
+}
+
+/** A scenario's checkpoints and final scorers, as `--dry-run` lists them. */
+function plannedChecks(entry: EvalCatalogEntry) {
+  const scorers = [
+    ...entry.transcript.flatMap((step, index) =>
+      step.kind === 'checkpoint'
+        ? [{ scorer: step.scorer, at: `step ${index}` }]
+        : [],
+    ),
+    ...entry.scorers.map((scorer) => ({ scorer, at: 'final' })),
+  ];
+  return scorers.map(({ scorer, at }) => ({
+    name: scorer.name,
+    kind: scorer.kind,
+    at,
+    ...(scorer.description ? { description: scorer.description } : {}),
+    passes: passMark(scorer.passAt, scorer.answer),
+    ...(scorer.agent
+      ? { agent: scorer.agent.name ?? scorer.agent.id ?? scorer.agent.kind }
+      : {}),
+  }));
 }

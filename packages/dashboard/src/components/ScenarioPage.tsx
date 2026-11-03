@@ -24,7 +24,8 @@ import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
 import { PageHeading } from './Hierarchy.js';
 import { DefinedAt, LibraryBreadcrumbs } from './Library.js';
-import { libraryJudges } from './library-entities.js';
+import { libraryJudges, scorerResults } from './library-entities.js';
+import { passText } from './Verdict.js';
 import { agentHref, datasetHref, judgeHref, runHref } from './links.js';
 import { rowLinkProps } from './row-link.js';
 import { MatrixEvalTable } from './MatrixEvalTable.js';
@@ -111,10 +112,13 @@ export function ScenarioPage({
       />
       {runError ? <ErrorBanner message={runError} /> : null}
       {scenario ? (
-        <ScenarioDefinition
+        <ScenarioDefinition scenario={scenario} suites={suites} />
+      ) : null}
+      {scenario ? (
+        <HowItIsScored
           scenario={scenario}
-          suites={suites}
           catalog={catalog}
+          runs={scenarioRuns}
         />
       ) : null}
       {scenario?.transcript?.length ? (
@@ -152,24 +156,14 @@ export function ScenarioPage({
 function ScenarioDefinition({
   scenario,
   suites,
-  catalog,
 }: {
   scenario: CatalogEval;
   suites: SuiteSummary[];
-  catalog: CatalogEval[];
 }) {
   const suite = suites.find(
     (entry) =>
       entry.id === scenario.suiteId || entry.evalIds.includes(scenario.id),
   );
-  const judges = libraryJudges(catalog);
-  const judgeKey = (scorer: CatalogScorer) =>
-    judges.find(
-      (judge) =>
-        judge.scorer.name === scorer.name &&
-        judge.scorer.kind === scorer.kind &&
-        judge.scorer.definedAt === scorer.definedAt,
-    )?.key ?? scorer.name;
   const policy = scenario.policy;
   return (
     <LayerCard className="scenario-definition max-w-3xl p-4">
@@ -185,42 +179,6 @@ function ScenarioDefinition({
             >
               {agentName(scenario)}
             </Link>,
-          ],
-          ...(scenario.judgeAgent
-            ? ([
-                [
-                  'Judge agent',
-                  <Link
-                    key="judge-agent"
-                    to={agentHref(
-                      agentKey({ agent: scenario.judgeAgent } as CatalogEval),
-                    )}
-                    className={tableLinkClass}
-                  >
-                    {scenario.judgeAgent.name ??
-                      scenario.judgeAgent.id ??
-                      scenario.judgeAgent.kind}
-                  </Link>,
-                ],
-              ] as const)
-            : []),
-          [
-            'Final scoring',
-            scenario.scorers.length ? (
-              <span key="scorers" className="flex flex-wrap gap-x-2">
-                {scenario.scorers.map((scorer) => (
-                  <Link
-                    key={`${scorer.kind}-${scorer.name}`}
-                    to={judgeHref(judgeKey(scorer))}
-                    className={tableLinkClass}
-                  >
-                    {scorer.name}
-                  </Link>
-                ))}
-              </span>
-            ) : (
-              'none'
-            ),
           ],
           [
             'Datasets',
@@ -359,18 +317,108 @@ function StepBody({
       return (
         <>
           {label('Checkpoint')}
-          <Link
-            to={judgeHref(judgeKey(step.scorer))}
-            className={tableLinkClass}
-          >
-            {step.scorer.name}
-          </Link>
-          <span className="text-xs text-kumo-subtle">
-            {step.scorer.kind === 'judge' ? 'LLM judge' : 'predicate'}
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span>
+              <Link
+                to={judgeHref(judgeKey(step.scorer))}
+                className={tableLinkClass}
+              >
+                {step.scorer.name}
+              </Link>{' '}
+              <span className="text-xs text-kumo-subtle">
+                {step.scorer.kind === 'judge' ? 'LLM judge' : 'predicate'} ·
+                passes at {passText(step.scorer.passAt, step.scorer.answer)}
+              </span>
+            </span>
+            {step.scorer.description ? (
+              <span className="text-kumo-default">
+                {step.scorer.description}
+              </span>
+            ) : null}
           </span>
         </>
       );
   }
+}
+
+/**
+ * The scoring plan in one place: every final scorer, what it checks, its
+ * pass mark, and how it did in the newest runs.
+ */
+function HowItIsScored({
+  scenario,
+  catalog,
+  runs,
+}: {
+  scenario: CatalogEval;
+  catalog: CatalogEval[];
+  runs: readonly RunSummary[];
+}) {
+  const judges = libraryJudges(catalog);
+  if (!scenario.scorers.length) return null;
+  return (
+    <section
+      aria-label="How it is scored"
+      className="flex max-w-4xl flex-col gap-2"
+    >
+      <h3 className="text-sm font-semibold text-kumo-strong">
+        How it is scored
+      </h3>
+      <p className="text-[13px] text-kumo-subtle">
+        A run passes when every scorer and checkpoint passes. Its score is the
+        mean of the final scorers&apos; values.
+      </p>
+      <DataTable>
+        <Table.Header variant="compact">
+          <Table.Row>
+            <Table.Head>Scorer</Table.Head>
+            <Table.Head>Checks</Table.Head>
+            <Table.Head>Passes at</Table.Head>
+            <Table.Head>Last 10 runs</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {scenario.scorers.map((scorer) => {
+            const key =
+              judges.find(
+                (judge) =>
+                  judge.scorer.name === scorer.name &&
+                  judge.scorer.kind === scorer.kind &&
+                  judge.scorer.definedAt === scorer.definedAt,
+              )?.key ?? scorer.name;
+            const recent = scorerResults(runs, scorer.name);
+            return (
+              <Table.Row key={`${scorer.kind}-${scorer.name}`}>
+                <Table.Cell>
+                  <Link to={judgeHref(key)} className={tableLinkClass}>
+                    {scorer.name}
+                  </Link>
+                  <span className="block text-xs text-kumo-subtle">
+                    {scorer.kind === 'judge'
+                      ? `LLM judge${scorer.agent ? ` · ${scorer.agent.name ?? scorer.agent.id ?? scorer.agent.kind}` : ''}`
+                      : 'predicate'}
+                  </span>
+                </Table.Cell>
+                <Table.Cell className="whitespace-normal">
+                  {scorer.description ?? scorer.rubric ?? (
+                    <span className="text-kumo-subtle italic">
+                      No description
+                    </span>
+                  )}
+                </Table.Cell>
+                <Table.Cell>
+                  {passText(scorer.passAt, scorer.answer)}
+                </Table.Cell>
+                <Table.Cell className="tabular-nums">
+                  {recent.total ? `${recent.passed}/${recent.total}` : '—'}
+                </Table.Cell>
+              </Table.Row>
+            );
+          })}
+        </Table.Body>
+      </DataTable>
+    </section>
+  );
 }
 
 /** A scenario's runs, newest first; each opens its run page. */

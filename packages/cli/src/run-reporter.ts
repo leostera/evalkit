@@ -6,7 +6,8 @@ import type {
   ScoreResult,
   TrajectoryEvent,
 } from '@evalkit/core';
-import { authoringId } from '@evalkit/core';
+import { authoringId, passMark } from '@evalkit/core';
+import { firstLine } from './dashboard-reports.js';
 import type { RunRef } from '@evalkit/runner';
 import {
   bold,
@@ -53,24 +54,38 @@ export function runOutcome(result: RunResult): RunOutcome {
   return result.status === 'passed' ? 'passed' : 'failed';
 }
 
-function passAtFor(
-  definition: EvalDefinition,
-  name: string,
-): number | undefined {
-  const rule = [...definition.transcript, ...definition.scoring].find(
-    (step) => step.kind === 'predicate' && step.name === name,
-  );
-  return rule?.kind === 'predicate' ? rule.passAt : undefined;
-}
-
 function value(score: { value?: number }): string {
   return score.value === undefined ? '' : score.value.toFixed(1);
 }
 
+/**
+ * One failed verdict in words: `history 0.0 (passes at 1): got 2 entries`,
+ * or for a choices judge `Correctness C (passes at A or B): wrong product`.
+ */
+export function verdictReason(
+  definition: EvalDefinition,
+  verdict: Pick<
+    ScoreResult,
+    'name' | 'value' | 'passAt' | 'choice' | 'explanation'
+  >,
+): string {
+  const rule = [...definition.transcript, ...definition.scoring].find(
+    (step) => step.kind === 'judge' && step.name === verdict.name,
+  );
+  const answer = rule?.kind === 'judge' ? rule.answer : undefined;
+  const mark =
+    verdict.passAt === undefined
+      ? ''
+      : answer?.kind === 'choices'
+        ? ` (passes at ${passMark(verdict.passAt, answer)})`
+        : ` (passes at ${verdict.passAt})`;
+  const why = firstLine(verdict.explanation);
+  return `${verdict.name} ${verdict.choice ?? value(verdict)}${mark}${why ? `: ${why}` : ''}`;
+}
+
 function scoreReason(definition: EvalDefinition, score: ScoreResult): string {
   if (score.error) return `${score.name} error: ${score.error.message}`;
-  const passAt = passAtFor(definition, score.name);
-  return `${score.name} ${value(score)}${passAt === undefined ? '' : ` (passes at ${passAt})`}`;
+  return verdictReason(definition, score);
 }
 
 function checkpointReason(
@@ -79,8 +94,9 @@ function checkpointReason(
 ): string {
   if (checkpoint.status === 'error')
     return `step ${checkpoint.step} ${checkpoint.name} error: ${checkpoint.error?.message ?? ''}`;
-  const passAt = passAtFor(definition, checkpoint.name);
-  return `step ${checkpoint.step} ${checkpoint.name} ${checkpoint.value === undefined ? checkpoint.status : value(checkpoint)}${passAt === undefined ? '' : ` (passes at ${passAt})`}`;
+  if (checkpoint.value === undefined && !checkpoint.choice)
+    return `step ${checkpoint.step} ${checkpoint.name} ${checkpoint.status}`;
+  return `step ${checkpoint.step} ${verdictReason(definition, checkpoint)}`;
 }
 
 /** What went wrong in a run. */

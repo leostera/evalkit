@@ -67,7 +67,7 @@ export type MetricColumn = {
   better?: 'lower' | 'higher';
 };
 
-const BUILT_IN_ORDER = ['agent time', 'tokens', 'tool calls'];
+const BUILT_IN_ORDER = ['agent time', 'tokens', 'tool calls', 'judge tokens'];
 
 /** Built-in metrics first, then the scenarios' own, by name. */
 export function metricColumns(runs: readonly RunSummary[]): MetricColumn[] {

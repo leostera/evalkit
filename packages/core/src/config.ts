@@ -1,4 +1,4 @@
-import type { EvalDefinition, EvalRegistry } from './index.js';
+import type { AutAdapter, EvalDefinition, EvalRegistry } from './index.js';
 import type { EvalMatrixDefinition } from './matrix.js';
 
 export type EvalkitConfig = {
@@ -34,6 +34,12 @@ export type EvalkitConfig = {
   /** Which run workspaces to keep in `sandboxDir` afterwards. Default `'failed'`: only runs that did not pass. */
   keepSandboxes?: KeepSandboxes;
   share?: ShareConfig;
+  /**
+   * The agent for every judge that names none: `judge(name, { rubric })`.
+   * Made with `defineAgent()`; it gets each run's parameters, so a matrix
+   * axis can choose its model.
+   */
+  judge?: AutAdapter;
 };
 
 export type KeepSandboxes = 'failed' | 'all' | 'none';

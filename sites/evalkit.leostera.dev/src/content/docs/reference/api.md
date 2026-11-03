@@ -23,7 +23,6 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 | `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                   |
 | `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                     |
 | `agent`      | `AutAdapter`: the agent under test.                                                                                                                      |
-| `judge`      | `AutAdapter?`: A separate agent for `judge()` rules; required when there are any, and never the same as `agent`.                                         |
 | `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                    |
 | `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                 |
 | `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                   |
@@ -35,15 +34,23 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 ## Scoring
 
-- `predicate(name, run: (ctx: ScoringContext) => boolean | ScoreValue, { passAt?, supportsPartial? })`  
-  A scorer in code; `predicate<Evidence>` types what it returns as `evidence`. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence? }`, or `skip(reason)`. A number passes at `passAt` (default only 1).
-- `judge(name, { rubric, supportsPartial? })`  
-  A scorer graded by the scenario's `judge` agent against the rubric.
+- `predicate(name, run: (ctx: ScoringContext) => boolean | ScoreValue, { description?, passAt?, supportsPartial? })`  
+  A scorer in code; `predicate<Evidence>` types what it returns as `evidence`. Return a boolean, a number from 0 to 1, `{ value, passed?, explanation?, evidence?, criteria? }`, or `skip(reason)`. A number passes at `passAt` (default only 1). Without a `value`, the score is the weighted mean of `criteria` (`[{ name, value, weight?, note? }]`). `description` says what it checks, in the dashboard and `--dry-run`.
+- `judge(name, { rubric, description?, agent?, inputs?, answer?, passAt?, supportsPartial? })`  
+  A scorer graded by a judge agent. EvalKit builds the prompt from the rubric, the `inputs` (`{ name: (ctx: ScoringContext) => JsonValue }`, default the conversation and the reply) and the answer format, reads the reply, and asks once more if it cannot. `agent` defaults to `judge` in `evalkit.config.ts`; it receives the matrix cell's `parameters`, so an axis can choose the judge's model. See [Judges](/docs/manual/scoring-and-evals/#judges).
+- `choices({ A: [label, value], ... })`  
+  A judge answer: one of the keys, worth its value from 0 to 1.
+- `criteria({ name: weight | { weight?, description? } })`  
+  A judge answer: a value from 0 to 1 per criterion; the score is their weighted mean.
+- `passMark(passAt?, answer?): string`  
+  The pass mark in words, as the dashboard shows it: `only 1`, `≥ 0.7`, `A or B`.
+- `assertJudgesIndependent(eval, defaultJudge?)`  
+  Throws when a judge would be graded by the scenario's own agent. The runner calls this.
 - `metric(name, run: (ctx: ScoringContext) => number | undefined, { unit?, better? })`  
   A number measured for every run. `unit: 'ms'` formats as a duration; `better: 'lower' | 'higher'` colours comparisons.
 - `skip(reason: string)`  
   Returned by a scorer that does not apply to this run; it neither passes nor fails and is left out of averages.
-- `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'tool calls']`  
+- `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'tool calls', 'judge tokens']`  
   Recorded for every run; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string.
 - `turnTokens(usage: Usage): number | undefined`  
   What a turn counts toward `tokens`: `inputTokens + outputTokens` (cached input included), or `totalTokens` when neither is reported.

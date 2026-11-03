@@ -2,18 +2,21 @@ import {
   recordError,
   turnTokens,
   type EvalDefinition,
+  type JudgeRunInfo,
   type MetricResult,
   type ScoringContext,
   type TrajectoryEvent,
 } from '@evalkit/core';
 
 /**
- * What EvalKit measures for every run from its trajectory: the agent's time
+ * What EvalKit measures for every run: from its trajectory, the agent's time
  * (first event to the last one before final scoring), tokens when the agent
- * reported usage, and tool calls.
+ * reported usage, and tool calls; from its scores and checkpoints, the
+ * tokens its judges used, kept apart from the agent's.
  */
 export function builtInMetrics(
   events: readonly TrajectoryEvent[],
+  verdicts: readonly { judge?: JudgeRunInfo }[] = [],
 ): MetricResult[] {
   const times = events
     .filter((event) => !event.kind.startsWith('scorer-'))
@@ -53,6 +56,19 @@ export function builtInMetrics(
     ).length,
     builtIn: true,
   });
+  let judgeTokens: number | undefined;
+  for (const verdict of verdicts) {
+    const used = verdict.judge?.usage && turnTokens(verdict.judge.usage);
+    if (used !== undefined) judgeTokens = (judgeTokens ?? 0) + used;
+  }
+  if (judgeTokens !== undefined)
+    metrics.push({
+      name: 'judge tokens',
+      value: judgeTokens,
+      unit: 'tokens',
+      better: 'lower',
+      builtIn: true,
+    });
   return metrics;
 }
 

@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import {
   recordError,
   turnResultEvents,
+  type AutAdapter,
   type AutContext,
   type AutEvent,
   type JsonObject,
@@ -47,6 +48,8 @@ type TranscriptExecution = {
   signal: AbortSignal;
   progress: TranscriptProgress;
   attach: ScoringContext['attach'];
+  /** The agent for judges that name none. */
+  defaultJudge?: AutAdapter;
 };
 
 export async function executeTranscript(
@@ -194,7 +197,7 @@ async function runCheckpoint(
         attach: input.attach,
       },
       now,
-      definition.judge,
+      input.defaultJudge,
     ),
   ).catch(async (error: unknown) => {
     const recorded = recordError(error);

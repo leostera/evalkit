@@ -196,6 +196,10 @@ export async function loadConfig(
     throw new Error(
       'execution.trials was renamed to execution.repeat in EvalKit 0.9',
     );
+  if (config.judge !== undefined && typeof config.judge?.start !== 'function')
+    throw new Error(
+      'judge in the config must be an agent made with defineAgent()',
+    );
   for (const [key, value] of Object.entries(config.execution ?? {})) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1))
       throw new Error(`execution.${key} must be a positive integer`);
@@ -244,6 +248,15 @@ export async function loadProject(
     if (registry.matrices.some((m) => authoringId(m) === authoringId(matrix)))
       throw new Error(`Duplicate matrix ID: ${authoringId(matrix)}`);
     registry = { ...registry, matrices: [...registry.matrices, matrix] };
+  }
+  // The project's default judge shows in the catalog of every judge that names none.
+  const judge = config.judge;
+  if (judge) {
+    const catalog = registry.catalog;
+    registry = {
+      ...registry,
+      catalog: (options) => catalog({ judge, ...options }),
+    };
   }
   return { root, config, registry, loadErrors };
 }

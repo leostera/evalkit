@@ -22,46 +22,40 @@ const failure = (name: string, cause: unknown) =>
 export function evaluateRule(
   rule: ScoringRule,
   input: ScoringContext,
-  judgeAgent: AutAdapter | undefined,
+  defaultJudge: AutAdapter | undefined,
   placement: 'transcript' | 'scoring',
 ): Effect.Effect<
   Omit<ScoreResult, 'name' | 'kind' | 'durationMs'>,
   RuleExecutionError
 > {
   return Effect.gen(function* () {
+    const judgeAgent =
+      rule.kind === 'judge' ? (rule.agent ?? defaultJudge) : undefined;
     if (rule.kind === 'judge' && !judgeAgent)
       return yield* Effect.fail(
         failure(
           rule.name,
-          new Error('Judge rules require an eval judge agent'),
+          new Error(
+            'This judge has no agent: pass judge(name, { agent }) or set judge in evalkit.config.ts',
+          ),
         ),
       );
     const evaluated =
       rule.kind === 'predicate'
-        ? {
-            value: yield* Effect.tryPromise({
-              try: async () => rule.run(input),
-              catch: (cause) => failure(rule.name, cause),
-            }),
-          }
-        : yield* runJudgeAgent(rule, judgeAgent!, input, placement);
+        ? yield* Effect.tryPromise({
+            try: async () => rule.run(input),
+            catch: (cause) => failure(rule.name, cause),
+          })
+        : (yield* runJudgeAgent(rule, judgeAgent!, input, placement)).value;
     const score = yield* Effect.try({
-      try: () =>
-        normalizeScore(
-          evaluated.value,
-          rule.kind === 'predicate' ? rule.passAt : undefined,
-        ),
+      try: () => normalizeScore(evaluated, rule.passAt),
       catch: (cause) => failure(rule.name, cause),
     });
-    const withJudge =
-      rule.kind === 'judge' && 'judge' in evaluated
-        ? { ...score, judge: evaluated.judge }
-        : score;
     const validated = yield* Schema.decodeUnknown(ScoreResultSchema)({
       name: rule.name,
       kind: rule.kind,
       durationMs: 0,
-      ...withJudge,
+      ...score,
     }).pipe(Effect.mapError((cause) => failure(rule.name, cause)));
     if (validated.skipped)
       return {
@@ -70,16 +64,12 @@ export function evaluateRule(
           ? {}
           : { explanation: validated.explanation }),
       };
-    return {
-      value: validated.value!,
-      passed: validated.passed!,
-      ...(validated.explanation === undefined
-        ? {}
-        : { explanation: validated.explanation }),
-      ...(validated.evidence === undefined
-        ? {}
-        : { evidence: validated.evidence }),
-      ...(validated.judge === undefined ? {} : { judge: validated.judge }),
-    };
+    const {
+      name: _name,
+      kind: _kind,
+      durationMs: _duration,
+      ...result
+    } = validated;
+    return result;
   });
 }

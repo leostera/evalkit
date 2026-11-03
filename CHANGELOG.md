@@ -2,6 +2,38 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+You can see what a judge checks before a run and why it passed or failed after. A judge is now a rubric plus what it sees and how it answers: EvalKit builds the prompt, enforces the answer, and records the prompt, reply, model and cost, which a matrix axis can vary.
+
+### Breaking: judges name their agent and EvalKit builds the prompt
+
+- **`judge()` takes `agent`, `inputs`, `answer` and `passAt`.** A scenario's `judge:` field is gone. Each judge uses its own `agent`, or `judge` in `evalkit.config.ts` for every judge that names none. `inputs` (`{ name: (ctx) => value }`, default `conversation` and `reply`) says what the judge sees, and `answer` how it answers: `choices({ A: [label, value], ... })`, `criteria({ name: weight })`, or by default a value from 0 to 1. EvalKit writes the prompt from these and the rubric, reads the reply, and asks once more if it cannot. The judge agent receives the prompt as its message and replies in plain text; it no longer has to return a JSON verdict, except for the default answer.
+- **Judges pass at `passAt`** (default only 1), as predicates do. A judge that returned `passed` itself is no longer trusted with the pass mark.
+- **The judge agent gets the run's `parameters`**, so a matrix axis such as `judgeModel` chooses its model. It should return `{ reply, usage, model }`; the model is recorded with each verdict.
+- `EvalCatalogEntry.judgeAgent` is gone; each catalog scorer has its own `agent`, and judges add `inputs`, `answer` and `prompt` (the template).
+
+### Migrating from 0.9
+
+1. Move the scenario's `judge: myJudge` to `judge: myJudge` in `evalkit.config.ts`, or to `agent: myJudge` on each `judge()` rule. A scenario that still sets it fails with a message saying where it went.
+2. If your judge agent parsed EvalKit's old JSON prompt, make it send the message it receives to its model as it is, and return the model's reply. Return `model` and `usage` too.
+3. If a judge returned partial values and relied on its own `passed`, set `passAt` to the lowest value that should pass.
+
+### Added
+
+- **Descriptions.** `predicate(name, fn, { description })` and `judge(name, { description })` say what a scorer checks, in the dashboard, `--dry-run` (which now lists each scenario's scorers, pass marks and judge agents) and the Judges page.
+- **Criteria.** A predicate can return `criteria: [{ name, value, weight?, note? }]` instead of `value`; the score is their weighted mean (weight 1 by default), and the run page shows the formula. `criteria()` judges answer per criterion.
+- **Verdicts on the run page.** Each scorer and checkpoint row opens (failed ones open by default) to the verdict in words ("answered C (0), passes at A or B → failed"), the explanation, criteria, and for a judge the agent, model, tokens, time and retry, then tabs with the prompt it saw, its reply, its conversation and the evidence as a tree or JSON. A checkpoint in the trajectory opens the same panel.
+- **Judging cost apart from the agent's.** Results save the judge's prompt, reply, conversation, usage, model and the `passAt` applied. A **Judging** section on the run page totals judge tokens and time by judge, and the built-in `judge tokens` metric puts it on the scoreboard and in Compare.
+- **Judges page.** The list shows each judge's description, pass mark, latest model and last 10 runs. A judge's page shows its agent, what it sees, how it answers, the choice or criteria table, the rubric, the prompt EvalKit sends (as a template or as a recent run sent it), and recent verdicts with their reasons.
+- **"How it is scored"** on a scenario's page: every scorer, what it checks, its pass mark and how it did in the last 10 runs. Checkpoints in the transcript show their description and pass mark.
+- **Failure lines say why.** The CLI's failure line and JUnit messages give each failing scorer's value, pass mark, choice and the first line of its explanation.
+- [`examples/judges`](https://github.com/leostera/evalkit/tree/main/examples/judges): choices and criteria judges on a chat assistant, evidence-returning predicates on a built service, and a judge model chosen by the matrix, all provider-free.
+
+### Fixed
+
+- A run's score on its page is rounded to two places.
+
 ## [0.9.0] - 2026-11-02
 
 A run is one execution now: `repeat` starts several as a batch, and `evalkit upgrade` converts older results. Also attachments, typed checkpoint lookups, Markdown replies, one definition of `tokens`, and a share server that can live below a path on your own site and show a single repository.

@@ -143,6 +143,7 @@ async function runEvals(options: {
                 keepWorkspaces: project?.config?.keepSandboxes,
                 artifactExclude: project?.config?.artifacts?.exclude,
                 attachmentLimits: project?.config?.artifacts?.attachments,
+                judge: project?.config?.judge,
                 suiteId: options.suiteId,
                 runtime: runtimeFor(evaluation!),
                 concurrency: options.concurrency,
@@ -280,6 +281,7 @@ function registerMatrixRoutes(
                 keepWorkspaces: project?.config?.keepSandboxes,
                 artifactExclude: project?.config?.artifacts?.exclude,
                 attachmentLimits: project?.config?.artifacts?.attachments,
+                judge: project?.config?.judge,
                 ...provenance,
                 onResult: (cell, result) =>
                   runLog.cell(cell, result, performance.now() - started),

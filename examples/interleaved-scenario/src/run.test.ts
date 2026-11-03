@@ -86,19 +86,21 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     ).toMatchObject({
       kind: 'judge',
       status: 'passed',
-      evidence: { placement: 'transcript' },
+      explanation: 'The reply says it wrote 2112.',
     });
     expect(judged.scoring?.results[0]).toMatchObject({
       kind: 'judge',
       passed: true,
-      evidence: { placement: 'scoring' },
+      passAt: 1,
       judge: {
         agent: { id: 'local-fake-judge', kind: 'in-process' },
-        usage: { inputTokens: 7, outputTokens: 3 },
+        model: 'local-rules',
+        prompt: expect.stringContaining(
+          'Rubric:\nDid the assistant describe writing 2112?',
+        ),
         events: [
           expect.objectContaining({ kind: 'message', role: 'assistant' }),
           expect.objectContaining({ kind: 'turn-completed' }),
-          expect.objectContaining({ kind: 'completed' }),
         ],
       },
     });

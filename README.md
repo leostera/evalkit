@@ -5,7 +5,7 @@
 EvalKit lets you write agent evaluations as TypeScript: give an Agent Under Test (AUT) a scenario, inspect what it actually said and did, and score the result. Write each scenario as a small file, share agents, judges and datasets between them, and keep them in Git alongside your code; run them locally and inspect the evidence in a dashboard or ordinary report files.
 
 - **Test the journey, not just the final answer.** Put `predicate(...)`, `judge(...)`, or `expectToolCall(...)` between user turns to check an intermediate reply, observed tool call, or live file state before continuing. `policy.failfast` can skip later turns after a failed checkpoint.
-- **Choose how to score.** Run deterministic predicates without model credentials, or provide an independent judge agent for rubric-based verdicts. A judge can have its own tools; its events stay separate from the AUT trajectory. The same rule can run inline and in final scoring.
+- **Choose how to score.** Run deterministic predicates without model credentials, or write a rubric and let a judge agent grade it: EvalKit builds the prompt, enforces the answer format (a value, `choices` or weighted `criteria`) and records the prompt, reply, model and judging cost apart from the agent's. A matrix axis can pick the judge's model. The same rule can run inline and in final scoring.
 - **Make failures inspectable.** Reports record turns, checkpoints, skipped steps, final scores, and errors. Runs have isolated candidate and evaluator workspaces, so private expected answers need not be shown to the AUT.
 - **Repeat and compare.** Run multiple runs or define a matrix of parameters. An adapter must explicitly apply those parameters to its AUT; EvalKit does not silently switch models.
 - **Gate merge requests.** `--junit` gives CI a test report, and `evalkit compare` shows what regressed or improved against the base branch and can fail the pipeline.
@@ -49,6 +49,7 @@ Runs create `_evalkit-results/` and `_evalkit-sandbox/` in the generated project
 - [Get started](sites/evalkit.leostera.dev/src/content/docs/index.md) and the [manual](sites/evalkit.leostera.dev/src/content/docs/manual/) explain adapters, datasets, scoring, reports, and the CLI. Upgrading from 0.5? See the [migration guide](CHANGELOG.md#migrating-from-05).
 - [Interleaved scenario](examples/interleaved-scenario/) has a passing write/revise flow, an intentional failfast failure, and a provider-free fake judge agent.
 - [Configured matrix](examples/configured-matrix/) shows a runnable parameter sweep without model credentials.
+- [Judges](examples/judges/) grades a chat assistant with A/B/C and weighted-criteria judges and checks a built service with evidence-returning predicates, a stronger judge model chosen by the matrix, all provider-free.
 - [Support suite](examples/support-suite/) is a few dozen short scenarios in three suites, sharing one agent, its judges, and static, computed and evaluator-only datasets.
 - [HACKING.md](HACKING.md) covers the repository layout, builds, and tests for contributors.
 

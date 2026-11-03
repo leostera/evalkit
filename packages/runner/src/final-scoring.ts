@@ -2,6 +2,7 @@ import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
   recordError,
+  type AutAdapter,
   type AutContext,
   type CheckpointResult,
   type EvalDefinition,
@@ -54,6 +55,8 @@ export function scoreSummary(
 }
 
 type FinalScoringInput = {
+  /** The agent for judges that name none. */
+  defaultJudge?: AutAdapter;
   context?: AutContext;
   workspace?: RunWorkspace;
   events: TrajectoryEvent[];
@@ -133,7 +136,7 @@ export async function evaluateFinalScorers(
             workspace,
             transcript: definition.transcript,
           }),
-          definition.judge,
+          input.defaultJudge,
           'scoring',
         ).pipe(
           Effect.mapError(

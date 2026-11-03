@@ -9,6 +9,8 @@ import {
   defineDataset,
   registerEvals,
   judge,
+  choices,
+  criteria,
   skip,
   toJson,
   turnResultEvents,
@@ -201,11 +203,13 @@ describe('core definitions', () => {
     const definition = defineEval({
       id: 'eval-03',
       agent: aut,
-      judge: { ...aut },
       transcript: [
         user('hello'),
         agent({ contains: ['hello'] }),
-        judge('friendly', { rubric: 'The reply is friendly.' }),
+        judge('friendly', {
+          agent: { ...aut },
+          rubric: 'The reply is friendly.',
+        }),
       ],
       scoring: [predicate('score', () => 1)],
     });
@@ -220,14 +224,40 @@ describe('core definitions', () => {
       defineEval({
         id: 'same-judge',
         agent: aut,
-        judge: aut,
         transcript: [
           user('hello'),
-          judge('friendly', { rubric: 'Is it friendly?' }),
+          judge('friendly', { agent: aut, rubric: 'Is it friendly?' }),
         ],
         scoring: [],
       }),
-    ).toThrow('Judge agent must be distinct');
+    ).toThrow('Judge friendly in same-judge uses the agent under test');
+  });
+
+  test('a scenario-level judge names where judges moved', () => {
+    expect(() =>
+      defineEval({
+        id: 'old-judge',
+        agent: aut,
+        judge: { ...aut },
+        transcript: [],
+        scoring: [],
+      } as Parameters<typeof defineEval>[0]),
+    ).toThrow('sets judge, which moved to each rule');
+  });
+
+  test('judge answers: choices and criteria are checked when defined', () => {
+    expect(() => choices({ A: ['only one', 1] })).toThrow('at least two');
+    expect(() => choices({ A: ['good', 1], B: ['bad', 2] })).toThrow(
+      'from 0 to 1',
+    );
+    expect(() => criteria({ concise: 0 })).toThrow('positive weight');
+    expect(() =>
+      judge('x', { rubric: 'r', inputs: { 'Bad Name': () => 1 } }),
+    ).toThrow('must start with a lowercase letter');
+    expect(() => judge('x', { rubric: 'r', passAt: 2 })).toThrow(
+      'passAt must be a number from 0 to 1',
+    );
+    expect(judge('x', { rubric: 'r' }).answer).toEqual({ kind: 'verdict' });
   });
 
   test('builds an explicit eval registry', () => {

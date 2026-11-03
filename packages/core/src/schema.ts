@@ -119,9 +119,29 @@ export const JudgeRunInfoSchema = Schema.Struct({
       version: Schema.optional(Schema.String),
     }),
   ),
+  model: Schema.optional(Schema.String),
   usage: Schema.optional(UsageSchema),
+  prompt: Schema.optional(Schema.String),
+  reply: Schema.optional(JsonValueSchema),
+  attempts: Schema.optional(Schema.Number),
   events: Schema.optional(Schema.mutable(Schema.Array(JsonValueSchema))),
 });
+
+const CriterionResultSchema = Schema.Struct({
+  name: Schema.String,
+  value: Schema.Number,
+  weight: Schema.optional(Schema.Number),
+  note: Schema.optional(Schema.String),
+});
+
+/** What every score and checkpoint result can carry about its verdict. */
+const verdictFields = {
+  passAt: Schema.optional(Schema.Number),
+  choice: Schema.optional(Schema.String),
+  criteria: Schema.optional(
+    Schema.mutable(Schema.Array(CriterionResultSchema)),
+  ),
+};
 
 export const ScoreResultSchema = Schema.Struct({
   name: Schema.String,
@@ -130,6 +150,7 @@ export const ScoreResultSchema = Schema.Struct({
   passed: Schema.optional(Schema.Boolean),
   explanation: Schema.optional(Schema.String),
   evidence: Schema.optional(JsonValueSchema),
+  ...verdictFields,
   judge: Schema.optional(JudgeRunInfoSchema),
   durationMs: Schema.Number,
   error: Schema.optional(RecordedErrorSchema),
@@ -144,6 +165,7 @@ export const CheckpointResultSchema = Schema.Struct({
   passed: Schema.optional(Schema.Boolean),
   explanation: Schema.optional(Schema.String),
   evidence: Schema.optional(JsonValueSchema),
+  ...verdictFields,
   judge: Schema.optional(JudgeRunInfoSchema),
   durationMs: Schema.optional(Schema.Number),
   error: Schema.optional(RecordedErrorSchema),
@@ -233,6 +255,7 @@ const autEvent = {
     timestamp: Schema.String,
     latencyMs: Schema.optional(Schema.Number),
     usage: Schema.optional(UsageSchema),
+    model: Schema.optional(Schema.String),
   }),
   completed: Schema.Struct({
     source: Schema.Literal('aut'),

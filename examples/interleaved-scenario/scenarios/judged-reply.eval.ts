@@ -1,70 +1,43 @@
 import { defineAgent, defineEval, judge, user } from '@evalkit/core';
 import { fileAgent } from '../agents/file-agent.js';
 
-// A provider-free fake judge agent. In a real eval, this can be a no-tools model
-// agent or a custom agent with evaluator-side tools, independently from the AUT.
+// A provider-free fake judge agent. A real one calls a model with the prompt
+// EvalKit sends and returns its reply; it is a defineAgent() agent like any
+// other, independent from the agent under test.
 const localJudge = defineAgent({
-  identity: { id: 'local-fake-judge', kind: 'in-process' },
+  identity: { id: 'local-fake-judge', kind: 'in-process', name: 'Local judge' },
   runtimes: { local: { kind: 'in-process' } },
-  async start({ onEvent }) {
+  async start({ context }) {
     return {
-      async send(message: string) {
-        const request = JSON.parse(message) as {
-          rubric: string;
-          placement: 'transcript' | 'scoring';
-          evidence: {
-            turn?: Array<{ kind: string; content?: unknown }>;
-            trajectory?: Array<{ kind: string; content?: unknown }>;
-          };
-        };
-        const events =
-          request.placement === 'transcript'
-            ? request.evidence.turn
-            : request.evidence.trajectory;
-        const passed =
-          events?.some(
-            (event) =>
-              event.kind === 'message' &&
-              typeof event.content === 'string' &&
-              event.content.includes('2112'),
-          ) ?? false;
-        await onEvent({
-          kind: 'message',
-          role: 'assistant',
-          content: JSON.stringify({
+      async send(prompt: string) {
+        // EvalKit's prompt holds the rubric, the conversation and the reply.
+        const reply = prompt.split('\nreply:\n')[1] ?? '';
+        const passed = reply.includes('2112');
+        return {
+          reply: JSON.stringify({
             value: Number(passed),
             explanation: passed
-              ? `Satisfied: ${request.rubric}`
-              : `Not satisfied: ${request.rubric}`,
-            evidence: { placement: request.placement },
+              ? 'The reply says it wrote 2112.'
+              : 'The reply never mentions 2112.',
           }),
-          timestamp: new Date().toISOString(),
-        });
-        await onEvent({
-          kind: 'turn-completed',
-          turn: 1,
-          usage: { inputTokens: 7, outputTokens: 3 },
-          timestamp: new Date().toISOString(),
-        });
-      },
-      async close() {
-        await onEvent({
-          kind: 'completed',
-          timestamp: new Date().toISOString(),
-        });
+          usage: { inputTokens: prompt.length, outputTokens: 12 },
+          // A matrix axis such as judgeModel can choose a real judge's model.
+          model: String(context.parameters?.judgeModel ?? 'local-rules'),
+        };
       },
     };
   },
 });
 
 const replyQuality = judge('reply quality', {
+  description: 'The reply says it wrote 2112',
+  agent: localJudge,
   rubric: 'Did the assistant describe writing 2112?',
 });
 
 export default defineEval({
   id: 'judged-reply',
   agent: fileAgent(),
-  judge: localJudge,
   transcript: [user('Write 2112 into number.txt.'), replyQuality],
   scoring: [replyQuality], // exactly the same rule is evaluated after session close
 });

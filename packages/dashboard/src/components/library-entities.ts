@@ -15,7 +15,7 @@ export type LibraryAgent = {
   key: string;
   agent: CatalogAgent;
   scenarios: CatalogEval[];
-  /** Also the judge agent of these scenarios. */
+  /** Judges in these scenarios use it. */
   judging: CatalogEval[];
 };
 
@@ -29,9 +29,28 @@ export function libraryAgents(catalog: readonly CatalogEval[]): LibraryAgent[] {
   };
   for (const scenario of catalog) {
     entry(scenario.agent).scenarios.push(scenario);
-    if (scenario.judgeAgent) entry(scenario.judgeAgent).judging.push(scenario);
+    const judges = new Map<string, CatalogAgent>();
+    for (const scorer of scenarioScorers(scenario))
+      if (scorer.agent)
+        judges.set(
+          agentKey({ agent: scorer.agent } as CatalogEval),
+          scorer.agent,
+        );
+    for (const judge of judges.values()) entry(judge).judging.push(scenario);
   }
   return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/** A checkpoint's definition: the transcript step it ran at, when it is still that rule. */
+export function checkpointScorer(
+  scenario: CatalogEval | undefined,
+  step: number,
+  name: string,
+): CatalogScorer | undefined {
+  const entry = scenario?.transcript?.[step];
+  return entry?.kind === 'checkpoint' && entry.scorer.name === name
+    ? entry.scorer
+    : undefined;
 }
 
 export type JudgeUse = {
@@ -54,7 +73,12 @@ export type LibraryJudge = {
 export function libraryJudges(catalog: readonly CatalogEval[]): LibraryJudge[] {
   const byIdentity = new Map<string, LibraryJudge>();
   const add = (scorer: CatalogScorer, use: JudgeUse) => {
-    const identity = `${scorer.kind}\0${scorer.name}\0${scorer.definedAt ?? ''}`;
+    // A factory (`correctness('purge')`) makes one rule per call, and tail
+    // calls hide its file from the stack: rules that check the same thing
+    // under the same name are one judge.
+    const checks =
+      scorer.rubric ?? scorer.description ?? scorer.definedAt ?? '';
+    const identity = `${scorer.kind}\0${scorer.name}\0${checks}`;
     const found = byIdentity.get(identity) ?? { key: '', scorer, uses: [] };
     found.uses.push(use);
     byIdentity.set(identity, found);
@@ -76,6 +100,60 @@ export function libraryJudges(catalog: readonly CatalogEval[]): LibraryJudge[] {
         ? judge.scorer.name
         : `${judge.scorer.name}@${judge.scorer.definedAt ?? judge.scorer.kind}`;
   return judges.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/** Every scorer of a scenario: its checkpoints, then its final scorers. */
+export function scenarioScorers(scenario: CatalogEval): CatalogScorer[] {
+  return [
+    ...(scenario.transcript ?? []).flatMap((entry) =>
+      entry.kind === 'checkpoint' ? [entry.scorer] : [],
+    ),
+    ...scenario.scorers,
+  ];
+}
+
+/** A judge's verdicts in the newest finished runs, newest first. */
+export function recentVerdicts(
+  runs: readonly RunSummary[],
+  uses: readonly JudgeUse[],
+  name: string,
+  limit = 10,
+) {
+  const scenarios = new Set(
+    uses
+      .filter((use) => use.placement === 'final')
+      .map((use) => use.scenario.id),
+  );
+  return runs
+    .filter((run) => run.status !== 'running' && scenarios.has(run.evalId))
+    .flatMap((run) => {
+      const scorer = run.scorers?.find((entry) => entry.name === name);
+      return scorer ? [{ run, scorer }] : [];
+    })
+    .sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt))
+    .slice(0, limit);
+}
+
+/** How a scorer did in the newest finished runs that recorded it. */
+export function scorerResults(
+  runs: readonly RunSummary[],
+  name: string,
+  limit = 10,
+): { passed: number; total: number } {
+  const recorded = [...runs]
+    .filter((run) => run.status !== 'running')
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .flatMap((run) => {
+      const scorer = run.scorers?.find((entry) => entry.name === name);
+      return scorer && !scorer.skipped && scorer.passed !== undefined
+        ? [scorer]
+        : [];
+    })
+    .slice(0, limit);
+  return {
+    passed: recorded.filter((scorer) => scorer.passed).length,
+    total: recorded.length,
+  };
 }
 
 export type LibraryDataset = {

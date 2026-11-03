@@ -54,7 +54,16 @@ export type RunScorer = {
   name: string;
   kind: 'predicate' | 'judge';
   value?: number;
+  passed?: boolean;
   skipped?: true;
+  /** The scorer failed to run. */
+  errored?: true;
+  /** A `choices` judge's answer. */
+  choice?: string;
+  /** The first line of its explanation, for lists of verdicts. */
+  explanation?: string;
+  /** The model a judge reported using. */
+  model?: string;
 };
 
 export type RunDatasetDigest = { id: string; digest: string };
@@ -68,6 +77,12 @@ export type RunMetric = {
   /** Absent when the run did not measure it ("not measured", never zero). */
   value?: number;
 };
+
+/** The first line of an explanation, short enough for one line of a list or terminal. */
+export function firstLine(text: string | undefined, max = 100): string {
+  const line = text?.trim().split('\n')[0]?.trim() ?? '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
 
 /** Written into a run directory by `evalkit tidy`; deleting it restores the run. */
 export const ARCHIVE_MARKER = 'archived.json';
@@ -232,6 +247,15 @@ export function createDashboardReportReader(root: string) {
               ...(result.value === undefined || result.skipped
                 ? {}
                 : { value: result.value }),
+              ...(result.passed === undefined || result.skipped
+                ? {}
+                : { passed: result.passed }),
+              ...(result.error ? { errored: true as const } : {}),
+              ...(result.choice ? { choice: result.choice } : {}),
+              ...(result.explanation
+                ? { explanation: firstLine(result.explanation, 200) }
+                : {}),
+              ...(result.judge?.model ? { model: result.judge.model } : {}),
             })),
           }
         : {}),
