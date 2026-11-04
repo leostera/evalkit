@@ -33,7 +33,7 @@ Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcrip
 - **`isolation: sandboxExec({ allow })`** confines runs on macOS without containers: no reading or writing the project, the home directory or other runs, and signals only within the run.
 - **`fixtures`** in the config start services on the host before the first run and stop them after the last. Runs find them in `context.fixtures`; a container on `network: 'fixtures'` reaches them as `fixtures.<name>` and nothing else. Their output is attached to each run.
 - The manifest records each run's isolation, and the run page shows it.
-- `piAgent()` runs Pi through `context.shell`, so it runs in the container with container isolation.
+- `piAgent()` runs Pi through `context.shell`, so it runs in the container with container isolation, and sends the message on stdin: Pi 1.3 is killed when a message argument reaches about 900 characters.
 - Dashboard runs now apply the config's `limits`, as `evalkit run` does.
 
 ### Migrating from 0.10

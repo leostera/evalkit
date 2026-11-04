@@ -88,7 +88,7 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
 - `defineAgent(adapter: AutAdapter)`  
   Checks an adapter and records where it is defined. See [Agents under test](/docs/manual/agents/).
 - `piAgent({ command?, args? })`  
-  A ready-made adapter that runs `pi --print --no-session --no-tools [args] <message>` through `context.shell` for each user message. Pi gets no tools or memory between turns.
+  A ready-made adapter that runs `pi --print --no-session --no-tools [args]` through `context.shell`, with the message on stdin, for each user message. Pi gets no tools or memory between turns.
 - `agentRuntimes(adapter): AgentRuntimes`  
   The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
 - `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  

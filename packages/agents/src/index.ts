@@ -38,14 +38,18 @@ export function piAgent(options: PiAutOptions = {}): AutAdapter {
           const turnId = transcript.turn('start');
           // Through the run's shell, so Pi runs where the project's isolation
           // puts it; a limit or cancellation stops it.
-          const { stdout, stderr, exitCode } = await context.shell.exec([
-            command,
-            '--print',
-            '--no-session',
-            '--no-tools',
-            ...(options.args ?? []),
-            message,
-          ]);
+          // The message goes on stdin: Pi 1.3 is killed when a message
+          // argument reaches about 900 characters.
+          const { stdout, stderr, exitCode } = await context.shell.exec(
+            [
+              command,
+              '--print',
+              '--no-session',
+              '--no-tools',
+              ...(options.args ?? []),
+            ],
+            { input: message },
+          );
           if (exitCode !== 0) {
             transcript.turn('end', {
               turnId,

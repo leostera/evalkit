@@ -246,7 +246,7 @@ If `start()`, `send()`, or `close()` throws, the runner records an error, closes
 
 ## Built-in and custom integrations
 
-`piAgent({ command?, args? })` (from `@evalkit/agents` inside this monorepo, or `@leostera/evalkit` from npm in standalone projects) invokes the local `pi` command in the candidate workspace. For **each** `send()`, it runs `pi --print --no-session --no-tools ...args <message>`, emits the trimmed stdout as an assistant message, and reports a nonzero exit as an error. It runs through `context.shell`, so with container isolation Pi must be in the image. It neither maintains a Pi conversation across messages nor reads `context.parameters` for a model. Configure Pi separately; use `args` for explicit non-secret CLI arguments. See the [starter Pi adapter](https://github.com/leostera/evalkit/blob/main/examples/starter/agents/pi-agent.ts).
+`piAgent({ command?, args? })` (from `@evalkit/agents` inside this monorepo, or `@leostera/evalkit` from npm in standalone projects) invokes the local `pi` command in the candidate workspace. For **each** `send()`, it runs `pi --print --no-session --no-tools ...args` with the message on stdin, emits the trimmed stdout as an assistant message, and reports a nonzero exit as an error. It runs through `context.shell`, so with container isolation Pi must be in the image. It neither maintains a Pi conversation across messages nor reads `context.parameters` for a model. Configure Pi separately; use `args` for explicit non-secret CLI arguments. See the [starter Pi adapter](https://github.com/leostera/evalkit/blob/main/examples/starter/agents/pi-agent.ts).
 
 ### Evaluating tool-assisted agents
 
