@@ -182,6 +182,32 @@ describe('core definitions', () => {
         containerOpts: { mounts: ['/a:/workspace/b'] },
       }),
     ).toThrow('/workspace');
+    const tuned = defineSandbox({
+      id: 'tuned',
+      kind: 'container',
+      image: 'node:24',
+      containerOpts: {
+        network: 'host',
+        runArgs: ['--cpus', '2', '-v', '/tmp/registry:/registry:rw'],
+      },
+    });
+    expect(tuned).toMatchObject({
+      network: 'host',
+      runArgs: ['--cpus', '2', '-v', '/tmp/registry:/registry:rw'],
+    });
+    const runArgs = (args: string[]) => () =>
+      defineSandbox({
+        id: 'x',
+        kind: 'container',
+        image: 'node:24',
+        containerOpts: { runArgs: args },
+      });
+    expect(runArgs(['--network', 'host'])).toThrow('use network instead');
+    expect(runArgs(['--name=mine'])).toThrow('cannot set --name');
+    expect(runArgs(['-v', '/a:/workspace'])).toThrow('/workspace');
+    expect(runArgs(['--mount=type=bind,src=/a,dst=/evalkit-home/x'])).toThrow(
+      '/evalkit-home',
+    );
     expect(() => defineSandbox({ id: 'Bad Id', kind: 'host' })).toThrow('id');
     expect(() => defineSandbox({ id: 'r', kind: 'remote' } as never)).toThrow(
       'start(run)',

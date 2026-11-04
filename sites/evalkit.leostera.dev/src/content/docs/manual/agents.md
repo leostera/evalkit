@@ -178,8 +178,9 @@ const node = defineSandbox({
   kind: 'container',
   dockerfile: './evals/Dockerfile', // or image: 'node:24'
   containerOpts: {
-    network: 'fixtures', // 'none' (default) | 'fixtures' | 'full'
+    network: 'fixtures', // 'none' (default) | 'fixtures' | 'full' | 'host'
     env: ['MODEL_API_KEY'], // host variables passed in; nothing else is
+    runArgs: ['--cpus', '2'], // anything else, passed to docker run as given
   },
 });
 
@@ -197,9 +198,28 @@ A scenario can name its own (`defineEval({ ..., sandbox: 'node' })`, a name in `
 | `container` | A container per run from `dockerfile` or `image`, with the candidate workspace at `/workspace` (`context.shell.root`) and the evaluator workspace never mounted. Its own process table, so a `pkill` reaches only that run. Removed after scoring, or kept stopped for a run that did not pass, like its workspace. |
 | `remote`    | A machine you provide, such as a VM, a cloud sandbox or a Durable Object: you implement starting it, running commands, and moving the workspace in and out.                                                                                                                                                         |
 
-The agent is not policed inside its sandbox: it can do anything there, and if it wrecks the workspace, the scenario's checks fail. Scorers run their commands in the same sandbox, so they see what the agent built; the evaluator workspace never leaves this machine.
+The agent is not policed inside its sandbox: it can do anything there, and if it wrecks the workspace, the scenario's checks fail. Scorers run their commands in the same sandbox, so they see what the agent built; the evaluator workspace never leaves this machine. A limit stops the agent, not its graders: while scoring, `context.shell` commands are stopped only by cancelling the invocation, so a check can still start the service a limited run built.
 
 **Containers** use the `docker` CLI, so Docker Desktop, OrbStack, Colima, Rancher Desktop or podman all work; `containerOpts.runtime: 'podman'` names another compatible command. The image needs `sh`. A Dockerfile is built once per invocation, tagged by a hash of its directory, and reused while it is unchanged. `containerOpts.mounts: ['/host/path:/container/path']` adds read-only paths. On Linux, commands run as your user so the files they write stay yours. A run whose container cannot start errors, saying why.
+
+EvalKit understands a few container options because it acts on them: `network` decides what `context.fixtures` hold and is recorded with the run, `env` and `mounts` are checked, and `runtime` picks the command. Everything else goes in `runArgs`, passed to `docker run` as given, after EvalKit's own flags: a writable mount (`['--volume', '/tmp/registry:/registry:rw']`), `--cpus` and `--memory`, `--cap-add`, `--gpus`. Flags EvalKit sets for every run (`--network`, `--name`, `--entrypoint`, `--workdir`, `--detach`, `--rm`) and mounts over `/workspace` or `/evalkit-home` are refused when the sandbox is defined.
+
+| `network`  | What a run reaches                                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`     | Nothing. The default.                                                                                                                                |
+| `fixtures` | The project's fixtures, by name, and nothing else.                                                                                                   |
+| `full`     | Whatever the container runtime allows, and the host as `host.docker.internal`.                                                                       |
+| `host`     | The host's network: `localhost` is the host's, and a server the run starts is on the host's `localhost` too. Its own filesystem and processes still. |
+
+**Behind a TLS-inspecting proxy**, such as a corporate VPN that re-signs HTTPS, a container does not trust the proxy's certificate authority the way your machine does, and Node fails with `SELF_SIGNED_CERT_IN_CHAIN`. An agent may only report that a tool is missing. Export the machine's trusted certificates, mount them, and point Node at them:
+
+```ts
+// macOS: security find-certificate -a -p /Library/Keychains/System.keychain > evals/host-ca.pem
+containerOpts: {
+  mounts: [`${import.meta.dirname}/evals/host-ca.pem:/etc/evalkit/host-ca.pem`],
+  runArgs: ['--env', 'NODE_EXTRA_CA_CERTS=/etc/evalkit/host-ca.pem'],
+},
+```
 
 **Remote sandboxes** implement a lifecycle:
 

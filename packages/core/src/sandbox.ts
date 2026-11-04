@@ -9,10 +9,12 @@ import type { JsonObject } from './index.js';
 export type SandboxKind = 'host' | 'container' | 'remote';
 
 /**
- * What a container can reach: nothing, only the project's fixtures, or
- * whatever the container runtime allows by default.
+ * What a container can reach: nothing, only the project's fixtures,
+ * whatever the container runtime allows by default (`full`), or the
+ * host's own network (`host`), where the host's `localhost` is the
+ * container's and the container's servers are on the host's.
  */
-export type ContainerNetwork = 'none' | 'fixtures' | 'full';
+export type ContainerNetwork = 'none' | 'fixtures' | 'full' | 'host';
 
 /** A host path mounted read-only into every run's container. */
 export type ContainerMount = { host: string; path: string };
@@ -26,6 +28,13 @@ export type ContainerOptions = {
   mounts?: readonly (ContainerMount | string)[];
   /** The `docker`-compatible command: `docker` (the default) or `podman`. */
   runtime?: string;
+  /**
+   * Passed to `docker run` as given, for anything EvalKit does not need to
+   * understand: writable mounts, CPU and memory caps, capabilities, GPUs.
+   * Flags EvalKit sets itself (`--network`, `--name`, `--entrypoint`,
+   * `--workdir`, `--detach`, `--rm`) are refused: use `network` instead.
+   */
+  runArgs?: readonly string[];
 };
 
 /** What EvalKit gives a sandbox for each run. */
@@ -97,6 +106,7 @@ export type Sandbox = SandboxCommon &
         env: readonly string[];
         mounts: readonly ContainerMount[];
         runtime: string;
+        runArgs: readonly string[];
       }
     | ({ kind: 'remote' } & SandboxLifecycle)
   );
@@ -107,7 +117,25 @@ export const HOST_SANDBOX: Sandbox = Object.freeze({
   kind: 'host',
 });
 
-const NETWORKS: readonly ContainerNetwork[] = ['none', 'fixtures', 'full'];
+const NETWORKS: readonly ContainerNetwork[] = [
+  'none',
+  'fixtures',
+  'full',
+  'host',
+];
+
+/** `docker run` flags EvalKit sets for every run's container. */
+const OWNED_RUN_FLAGS = [
+  '--network',
+  '--net',
+  '--name',
+  '--entrypoint',
+  '--workdir',
+  '-w',
+  '--detach',
+  '-d',
+  '--rm',
+];
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SANDBOX_ID = /^[a-z0-9][a-z0-9_-]*$/;
 
@@ -188,7 +216,34 @@ function containerOptions(options: ContainerOptions, where: string) {
     env,
     mounts: (options.mounts ?? []).map((mount) => parseMount(mount, where)),
     runtime: options.runtime ?? 'docker',
+    runArgs: parseRunArgs(options.runArgs ?? [], where),
   };
+}
+
+function parseRunArgs(args: readonly string[], where: string): string[] {
+  if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string'))
+    throw new Error(
+      `${where} runArgs takes a list of docker run arguments, such as ['--cpus', '2']`,
+    );
+  for (const [index, arg] of args.entries()) {
+    const flag = arg.split('=')[0]!;
+    if (OWNED_RUN_FLAGS.includes(flag))
+      throw new Error(
+        `${where} runArgs cannot set ${flag}, which EvalKit sets for every run${flag === '--network' || flag === '--net' ? ': use network instead' : ''}`,
+      );
+    const volume =
+      flag === '-v' || flag === '--volume' || flag === '--mount'
+        ? arg.includes('=')
+          ? arg.slice(arg.indexOf('=') + 1)
+          : args[index + 1]
+        : undefined;
+    for (const reserved of ['/workspace', '/evalkit-home'])
+      if (volume && new RegExp(`(^|[:,=])${reserved}(/|:|,|$)`).test(volume))
+        throw new Error(
+          `${where} runArgs cannot mount over ${reserved}, which the run uses: ${volume}`,
+        );
+  }
+  return [...args];
 }
 
 function parseMount(

@@ -97,7 +97,7 @@ export const RunSandboxSchema = Schema.Struct({
   kind: Schema.Literal('host', 'container', 'remote', 'sandbox-exec'),
   image: Schema.optional(Schema.String),
   dockerfile: Schema.optional(Schema.String),
-  network: Schema.optional(Schema.Literal('none', 'fixtures', 'full')),
+  network: Schema.optional(Schema.Literal('none', 'fixtures', 'full', 'host')),
 });
 
 export const RunMetadataSchema = Schema.Struct({

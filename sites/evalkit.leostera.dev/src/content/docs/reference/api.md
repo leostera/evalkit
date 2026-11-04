@@ -110,7 +110,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`) and
 ## Sandboxes and fixtures
 
 - `defineSandbox(definition: SandboxDefinition): Sandbox`  
-  Where runs happen, for `sandboxes` and `sandbox` in `evalkit.config.ts` and `sandbox` in a scenario. Each has an `id` (lowercase letters, digits, `-`, `_`) and an optional `concurrency`, then a kind: `{ kind: 'host' }`; `{ kind: 'container', dockerfile | image, containerOpts?: { network?, env?, mounts?, runtime? } }` (`network`: `'none'`, `'fixtures'` or `'full'`); or `{ kind: 'remote', prepare?, start, teardown? }`, a `SandboxLifecycle`. `start(run: SandboxRunContext)` resolves to a `SandboxSession`: `{ shell, mount(workspace), unmount(workspace), fixtures?, stop({ keep }) }`. See [Sandboxes](/docs/manual/agents/#sandboxes).
+  Where runs happen, for `sandboxes` and `sandbox` in `evalkit.config.ts` and `sandbox` in a scenario. Each has an `id` (lowercase letters, digits, `-`, `_`) and an optional `concurrency`, then a kind: `{ kind: 'host' }`; `{ kind: 'container', dockerfile | image, containerOpts?: { network?, env?, mounts?, runtime?, runArgs? } }` (`network`: `'none'`, `'fixtures'`, `'full'` or `'host'`; `runArgs`: arguments passed to `docker run` as given); or `{ kind: 'remote', prepare?, start, teardown? }`, a `SandboxLifecycle`. `start(run: SandboxRunContext)` resolves to a `SandboxSession`: `{ shell, mount(workspace), unmount(workspace), fixtures?, stop({ keep }) }`. See [Sandboxes](/docs/manual/agents/#sandboxes).
 - `HOST_SANDBOX`  
   The sandbox runs get when nothing names one: `{ id: 'host', kind: 'host' }`.
 

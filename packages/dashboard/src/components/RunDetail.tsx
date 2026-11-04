@@ -75,9 +75,11 @@ export function sandboxLabel(
   const network =
     sandbox.network === 'full'
       ? 'full network'
-      : sandbox.network === 'fixtures'
-        ? 'fixtures only'
-        : 'no network';
+      : sandbox.network === 'host'
+        ? 'host network'
+        : sandbox.network === 'fixtures'
+          ? 'fixtures only'
+          : 'no network';
   const image = sandbox.image ?? sandbox.dockerfile;
   return `${sandbox.id} · container ${image} · ${network}`;
 }

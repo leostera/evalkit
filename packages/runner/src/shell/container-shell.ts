@@ -74,8 +74,11 @@ export function containerRunArgs(options: {
       ? ['--network', 'none']
       : sandbox.network === 'fixtures'
         ? ['--network', options.fixturesNetwork ?? 'none']
-        : // The host, and fixtures on it, as host.docker.internal.
-          ['--add-host', 'host.docker.internal:host-gateway'];
+        : sandbox.network === 'host'
+          ? // The host's own network: its localhost is the container's.
+            ['--network', 'host']
+          : // The host, and fixtures on it, as host.docker.internal.
+            ['--add-host', 'host.docker.internal:host-gateway'];
   // On Linux, files the run writes stay the user's, not root's.
   const user =
     process.platform === 'linux' && process.getuid && process.getgid
@@ -102,6 +105,7 @@ export function containerRunArgs(options: {
       '--volume',
       `${path.resolve(mount.host)}:${mount.path}:ro`,
     ]),
+    ...sandbox.runArgs,
     '--entrypoint',
     'sh',
   ];

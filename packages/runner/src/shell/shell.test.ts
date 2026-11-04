@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { defineSandbox } from '@evalkit/core';
-import { containerShell } from './container-shell.js';
+import { containerRunArgs, containerShell } from './container-shell.js';
 import { fixtureSet } from './fixtures.js';
 import { hostShell } from './host-shell.js';
 
@@ -227,16 +227,34 @@ describe('host shell', () => {
   });
 });
 
-const busybox = (network: 'none' | 'fixtures' = 'none') => {
+const busybox = (
+  network: 'none' | 'fixtures' | 'host' = 'none',
+  runArgs: string[] = [],
+) => {
   const sandbox = defineSandbox({
     id: 'busybox',
     kind: 'container',
     image: 'busybox:stable',
-    containerOpts: { network },
+    containerOpts: { network, runArgs },
   });
   if (sandbox.kind !== 'container') throw new Error('a container');
   return sandbox;
 };
+
+test('a container sandbox passes runArgs to docker run after its own flags', () => {
+  const args = containerRunArgs({
+    sandbox: busybox('host', ['--cpus', '2', '-v', '/tmp/r:/registry:rw']),
+    name: 'evalkit-x',
+    runId: 'x',
+    workspace: '/tmp/w',
+    home: '/tmp/h',
+  });
+  expect(args.join(' ')).toContain('--network host');
+  expect(args.join(' ')).toContain(
+    '--cpus 2 -v /tmp/r:/registry:rw --entrypoint sh',
+  );
+  expect(args).not.toContain('host.docker.internal:host-gateway');
+});
 
 const hasDocker =
   spawnSync('docker', ['version', '--format', '{{.Server.Version}}']).status ===
@@ -346,6 +364,39 @@ describe.if(hasDocker)('container shell', () => {
       await fixtures.stop();
     }
   }, 90_000);
+
+  test('on the host network a run reaches the host at localhost, and runArgs mount writable', async () => {
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('from the host'),
+    });
+    const shared = path.join(root, 'shared');
+    await mkdir(shared);
+    const shell = await containerShell({
+      sandbox: busybox('host', ['--volume', `${shared}:/shared:rw`]),
+      image: 'busybox:stable',
+      runId: `test-${crypto.randomUUID()}`,
+      root: workspace,
+      home,
+      signal: new AbortController().signal,
+    });
+    try {
+      expect(
+        (await shell.exec(`wget -q -T 5 -O- http://localhost:${server.port}/`))
+          .stdout,
+      ).toBe('from the host');
+      expect((await shell.exec('echo written > /shared/note')).exitCode).toBe(
+        0,
+      );
+      expect(await readFile(path.join(shared, 'note'), 'utf8')).toBe(
+        'written\n',
+      );
+    } finally {
+      await shell.close();
+      await server.stop(true);
+    }
+  }, 90_000);
 });
 
 describe('fixtures', () => {
@@ -367,6 +418,13 @@ describe('fixtures', () => {
     await Promise.all([fixtures.ensure(), fixtures.ensure()]);
     expect(fixtures.addresses()).toEqual({
       store: { url: 'http://localhost:18789' },
+    });
+    // From a container on the host's network, the host's localhost is its own.
+    expect(fixtures.addresses({ container: 'host' })).toEqual({
+      store: { url: 'http://localhost:18789' },
+    });
+    expect(fixtures.addresses({ container: 'full' })).toEqual({
+      store: { url: 'http://host.docker.internal:18789' },
     });
     expect(await (await fetch('http://localhost:18789/')).text()).toBe('ok');
     expect(fixtures.logs()).toEqual([{ name: 'store', content: 'store up\n' }]);

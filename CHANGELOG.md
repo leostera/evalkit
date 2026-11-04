@@ -4,7 +4,15 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **`network: 'host'` for container sandboxes.** The container shares the host's network: the host's `localhost` is the container's, so a run reaches services on the host, and a server it starts is reachable from the host. Fixtures are at `localhost`.
+- **`containerOpts.runArgs`** passes arguments to `docker run` as given, for anything EvalKit does not need to understand: writable mounts, `--cpus`, `--memory`, `--cap-add`, `--gpus`. Flags EvalKit sets itself, and mounts over `/workspace` or `/evalkit-home`, are refused when the sandbox is defined.
+- The manual explains running containers behind a TLS-inspecting proxy, with `NODE_EXTRA_CA_CERTS`.
+
 ### Fixed
+
+- **A limited run's graders can run commands.** Scorers' `context.shell` commands defaulted to the run's signal, which a reached limit had already aborted, so a check that started the service a limited run built saw it stop at once. While scoring, commands now stop only when the invocation is cancelled, and `context.signal` is that signal too.
 
 - **`evalkit upgrade` reports the 0.11 runs it upgrades.** It converted them, but printed "0 runs upgraded" and "Every run is already in the current format". It now counts every run it brought to the current version and says how many record their sandbox.
 

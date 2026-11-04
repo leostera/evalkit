@@ -172,7 +172,9 @@ export function fixtureSet(
           url:
             from.container === 'fixtures'
               ? `${scheme}//fixtures.${entry.name}:${entry.port}`
-              : `${scheme}//host.docker.internal:${entry.port}`,
+              : from.container === 'host'
+                ? `${scheme}//localhost:${entry.port}`
+                : `${scheme}//host.docker.internal:${entry.port}`,
         };
       }
       return addresses;
