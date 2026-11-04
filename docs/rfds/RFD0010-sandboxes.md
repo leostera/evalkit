@@ -12,12 +12,11 @@
 
 A **sandbox** is where a run happens: the machine its agent runs on and its workspace lives in. `defineSandbox({ ... })` defines one, with a lifecycle EvalKit drives: `prepare` once per invocation, then `start`, `mount`, `unmount` and `stop` for each run, and `teardown` at the end. A scenario names the sandbox it runs in. The project sets a default, and a matrix axis can pick between named sandboxes.
 
-EvalKit ships two kinds:
+`kind` says what it is:
 
-- `host()`: this machine, no isolation;
-- `container({ image | dockerfile })`: a container per run.
-
-A remote sandbox, such as a Cloudflare Sandbox or a Durable Object running an agent like pi-durable, is a `defineSandbox` of your own. It uploads the workspace in `mount` and pulls it back in `unmount`.
+- `kind: 'host'`: this machine, no isolation;
+- `kind: 'container'`: a container per run, from a `dockerfile` or a prebuilt `image`, with `containerOpts` for its network, environment and mounts;
+- `kind: 'remote'`: anything else, such as a Cloudflare Sandbox or a Durable Object running an agent like pi-durable. It brings its own `start`, `mount`, `unmount` and `stop`: it uploads the workspace in `mount` and pulls it back in `unmount`.
 
 The agent runs **inside** the sandbox, with no further control. EvalKit does not police what it does there: if it wrecks the workspace, its scorers fail, and that is the result.
 
@@ -37,14 +36,13 @@ Agent `runtimes` (`{ local: { kind: 'process' } }`) were meant for this, but onl
 
 ```ts
 // sandboxes.ts
-import { container, defineSandbox } from '@leostera/evalkit';
+import { defineSandbox } from '@leostera/evalkit';
 
 export const node = defineSandbox({
   id: 'node',
-  ...container({
-    dockerfile: './sandboxes/node/Dockerfile',
-    network: 'fixtures',
-  }),
+  kind: 'container',
+  dockerfile: './sandboxes/node/Dockerfile', // or image: 'node:24' for a prebuilt one
+  containerOpts: { network: 'fixtures' },
 });
 ```
 
@@ -64,11 +62,12 @@ export default defineEval({
 
 The run starts a container from that Dockerfile, mounts its workspace in it, and runs Pi there through `context.shell`. Scorers run in the same container while it is up, so `npm test` runs with the same toolchain. Then the workspace is unmounted back to the run's directory, where judges, the snapshot and the dashboard read it.
 
-A remote sandbox implements the same lifecycle:
+A remote sandbox implements the lifecycle itself:
 
 ```ts
 export const cloud = defineSandbox({
   id: 'cloud',
+  kind: 'remote',
   concurrency: 50,
   async start(run) {
     const box = await sandboxes.create(run.runId); // your service's API
@@ -91,7 +90,7 @@ The config names the project's sandboxes and its default. A matrix axis named `s
 
 ```ts
 export default defineConfig({
-  sandboxes: { host: host(), node, cloud },
+  sandboxes: { node, cloud },
   sandbox: 'node',
 });
 ```
@@ -105,10 +104,24 @@ evalkit run fix-bug -a sandbox=cloud -j 50
 ### The interface
 
 ```ts
-type SandboxDefinition = {
-  id: string;
-  /** At most this many runs in it at once; `--concurrency` still applies. */
-  concurrency?: number;
+type SandboxDefinition = { id: string; concurrency?: number } & (
+  | { kind: 'host' }
+  | ({ kind: 'container'; containerOpts?: ContainerOptions } & (
+      | { dockerfile: string } // relative to the project root
+      | { image: string } // a prebuilt image
+    ))
+  | ({ kind: 'remote' } & SandboxLifecycle)
+);
+
+type ContainerOptions = {
+  network?: 'none' | 'fixtures' | 'full'; // default 'none'
+  env?: string[]; // host variables passed in by name
+  mounts?: { host: string; path: string }[]; // read-only
+  runtime?: string; // the docker-compatible CLI, default 'docker'
+};
+
+/** What a remote sandbox implements, and what `host` and `container` implement inside EvalKit. */
+type SandboxLifecycle = {
   /** Once per invocation, before its first run: build an image, deploy, warm up. */
   prepare?(context: { root: string; signal: AbortSignal }): Promise<void>;
   /** For each run. */
@@ -116,7 +129,11 @@ type SandboxDefinition = {
   /** Once per invocation, after its last run. */
   teardown?(): Promise<void>;
 };
+```
 
+`defineSandbox` checks the definition (a container has exactly one of `dockerfile` and `image`; ids are unique among `sandboxes`) and records where it is defined.
+
+```ts
 type SandboxRunContext = {
   runId: string;
   evalId: string;
@@ -154,12 +171,12 @@ A cancelled or limited run goes through 4 to 6 as well, so what it left is score
 
 ### Built-in kinds
 
-| Kind                                                                | `mount`                                                                                           | `unmount`                                                 | Notes                                                                                                                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `host()`                                                            | Uses the directory in place                                                                       | Nothing to do                                             | The default. No isolation.                                                                                                        |
-| `container({ image \| dockerfile, network, env, mounts, runtime })` | Creates the container with the workspace bind-mounted at `/workspace` and home at `/evalkit-home` | Nothing to do: the bind mount already wrote the host copy | `prepare` builds the Dockerfile once. `start` is cheap; the container is created at `mount`, since volumes are fixed at creation. |
+| Kind        | `mount`                                                                                           | `unmount`                                                 | Notes                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `host`      | Uses the directory in place                                                                       | Nothing to do                                             | The default. No isolation.                                                                                                        |
+| `container` | Creates the container with the workspace bind-mounted at `/workspace` and home at `/evalkit-home` | Nothing to do: the bind mount already wrote the host copy | `prepare` builds the Dockerfile once. `start` is cheap; the container is created at `mount`, since volumes are fixed at creation. |
 
-A remote kind copies in `mount` and back in `unmount`. Nothing in EvalKit assumes the workspace is on the host between the two.
+A `remote` sandbox copies in `mount` and back in `unmount`. Nothing in EvalKit assumes the workspace is on the host between the two.
 
 ### Choosing a run's sandbox
 
@@ -168,17 +185,17 @@ The first of these that is set wins:
 1. the matrix cell's `sandbox` parameter, a name from `sandboxes`;
 2. the scenario's `sandbox`, a definition or a name;
 3. the config's `sandbox`;
-4. `host()`.
+4. `{ id: 'host', kind: 'host' }`.
 
 An unknown name is an error before any run starts, listing the names. A sandbox defined in a scenario file but missing from `sandboxes` is still usable by that scenario; `sandboxes` is only needed for picking by name.
 
 ### Concurrency
 
-The runner keeps a queue per sandbox. A run starts when the invocation has a free slot (`--concurrency`) and its sandbox does (`concurrency`, unlimited by default; `container()` defaults to the machine's CPU count). With remote sandboxes, `-j 50` means fifty runs at once.
+The runner keeps a queue per sandbox. A run starts when the invocation has a free slot (`--concurrency`) and its sandbox does (`concurrency`, unlimited by default; `container` defaults to the machine's CPU count). With remote sandboxes, `-j 50` means fifty runs at once.
 
 ### Fixtures
 
-Fixtures still start on the host (RFD0009). Each run gets them as its sandbox reaches them: the session's `fixtures` when it sets them, otherwise the host addresses. A container on `network: 'fixtures'` gets `fixtures.<name>`, as today. A remote sandbox reaches the host only if it is exposed to it (a tunnel), so a remote kind either maps the addresses or leaves them out. A scenario that needs a fixture its sandbox cannot reach fails at `start`, saying so.
+Fixtures still start on the host (RFD0009). Each run gets them as its sandbox reaches them: the session's `fixtures` when it sets them, otherwise the host addresses. A container on `network: 'fixtures'` gets `fixtures.<name>`, as today. A remote sandbox reaches the host only if it is exposed to it (a tunnel), so a `remote` sandbox either maps the addresses or leaves them out. A scenario that needs a fixture its sandbox cannot reach fails at `start`, saying so.
 
 ### No policy
 
@@ -205,18 +222,18 @@ EvalKit runs the agent inside the sandbox and does not restrict it further: no a
 - `sandbox-exec` is kept as `{ id: 'sandbox-exec', kind: 'sandbox-exec' }`, a record of how an old run ran, with nothing to run it again;
 - `runtime` is dropped.
 
-The share server does the same for stored and incoming runs. Projects change `isolation: container(...)` to `sandbox: container(...)`, or name it in `sandboxes`; the CHANGELOG migration guide says how.
+The share server does the same for stored and incoming runs. Projects replace `isolation: container({ image, network })` with a `defineSandbox({ kind: 'container', image, containerOpts: { network } })` as the config's `sandbox`; the CHANGELOG migration guide says how.
 
 ## Rollout
 
-1. Move `none()` and `container()` behind `defineSandbox` as `host()` and `container()`, and delete `sandboxExec()`, with `mount` and `unmount`, and choose a run's sandbox from the config. Same behaviour as 0.11 for hosts and containers.
+1. Move `none()` and `container()` behind `defineSandbox` as `kind: 'host'` and `kind: 'container'`, and delete `sandboxExec()`, with `mount` and `unmount`, and choose a run's sandbox from the config. Same behaviour as 0.11 for hosts and containers.
 2. Per-scenario `sandbox`, named `sandboxes`, the matrix axis, and per-sandbox concurrency.
 3. Remove `runtimes` and `isolation`, with the upgrade.
 4. A remote sandbox against a real service as the first user, to test the interface: a Cloudflare Sandbox or pi-durable on a Durable Object. It may stay an example rather than a built-in.
 
 ## Drawbacks
 
-- One more concept for small projects. `host()` as the default keeps it invisible until needed.
+- One more concept for small projects. The `host` default keeps it invisible until needed.
 - Copying workspaces in and out of remote sandboxes costs time for large workspaces; `workspace.ignore` (RFD0007) should apply to the upload too.
 - Final scorers that run commands only work while the sandbox is up; a remote sandbox must keep its shell usable until `unmount`.
 
@@ -234,11 +251,11 @@ The share server does the same for stored and incoming runs. Projects change `is
 ## Unresolved questions
 
 - How a remote sandbox authenticates (a token in its definition, read from the environment on the host, never passed to the agent) is up to its definition; the example should show Cloudflare Access.
-- Whether `container()` keeps the bind mount, or copies in and out like a remote kind, so a run cannot write to the host through a symlink.
+- Whether `container` keeps the bind mount, or copies in and out like a remote kind, so a run cannot write to the host through a symlink.
 - Whether the dashboard can start runs in remote sandboxes, or only `evalkit run`.
 
 ## Future possibilities
 
-- Built-in remote kinds for Cloudflare Sandboxes and Durable Objects.
+- Built-in kinds for Cloudflare Sandboxes and Durable Objects, beside `remote`.
 - Fixtures that run in the sandbox, or next to a remote one.
 - Snapshotting a prepared sandbox (a warm image or a hibernated Durable Object) so `start` is instant.
