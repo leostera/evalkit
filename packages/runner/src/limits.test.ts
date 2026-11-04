@@ -117,6 +117,44 @@ test('a run past its step limit is stopped and limited, scored only by partial s
   expect(users).toHaveLength(1);
 });
 
+test("a limited run's graders still run commands in its sandbox", async () => {
+  const dir = await root();
+  const looping = loopingAgent();
+  const outputs: string[] = [];
+  const result = await runOne(
+    runEval(
+      defineEval({
+        ...scenario(looping.agent),
+        limits: { steps: 3 },
+        scoring: [
+          predicate(
+            'builds',
+            async ({ context }) => {
+              // A server the grader starts, as for checking a built service.
+              const server = context.shell.spawn('echo up; sleep 5');
+              const exec = await context.shell.exec('echo graded');
+              outputs.push(exec.stdout.trim());
+              // Still running: the reached limit did not stop it.
+              const settled = await Promise.race([
+                server.wait().then(() => 'exited'),
+                new Promise((resolve) => setTimeout(resolve, 200, 'running')),
+              ]);
+              outputs.push(String(settled));
+              await server.kill();
+              return exec.exitCode === 0 ? 1 : 0;
+            },
+            { supportsPartial: true },
+          ),
+        ],
+      }),
+      { report: localReportStore(dir) },
+    ),
+  );
+  expect(result.status).toBe('limited');
+  expect(result.scoring?.results).toMatchObject([{ name: 'builds', value: 1 }]);
+  expect(outputs).toEqual(['graded', 'running']);
+});
+
 test('the token limit counts uncached tokens; cache reads do not count', async () => {
   const dir = await root();
   // 110 uncached tokens a step (cache reads excluded): the fourth step passes 400.

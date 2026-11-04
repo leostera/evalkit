@@ -178,7 +178,10 @@ export async function openRunSandbox(options: {
   parameters: JsonObject;
   /** The candidate workspace on the host. */
   root: string;
+  /** Cancels the sandbox's start and stop: the invocation's, not the agent's. */
   signal: AbortSignal;
+  /** The default for a command given none: the run's while the agent works, cancellation's while scoring. */
+  commandSignal?: () => AbortSignal;
   fixtures?: FixtureSet;
 }): Promise<RunSandboxHandle> {
   const { sandbox } = options;
@@ -207,7 +210,12 @@ export async function openRunSandbox(options: {
     throw error;
   }
   return {
-    shell: runShell(session.shell, sandbox, mounted),
+    shell: runShell(
+      session.shell,
+      sandbox,
+      mounted,
+      options.commandSignal ?? (() => options.signal),
+    ),
     fixtures: session.fixtures ?? hostFixtures,
     record: runSandboxRecord(sandbox),
     unmount: () => session.unmount(workspace),
@@ -235,13 +243,22 @@ function runShell(
   shell: SandboxShell,
   sandbox: Sandbox,
   mounted: { root: string; home: string },
+  defaultSignal: () => AbortSignal,
 ): Shell {
   return {
     sandbox: { id: sandbox.id, kind: sandbox.kind },
     root: mounted.root,
     home: mounted.home,
-    exec: (command, options) => shell.exec(command, options),
-    spawn: (command, options) => shell.spawn(command, options),
+    exec: (command, options) =>
+      shell.exec(command, {
+        ...options,
+        signal: options?.signal ?? defaultSignal(),
+      }),
+    spawn: (command, options) =>
+      shell.spawn(command, {
+        ...options,
+        signal: options?.signal ?? defaultSignal(),
+      }),
     readFile: (file) => shell.readFile(file),
     writeFile: (file, content) => shell.writeFile(file, content),
     list: (directory) => shell.list(directory),

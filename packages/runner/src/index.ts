@@ -445,6 +445,9 @@ async function runInSandbox(
   // Limits: counted as records are appended; time from the session's start.
   const limitController = new AbortController();
   const runSignal = AbortSignal.any([signal, limitController.signal]);
+  // Commands default to the run's signal while the agent works, and only to
+  // cancellation while scoring: a limited run's checks still run their commands.
+  let commandSignal: AbortSignal = runSignal;
   let reached: LimitReached | undefined;
   let steps = 0;
   let tokens = 0;
@@ -590,7 +593,9 @@ async function runInSandbox(
               evalId: definition.id,
               parameters: options.parameters ?? {},
               root: runWorkspace.artifacts.candidate.root,
-              signal: runSignal,
+              // The sandbox outlives a limit: scoring still uses it.
+              signal,
+              commandSignal: () => commandSignal,
               ...(options.fixtures ? { fixtures: options.fixtures } : {}),
             }),
           catch: (cause) =>
@@ -728,9 +733,12 @@ async function runInSandbox(
   const scoreResults: ScoreResult[] = [];
   const skippedScorers: string[] = [];
   const metrics: MetricResult[] = [];
+  // Scoring is not the agent's turn: a reached limit does not stop it.
+  commandSignal = signal;
+  const scoringRunContext = context ? { ...context, signal } : undefined;
   try {
     await evaluateFinalScorers(definition, {
-      context,
+      context: scoringRunContext,
       workspace,
       agentTranscript: transcript,
       runEvents,
@@ -758,12 +766,12 @@ async function runInSandbox(
         Object.values(transcript.subagents),
       ),
     );
-    if (context && workspace && !wasCancelled)
+    if (scoringRunContext && workspace && !wasCancelled)
       metrics.push(
         ...(await evaluateMetrics(
           definition,
           scoringContext({
-            context,
+            context: scoringRunContext,
             workspace,
             agentTranscript: transcript,
             runEvents,
