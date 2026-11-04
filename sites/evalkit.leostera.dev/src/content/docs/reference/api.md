@@ -88,7 +88,7 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
 - `defineAgent(adapter: AutAdapter)`  
   Checks an adapter and records where it is defined. See [Agents under test](/docs/manual/agents/).
 - `piAgent(options?)`, `codexAgent(options?)`, `opencodeAgent(options?)`, `claudeCodeAgent(options?)`  
-  Coding-agent CLIs as the agent under test, one session per run, each turn through `context.shell` with the message on stdin, the CLI's own session imported through ATXF. `HarnessOptions`: `{ command?, model?, args?, env?, config?: 'private' | 'user', configFiles? }`; `model` may be a function of the run's parameters. `PiOptions` adds `skills`, `appendSystemPrompt` and `tools`; `ClaudeCodeOptions` adds `appendSystemPrompt`; `OpencodeOptions` adds `agent`. See [Coding-agent harnesses](/docs/manual/agents/#coding-agent-harnesses).
+  Coding-agent CLIs as the agent under test, one session per run, each turn through `context.shell` with the message on stdin, the CLI's own session imported through ATXF. `HarnessOptions`: `{ command?, model?, args?, env?, config?: 'private' | 'user', configFiles? }`; `model` may be a function of the run's parameters, and the options a function of the run's `AutContext` (`HarnessOptionsInput`). `PiOptions` adds `skills`, `appendSystemPrompt` and `tools`; `ClaudeCodeOptions` adds `appendSystemPrompt`; `OpencodeOptions` adds `agent`. See [Coding-agent harnesses](/docs/manual/agents/#coding-agent-harnesses).
 - `harnessAgent(spec: HarnessSpec, options: HarnessOptions)`  
   The same for another CLI: `HarnessSpec` is `{ id, name, command, configEnv(dir), newSession?(), argv(turn: HarnessTurn), sessionFromOutput?(stdout), saveSession(turn), toAtxf(text) }`.
 - `agentRuntimes(adapter): AgentRuntimes`  
@@ -132,7 +132,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 ## Datasets
 
 - `defineDataset({ id, files?, value?, valueFile?, visibility?, mount? })` or `defineDataset({ id, onLoad, onRun?, ... })`  
-  Static data, or computed data: `onLoad` runs once per process, `onRun` once per run. See [Datasets](/docs/manual/datasets/).
+  Static data, or computed data: `onLoad` runs once per process, `onRun` once per run, with `{ evalId, runId, batch?, seed, parameters, fixtures, signal }`. See [Datasets](/docs/manual/datasets/).
 - `isDataset(value): value is Dataset`  
   True for values returned by `defineDataset`.
 - `relativeDatasetPath(value, label): string`  

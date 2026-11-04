@@ -5,6 +5,7 @@ import {
   joinPath,
   quoteWord,
   type HarnessOptions,
+  type HarnessOptionsInput,
 } from './harness.js';
 
 export type OpencodeOptions = HarnessOptions & {
@@ -22,8 +23,10 @@ export type OpencodeOptions = HarnessOptions & {
  * directory: put `config/opencode/opencode.json` and
  * `data/opencode/auth.json` in `configFiles`.
  */
-export function opencodeAgent(options: OpencodeOptions = {}): AutAdapter {
-  return harnessAgent(
+export function opencodeAgent(
+  options: HarnessOptionsInput<OpencodeOptions> = {},
+): AutAdapter {
+  return harnessAgent<OpencodeOptions>(
     {
       id: 'opencode',
       name: 'opencode',
@@ -33,7 +36,7 @@ export function opencodeAgent(options: OpencodeOptions = {}): AutAdapter {
         XDG_DATA_HOME: joinPath(configDir, 'data'),
         XDG_STATE_HOME: joinPath(configDir, 'state'),
       }),
-      argv: (turn) => [
+      argv: (turn, options) => [
         turn.command,
         'run',
         '--standalone',

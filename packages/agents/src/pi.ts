@@ -6,6 +6,7 @@ import {
   joinPath,
   quoteWord,
   type HarnessOptions,
+  type HarnessOptionsInput,
 } from './harness.js';
 
 export type PiOptions = HarnessOptions & {
@@ -22,15 +23,17 @@ export type PiOptions = HarnessOptions & {
  * tools, system prompt and context handling, one session per run. Its
  * session file becomes the run's transcript.
  */
-export function piAgent(options: PiOptions = {}): AutAdapter {
-  return harnessAgent(
+export function piAgent(
+  options: HarnessOptionsInput<PiOptions> = {},
+): AutAdapter {
+  return harnessAgent<PiOptions>(
     {
       id: 'pi',
       name: 'Pi',
       command: 'pi',
       configEnv: (configDir) => ({ PI_CODING_AGENT_DIR: configDir }),
       newSession: () => randomUUID(),
-      argv: (turn) => [
+      argv: (turn, options) => [
         turn.command,
         '--print',
         '--session-dir',
@@ -41,6 +44,9 @@ export function piAgent(options: PiOptions = {}): AutAdapter {
           ? // Nothing from the person's setup: what the run gives Pi is all it has.
             [
               '--no-extensions',
+              // --no-extensions also drops built-in MCP support, which reads mcp.json.
+              '-e',
+              'builtin:mcp',
               '--no-skills',
               '--no-prompt-templates',
               '--no-themes',

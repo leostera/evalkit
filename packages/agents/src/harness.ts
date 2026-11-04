@@ -1,6 +1,7 @@
 import {
   defineAgent,
   type AutAdapter,
+  type AutContext,
   type JsonObject,
   type Shell,
 } from '@evalkit/core';
@@ -52,8 +53,15 @@ export type HarnessTurn = {
   first: boolean;
 };
 
+/**
+ * A harness's options, or a function that picks them for each run from
+ * its context: a matrix cell's skills, config files or environment.
+ */
+export type HarnessOptionsInput<O extends HarnessOptions> =
+  O | ((context: AutContext) => O);
+
 /** What a harness needs to say about its CLI. */
-export type HarnessSpec = {
+export type HarnessSpec<O extends HarnessOptions = HarnessOptions> = {
   id: string;
   name: string;
   command: string;
@@ -62,7 +70,7 @@ export type HarnessSpec = {
   /** A session ID to start with, for CLIs that take one. */
   newSession?(): string;
   /** The command for one turn, starting with `turn.command`; the message goes on stdin. */
-  argv(turn: HarnessTurn): string[];
+  argv(turn: HarnessTurn, options: O): string[];
   /** The session ID the CLI printed, for CLIs that pick their own. */
   sessionFromOutput?(stdout: string): string | undefined;
   /**
@@ -82,26 +90,27 @@ export type HarnessSpec = {
  * After each turn it imports the CLI's own session record through ATXF,
  * so the run's transcript has every message, tool call and token count.
  */
-export function harnessAgent(
-  spec: HarnessSpec,
-  options: HarnessOptions,
+export function harnessAgent<O extends HarnessOptions>(
+  spec: HarnessSpec<O>,
+  input: HarnessOptionsInput<O>,
 ): AutAdapter {
-  const command = options.command ?? spec.command;
+  // What is known before a run; options picked per run are recorded by each run's transcript.
+  const fixed = typeof input === 'function' ? undefined : input;
   return defineAgent({
     identity: { name: spec.name, kind: 'process', id: spec.id },
     runtimes: {
       local: {
         kind: 'process',
         configuration: {
-          command,
-          ...(typeof options.model === 'string'
-            ? { model: options.model }
-            : {}),
-          config: options.config ?? 'private',
+          command: fixed?.command ?? spec.command,
+          ...(typeof fixed?.model === 'string' ? { model: fixed.model } : {}),
+          ...(fixed ? { config: fixed.config ?? 'private' } : {}),
         },
       },
     },
     async start({ context, transcript, attach }) {
+      const options = typeof input === 'function' ? input(context) : input;
+      const command = options.command ?? spec.command;
       const { shell } = context;
       const stateDir = joinPath(shell.home, spec.id);
       const configDir =
@@ -142,7 +151,7 @@ export function harnessAgent(
             first: turns === 0,
           };
           turns += 1;
-          const argv = [...spec.argv(turn), ...(options.args ?? [])];
+          const argv = [...spec.argv(turn, options), ...(options.args ?? [])];
           const result = await shell.exec(argv, { input: message, env });
           log.push(
             `$ ${argv.join(' ')}  # turn ${turns}, exit ${result.exitCode}`,

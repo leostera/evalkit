@@ -347,12 +347,15 @@ async function runOnce(
   let datasetsError: unknown;
   let prepared: PreparedDataset[] = [];
   try {
+    // Fixtures start first: a dataset's onRun may seed one.
+    await options.fixtures?.ensure();
     prepared = await prepareDatasets(definition.datasets ?? [], root, {
       evalId: baseContext.evalId,
       runId,
       ...(batch ? { batch } : {}),
       seed: randomSeed,
       parameters: options.parameters ?? {},
+      fixtures: options.fixtures?.addresses(none()) ?? {},
       signal,
     });
   } catch (error) {

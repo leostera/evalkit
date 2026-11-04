@@ -125,7 +125,7 @@ echo Done.`,
     const argvs = calls.split('\n').filter((line) => line.startsWith('argv:'));
     expect(argvs).toHaveLength(2);
     expect(argvs[0]).toContain('--print');
-    expect(argvs[0]).toContain('--no-extensions');
+    expect(argvs[0]).toContain('--no-extensions -e builtin:mcp');
     expect(argvs[0]).toContain('--model anthropic/claude-sonnet-4-5');
     expect(argvs[0]).toContain('--skill /skills/review');
     // The same session both turns.
@@ -249,6 +249,28 @@ echo Done.`,
       ]);
     },
   );
+
+  test('options may be picked per run from its context', async () => {
+    const dir = await root();
+    const command = await fakeCli(
+      dir,
+      `WANT=--session-dir; sessions=$(arg "$@")
+WANT=--session-id; id=$(arg "$@")
+mkdir -p "$sessions" && cp "$FIXTURES/pi.jsonl" "$sessions/x_$id.jsonl"
+echo Done.`,
+    );
+    const { result, calls } = await runTwoTurns(
+      piAgent((context) => ({
+        command,
+        skills: [`/skills/${String(context.parameters?.model)}`],
+        env: { FAKE_SECRET: context.runId },
+      })),
+      dir,
+    );
+    expect(result.status).toBe('passed');
+    expect(calls).toContain('--skill /skills/anthropic/claude-sonnet-4-5');
+    expect(calls).toContain(`secret: ${result.runId}`);
+  });
 
   test('a failing CLI fails the run with its error, keeping what it did', async () => {
     const dir = await root();

@@ -1,5 +1,6 @@
 import { authorId } from './identity.js';
 import type { Batch, JsonObject } from './index.js';
+import type { FixtureAddress } from './isolation.js';
 import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);
@@ -38,6 +39,8 @@ export type DatasetRunContext = {
   seed: number;
   /** The matrix cell's parameters, or `{}`. */
   parameters: JsonObject;
+  /** The project's fixtures, already started, as the host reaches them. */
+  fixtures: Record<string, FixtureAddress>;
   signal: AbortSignal;
 };
 

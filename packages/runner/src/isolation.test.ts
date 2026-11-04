@@ -7,6 +7,7 @@ import { Effect } from 'effect';
 import {
   container,
   defineAgent,
+  defineDataset,
   defineEval,
   predicate,
   user,
@@ -139,6 +140,52 @@ test('fixtures start with the first run and their output is attached to it', asy
         'utf8',
       ),
     ).toBe('store up\n');
+  } finally {
+    await fixtures.stop();
+  }
+});
+
+test("fixtures are up before datasets load, so a dataset's onRun can seed one", async () => {
+  const dir = await root();
+  await writeFile(
+    join(dir, 'store.ts'),
+    "Bun.serve({ port: 18792, fetch: () => new Response('seeded') });",
+  );
+  const fixtures = fixtureSet(
+    {
+      store: {
+        start: `${process.execPath} store.ts`,
+        ready: 'http://localhost:18792/',
+      },
+    },
+    { root: dir },
+  );
+  const seeded = defineDataset({
+    id: 'seeded',
+    onLoad: () => ({ value: '' }),
+    onRun: async (_loaded, run) => ({
+      value: await (await fetch(run.fixtures.store!.url)).text(),
+    }),
+  });
+  const scenario_ = defineEval({
+    id: 'seeds',
+    agent: shellAgent,
+    datasets: [seeded],
+    transcript: [user('hello')],
+    scoring: [
+      predicate('saw the seed', ({ data }) => data.seeded === 'seeded'),
+    ],
+  });
+  try {
+    const [result] = await Effect.runPromise(
+      runEval(scenario_, {
+        report: localReportStore(join(dir, 'reports')),
+        workspaceRoot: join(dir, 'sandbox'),
+        root: dir,
+        fixtures,
+      }),
+    );
+    expect(result!.status).toBe('passed');
   } finally {
     await fixtures.stop();
   }

@@ -99,7 +99,14 @@ export function sandboxProfile(options: {
 }): string {
   // <sandboxDir>/<run>/candidate: every run's workspaces, and this run's evaluator one.
   const runs = path.dirname(path.dirname(options.workspace));
-  const denied = [options.projectRoot, homedir(), runs, ...(options.deny ?? [])]
+  // Every project's runs in the default place, and this project's wherever they are.
+  const denied = [
+    options.projectRoot,
+    homedir(),
+    path.join(real(tmpdir()), 'evalkit'),
+    runs,
+    ...(options.deny ?? []),
+  ]
     .map((file) => `(subpath ${quote(file)})`)
     .join(' ');
   const usable = [options.workspace, ...options.allow]

@@ -1,6 +1,11 @@
 import type { AutAdapter } from '@evalkit/core';
 import codex from '@leostera/atxf/codex';
-import { harnessAgent, quoteWord, type HarnessOptions } from './harness.js';
+import {
+  harnessAgent,
+  quoteWord,
+  type HarnessOptions,
+  type HarnessOptionsInput,
+} from './harness.js';
 
 export type CodexOptions = HarnessOptions;
 
@@ -10,8 +15,10 @@ export type CodexOptions = HarnessOptions;
  * `sandboxExec()`), one session per run. Its rollout file becomes the
  * run's transcript.
  */
-export function codexAgent(options: CodexOptions = {}): AutAdapter {
-  return harnessAgent(
+export function codexAgent(
+  options: HarnessOptionsInput<CodexOptions> = {},
+): AutAdapter {
+  return harnessAgent<CodexOptions>(
     {
       id: 'codex',
       name: 'Codex',

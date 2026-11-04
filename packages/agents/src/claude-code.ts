@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { AutAdapter } from '@evalkit/core';
 import claudeCode from '@leostera/atxf/claude-code';
-import { harnessAgent, quoteWord, type HarnessOptions } from './harness.js';
+import {
+  harnessAgent,
+  quoteWord,
+  type HarnessOptions,
+  type HarnessOptionsInput,
+} from './harness.js';
 
 export type ClaudeCodeOptions = HarnessOptions & {
   /** Text appended to Claude Code's system prompt (`--append-system-prompt`). */
@@ -13,15 +18,17 @@ export type ClaudeCodeOptions = HarnessOptions & {
  * (EvalKit's isolation is the sandbox), one session per run. Its session
  * file becomes the run's transcript.
  */
-export function claudeCodeAgent(options: ClaudeCodeOptions = {}): AutAdapter {
-  return harnessAgent(
+export function claudeCodeAgent(
+  options: HarnessOptionsInput<ClaudeCodeOptions> = {},
+): AutAdapter {
+  return harnessAgent<ClaudeCodeOptions>(
     {
       id: 'claude-code',
       name: 'Claude Code',
       command: 'claude',
       configEnv: (configDir) => ({ CLAUDE_CONFIG_DIR: configDir }),
       newSession: () => randomUUID(),
-      argv: (turn) => [
+      argv: (turn, options) => [
         turn.command,
         '--print',
         '--output-format',

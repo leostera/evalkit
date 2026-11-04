@@ -81,7 +81,7 @@ export const tickets = defineDataset({
 });
 ```
 
-The run context has `evalId`, `runId`, `batch` (when the run is one of several repeats), a per-run `seed`, the cell's `parameters` (or `{}`), and an abort `signal`. Without `onRun`, every run gets the loaded content as is.
+The run context has `evalId`, `runId`, `batch` (when the run is one of several repeats), a per-run `seed`, the cell's `parameters` (or `{}`), the project's `fixtures` as `{ url }` on the host (already started, so `onRun` can seed one, such as creating a run's repositories in a local service), and an abort `signal`. Without `onRun`, every run gets the loaded content as is.
 
 ## Who sees what
 

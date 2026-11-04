@@ -19,6 +19,7 @@ export function agentsSdk(_options: AgentsSdkAutOptions): AutAdapter {
 export {
   harnessAgent,
   type HarnessOptions,
+  type HarnessOptionsInput,
   type HarnessSpec,
   type HarnessTurn,
 } from './harness.js';

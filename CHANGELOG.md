@@ -4,6 +4,18 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-04
+
+### Fixed
+
+- **`piAgent()` with a private config connects MCP servers.** `--no-extensions` also turned off Pi's built-in MCP support, so an `mcp.json` in `configFiles` was ignored and Pi ran without those tools. It now also passes `-e builtin:mcp`. Runs of 0.11.0 that relied on Pi's MCP servers ran without them; run them again.
+- **The sandbox hides other projects' runs.** `sandboxExec()` denied this project's runs but not other projects' in `$TMPDIR/evalkit`; it now denies all of it.
+- **Fixtures start before datasets load.** A dataset's `onRun` gets the project's `fixtures` (as `{ url }` on the host), already started, so it can seed a run's data in one.
+
+### Added
+
+- **Harness options per run:** `piAgent((context) => ({ ... }))`, and the same for every harness, picks skills, config files or environment from the run's parameters or data.
+
 ## [0.11.0] - 2026-11-04
 
 Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, stop at the limits you declare, and can run in a container of their own. Pi, Codex, opencode and Claude Code can be the agent under test as they ship.

@@ -223,6 +223,14 @@ describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
     await mkdir(toolchain, { recursive: true });
     await writeFile(path.join(state, 'db.json'), 'secret state');
     await writeFile(path.join(toolchain, 'tool.txt'), 'tool');
+    const otherRun = path.join(
+      tmpdir(),
+      'evalkit',
+      `other-project-${crypto.randomUUID()}`,
+      'secret.txt',
+    );
+    await mkdir(path.dirname(otherRun), { recursive: true });
+    await writeFile(otherRun, 'secret');
     process.env.EVALKIT_TEST_SECRET = 'leaked';
     process.env.EVALKIT_TEST_KEY = 'passed';
     const shell = await sandboxShell({
@@ -248,6 +256,8 @@ describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
           .stdout,
       ).toBe('s\n');
       expect((await shell.exec('echo $PWD')).stdout.trim()).toBe(workspace);
+      // Another project's runs, in the default place.
+      expect((await shell.exec(`cat ${otherRun}`)).exitCode).not.toBe(0);
       expect(
         (await shell.exec(`echo x > ${path.join(toolchain, 'new.txt')}`))
           .exitCode,
@@ -261,6 +271,7 @@ describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
       expect(env.stdout.trim()).toBe('passed:none:on');
     } finally {
       await shell.close();
+      await rm(path.dirname(otherRun), { recursive: true, force: true });
       delete process.env.EVALKIT_TEST_SECRET;
       delete process.env.EVALKIT_TEST_KEY;
     }
