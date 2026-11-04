@@ -4,6 +4,10 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-04
+
+Container sandboxes can share the host's network and take any `docker run` arguments, and a limited run's graders can run commands. Nothing to migrate.
+
 ### Added
 
 - **`network: 'host'` for container sandboxes.** The container shares the host's network: the host's `localhost` is the container's, so a run reaches services on the host, and a server it starts is reachable from the host. Fixtures are at `localhost`.
