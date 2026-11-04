@@ -1,7 +1,7 @@
 # RFD0010 - Sandboxes
 
 - Feature Name: `sandboxes`
-- Status: Draft
+- Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-11-04`
 - Updated: `2026-11-04`
