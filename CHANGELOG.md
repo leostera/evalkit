@@ -4,6 +4,10 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+
+- **`evalkit upgrade` reports the 0.11 runs it upgrades.** It converted them, but printed "0 runs upgraded" and "Every run is already in the current format". It now counts every run it brought to the current version and says how many record their sandbox.
+
 ## [0.12.0] - 2026-11-04
 
 ### Added
