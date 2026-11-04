@@ -174,7 +174,7 @@ bun run evalkit run --matrix styles
 bun run evalkit run --matrix styles --eval greeting --select style=shout
 ```
 
-A selected parameter only affects the AUT when its adapter reads and applies it. The built-in `piAgent()` does not automatically switch models based on a `model` parameter. Cell keys and effective parameters are saved with the reports.
+A selected parameter only affects the AUT when its adapter reads and applies it. The built-in harnesses take one with `model: ({ model }) => String(model)`. Cell keys and effective parameters are saved with the reports.
 
 Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 

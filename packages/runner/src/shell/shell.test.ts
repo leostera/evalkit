@@ -20,20 +20,51 @@ const alive = (pid: number) => {
 
 let root: string;
 let workspace: string;
+let home: string;
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'evalkit-shell-'));
   // <sandboxDir>/<run>/candidate, as the runner lays it out.
   workspace = path.join(root, 'runs', 'run-1', 'candidate');
+  home = path.join(root, 'runs', 'run-1', 'home');
   await mkdir(workspace, { recursive: true });
+  await mkdir(home, { recursive: true });
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
 describe('host shell', () => {
+  test('home is a private directory beside the workspace, reachable by path', async () => {
+    const shell = hostShell({
+      root: workspace,
+      home,
+      signal: new AbortController().signal,
+    });
+    try {
+      expect(shell.home).toBe(home);
+      await shell.writeFile(path.join(home, 'cli', 'config.json'), '{}');
+      expect(
+        await readFile(path.join(home, 'cli', 'config.json'), 'utf8'),
+      ).toBe('{}');
+      expect(await shell.list(home)).toEqual(['cli/']);
+      // $PWD is the command's directory, not EvalKit's.
+      expect((await shell.exec('echo $PWD')).stdout.trim()).toBe(workspace);
+      expect((await shell.exec(`cat ${home}/cli/config.json`)).stdout).toBe(
+        '{}',
+      );
+      await expect(shell.readFile('/etc/hosts')).rejects.toThrow('outside');
+      await expect(
+        shell.readFile(path.join(home, '..', 'evaluator', 'x')),
+      ).rejects.toThrow('outside');
+    } finally {
+      await shell.close();
+    }
+  });
+
   test('runs strings with sh and arrays as they are, in the workspace', async () => {
     const shell = hostShell({
       root: workspace,
+      home,
       signal: new AbortController().signal,
     });
     try {
@@ -58,7 +89,7 @@ describe('host shell', () => {
 
   test('stops a command at its timeout or when the run aborts', async () => {
     const run = new AbortController();
-    const shell = hostShell({ root: workspace, signal: run.signal });
+    const shell = hostShell({ root: workspace, home, signal: run.signal });
     try {
       expect(await shell.exec('sleep 30', { timeoutMs: 100 })).toMatchObject({
         exitCode: 124,
@@ -75,6 +106,7 @@ describe('host shell', () => {
   test('a spawned process streams its output and stops with kill', async () => {
     const shell = hostShell({
       root: workspace,
+      home,
       signal: new AbortController().signal,
     });
     try {
@@ -94,6 +126,7 @@ describe('host shell', () => {
   test('closing stops what the run left running, background children too', async () => {
     const shell = hostShell({
       root: workspace,
+      home,
       signal: new AbortController().signal,
     });
     const left = await shell.exec('sleep 30 > /dev/null 2>&1 & echo $!');
@@ -108,6 +141,7 @@ describe('host shell', () => {
   test('reads, writes and lists files in the workspace, and nowhere else', async () => {
     const shell = hostShell({
       root: workspace,
+      home,
       signal: new AbortController().signal,
     });
     try {
@@ -118,7 +152,7 @@ describe('host shell', () => {
       await expect(shell.readFile('../evaluator/answer.txt')).rejects.toThrow(
         'outside the run',
       );
-      await expect(shell.readFile('/etc/hosts')).rejects.toThrow('relative');
+      await expect(shell.readFile('/etc/hosts')).rejects.toThrow('outside');
       await expect(shell.exec('pwd', { cwd: '..' })).rejects.toThrow('outside');
     } finally {
       await shell.close();
@@ -138,6 +172,7 @@ describe.if(process.platform === 'darwin')('sandbox-exec shell', () => {
     const shell = await sandboxShell({
       isolation: sandboxExec(),
       root: workspace,
+      home,
       projectRoot: project,
       signal: new AbortController().signal,
     });
@@ -197,6 +232,7 @@ describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
         env: ['EVALKIT_TEST_KEY'],
       }),
       root: workspace,
+      home,
       projectRoot: project,
       signal: new AbortController().signal,
     });
@@ -207,6 +243,11 @@ describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
       expect(
         (await shell.exec(`cat ${path.join(toolchain, 'tool.txt')}`)).stdout,
       ).toBe('tool');
+      expect(
+        (await shell.exec(`echo s > ${home}/s.txt && cat ${home}/s.txt`))
+          .stdout,
+      ).toBe('s\n');
+      expect((await shell.exec('echo $PWD')).stdout.trim()).toBe(workspace);
       expect(
         (await shell.exec(`echo x > ${path.join(toolchain, 'new.txt')}`))
           .exitCode,
@@ -238,6 +279,7 @@ describe.if(hasDocker)('container shell', () => {
       isolation: container({ image: 'busybox:stable' }),
       runId: `test-${crypto.randomUUID()}`,
       root: workspace,
+      home,
       projectRoot: root,
       signal: new AbortController().signal,
     });
@@ -257,6 +299,17 @@ describe.if(hasDocker)('container shell', () => {
       expect(
         (await shell.exec('ls /workspace/../evaluator')).exitCode,
       ).not.toBe(0);
+      // The private home, mounted read-write.
+      expect(shell.home).toBe('/evalkit-home');
+      await shell.exec(
+        'mkdir -p /evalkit-home/cli && echo session > /evalkit-home/cli/s.jsonl',
+      );
+      expect(await shell.readFile('/evalkit-home/cli/s.jsonl')).toBe(
+        'session\n',
+      );
+      expect(await readFile(path.join(home, 'cli', 's.jsonl'), 'utf8')).toBe(
+        'session\n',
+      );
       // network: 'none'
       expect(
         (await shell.exec('wget -q -T 2 -O- http://example.com')).exitCode,
@@ -305,6 +358,7 @@ describe.if(hasDocker)('container shell', () => {
         isolation,
         runId: `test-${crypto.randomUUID()}`,
         root: workspace,
+        home,
         projectRoot: root,
         signal: new AbortController().signal,
         fixturesNetwork: await fixtures.network('docker'),

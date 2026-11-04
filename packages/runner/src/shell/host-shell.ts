@@ -5,7 +5,7 @@ import {
   ProcessTracker,
   startLocalProcess,
 } from './local-process.js';
-import { insideWorkspace, workspaceFiles } from './workspace-files.js';
+import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /** A string runs with `sh -c`; an array runs as it is. */
 export function argv(command: string | readonly string[]): string[] {
@@ -17,6 +17,8 @@ export function argv(command: string | readonly string[]): string[] {
 export type HostShellOptions = {
   /** The candidate workspace on the host. */
   root: string;
+  /** The run's private home on the host. */
+  home: string;
   /** The run's signal, the default for every command. */
   signal: AbortSignal;
 };
@@ -61,7 +63,12 @@ export function hostShell(options: HostShellOptions): ClosableShell {
     exec: async (command, commandOptions) =>
       collect(start(command, commandOptions)),
     spawn: (command, commandOptions) => start(command, commandOptions),
-    ...workspaceFiles(options.root),
+    ...shellFiles({
+      root: options.root,
+      seenRoot: options.root,
+      home: options.home,
+      seenHome: options.home,
+    }),
     async close() {
       await tracker.close();
       // Children a finished command left running in its group.

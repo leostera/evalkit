@@ -6,7 +6,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [0.11.0] - 2026-11-04
 
-Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, stop at the limits you declare, and can run in a container of their own.
+Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, stop at the limits you declare, and can run in a container of their own. Pi, Codex, opencode and Claude Code can be the agent under test as they ship.
 
 ### Breaking: runs record an ATXF transcript
 
@@ -26,14 +26,22 @@ Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcrip
 - **`policy.timeoutMs` is gone**; it was never enforced. Use `limits: { time }`. A scenario that still sets it fails with a message saying so.
 - **`--max-tokens`, `--turn-budget` and `--chat-timeout-ms` are gone.** They only set unenforced parameters; use `--limit`, or `--param` for a value your adapter reads.
 
+### Breaking: coding agents run as they ship
+
+- **`piAgent()`, `codexAgent()`, `opencodeAgent()` and `claudeCodeAgent()`** run those CLIs with their own tools, system prompts and context handling, one session per run. Each user message is one invocation through `context.shell`, with the message on stdin, and the CLI's own session record is imported through ATXF after each turn, so tool calls, tokens and steps are in the transcript and count toward limits, even when a run fails or is stopped.
+- **They start from a private, empty config**, in the run's private home: your extensions, skills, instructions and logins never reach the agent. Give it a provider with `configFiles` and `env`, or use your own with `config: 'user'`.
+- `model` takes a string or a function of the run's parameters, for a matrix model axis.
+- `harnessAgent(spec, options)` adds another CLI.
+- **`piAgent()` changed:** it had no tools, no session and your own config. Pass `tools: false` for a tool-less Pi, such as a judge, and `config: 'user'` for your own setup. `args` is still added to every turn.
+
 ### Added: isolation and fixtures
 
 - **`context.shell`** runs a run's commands: `exec`, `spawn` for long-lived processes, and `readFile`, `writeFile` and `list` on the workspace. Adapters and scorers share it, commands stop at a limit, and everything it started is stopped when the run ends, background children included. Without isolation it runs on the host, as adapters did before.
 - **`isolation: container({ image, network })`** gives each run its own container through the `docker` CLI (Docker Desktop, OrbStack, Colima, Rancher Desktop or podman): the candidate workspace at `/workspace`, the evaluator workspace never mounted, its own process table so a `pkill` reaches only that run, and `network: 'none'` by default. A Dockerfile is built once per invocation and reused while unchanged. Containers of runs that did not pass are kept, stopped, with their workspaces, and `evalkit tidy` removes them.
 - **`isolation: sandboxExec({ allow, read, deny, env })`** confines runs on macOS without containers: no reading or writing the project, the home directory, other runs or `deny`, except read-write `allow` and read-only `read` holes; signals only within the run; and with `env`, a scrubbed environment.
 - **`fixtures`** in the config start services on the host before the first run and stop them after the last. Runs find them in `context.fixtures`; a container on `network: 'fixtures'` reaches them as `fixtures.<name>` and nothing else. Their output is attached to each run.
+- **`context.shell.home`** is the run's private directory outside the workspace (`/evalkit-home` in a container), for an agent CLI's config and sessions; it is never snapshotted.
 - The manifest records each run's isolation, and the run page shows it.
-- `piAgent()` runs Pi through `context.shell`, so it runs in the container with container isolation, and sends the message on stdin: Pi 1.3 is killed when a message argument reaches about 900 characters.
 - Dashboard runs now apply the config's `limits`, as `evalkit run` does.
 
 ### Migrating from 0.10
@@ -45,8 +53,11 @@ Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcrip
 5. Replace `policy: { timeoutMs }` with `limits: { time }`, and the removed CLI flags with `--limit`.
 6. The `tokens` metric drops for runs that read from a prompt cache; compare old and new runs on `tokens` plus `cached tokens`.
 7. Redeploy a share server, then call `POST /api/v1/upgrade` to convert stored runs.
+8. `piAgent()` now runs Pi with tools and a private config: pass `config: 'user'` to keep using your Pi setup, and `tools: false` where Pi judges.
 
 ### Fixed
+
+- **Commands run in their own directory.** `context.shell` sets `$PWD` to each command's working directory; programs that trust `$PWD` (opencode does) worked in the directory EvalKit was started from instead of the run's workspace.
 
 - **The hint after a run uses your package manager.** It says `pnpm run evalkit dev` in a pnpm project (or yarn, or `npm run evalkit -- dev`), from the manager that started the run or the nearest lockfile, instead of always `bun run`.
 - **Overriding a matrix axis says how to pick it.** `--param model=…` on a matrix axis now answers "model is a matrix axis: pick its value with -a model=<value> (--select), not --param". `run --help` shows running one cell.

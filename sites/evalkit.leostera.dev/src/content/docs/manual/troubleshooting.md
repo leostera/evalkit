@@ -16,7 +16,7 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 ## Running and scoring
 
 - **Dataset files missing or overwritten:** dataset paths are relative to the project root, not to the dataset's file, and files go below a directory named after the dataset unless `mount` says otherwise. Two datasets in one scenario cannot write the same file. `uses fixtures, which were replaced by datasets` means a 0.5 scenario still passes `fixtures`; see the [migration guide](https://github.com/leostera/evalkit/blob/main/CHANGELOG.md). [Datasets](/docs/manual/datasets/)
-- **Pi exits or is missing:** The starter's `greeting` eval is provider-free; its Pi evals need an installed `pi` command and configured model access. `piAgent()` invokes `--print --no-session --no-tools` **once per message**, so it does not preserve a conversation. Pi model arguments belong in `piAgent({ args: [...] })` or Pi configuration; `--model` does not configure this adapter. [Agents under test](/docs/manual/agents/#built-in-and-custom-integrations)
+- **A coding agent exits at once, or finds no model:** the harnesses start with a private, empty config, so the CLI has none of your logins or providers. Give it what it needs with `configFiles` and `env`, or use your own with `config: 'user'` (which isolation hides unless you open it with `sandboxExec({ read })`). The CLI's output is in the run's `logs/<id>.log`. The starter's Pi evals use `config: 'user'`. [Coding-agent harnesses](/docs/manual/agents/#coding-agent-harnesses)
 - **No answer in the transcript:** return the reply from `send()` (a string, or `{ reply }`), or write it with `transcript.assistant(...)`. Use `output` in scorers for the final reply. [Agents](/docs/manual/agents/#implement-an-adapter)
 - **`completed` run, but a failing eval or nonzero exit:** Execution status and scoring pass/fail are separate. Read `scoring.json` for `passed: false`, errors, and numeric values, then use the CLI exit status or run `summary.failed` for a gate. A score below 1 does not pass unless the predicate has `passAt` or sets `passed: true`. [Score semantics](/docs/manual/scoring-and-evals/#score-return-values)
 - **Invalid score / scorer error:** Return a finite value between 0 and 1, or `skip(reason)`; `evidence` must convert to JSON (no functions, `bigint` or cycles). Predicate exceptions are captured as failed scores; other scorers can still execute. With a failed AUT, only final predicates or judges marked `supportsPartial: true` can run if a context/workspace exists. [Partial errors](/docs/manual/scoring-and-evals/#partial-execution-and-errors)
@@ -33,13 +33,13 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 
 ## Current limitations
 
-| Declared feature                                 | Current behavior                                                                                                             |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `agent(...)` transcript step                     | Typed but not executable; inserting it into a transcript fails run execution.                                                |
-| Implicit judge agent                             | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT. |
-| `agentsSdk()`                                    | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.              |
-| `piAgent()` conversation and parameter selection | One new, tool-free Pi process per message. Does not read `context.parameters` for a model or budget.                         |
-| npm release                                      | Install `@leostera/evalkit` from npm; run `bunx @leostera/evalkit new ./evals` for a standalone project.                     |
-| Hosted sync or automatic report versioning       | No automatic sharing, upload, or Git commit for local report/sandbox files.                                                  |
+| Declared feature                           | Current behavior                                                                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `agent(...)` transcript step               | Typed but not executable; inserting it into a transcript fails run execution.                                                |
+| Implicit judge agent                       | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT. |
+| `agentsSdk()`                              | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.              |
+| Claude Code harness                        | `claudeCodeAgent()` is tested against recorded sessions, not a live Claude Code install.                                     |
+| npm release                                | Install `@leostera/evalkit` from npm; run `bunx @leostera/evalkit new ./evals` for a standalone project.                     |
+| Hosted sync or automatic report versioning | No automatic sharing, upload, or Git commit for local report/sandbox files.                                                  |
 
 For implementation details, consult the [core API](https://github.com/leostera/evalkit/blob/main/packages/core/src/index.ts), [runner](https://github.com/leostera/evalkit/blob/main/packages/runner/src/index.ts), and [CLI project loader](https://github.com/leostera/evalkit/blob/main/packages/cli/src/project.ts).

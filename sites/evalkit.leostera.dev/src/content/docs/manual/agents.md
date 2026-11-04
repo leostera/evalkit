@@ -90,7 +90,7 @@ Record the **actual** calls, results and usage your integration observes, never 
 
 ### Agents with their own session files
 
-ATXF converts the session files of several coding agents (Pi, Claude Code, Codex, Gemini CLI, OpenCode). For those, convert the agent's session after each turn and import it: records already imported are skipped, and the native records are kept.
+For Pi, Codex, opencode and Claude Code, use the [built-in harnesses](#coding-agent-harnesses), which do this for you. ATXF also converts Gemini CLI sessions. For an agent ATXF converts, convert the agent's session after each turn and import it: records already imported are skipped, and the native records are kept.
 
 ```ts
 import { readFile } from 'node:fs/promises';
@@ -163,7 +163,9 @@ async start({ context, transcript }) {
 
 - `exec(command, { cwd?, env?, input?, timeoutMs?, signal? })` runs a command to its end and resolves to `{ stdout, stderr, exitCode, signal?, timedOut? }`. A string runs with `sh -c`; an array runs as it is. A command that cannot start exits 127, a timeout 124.
 - `spawn(command, options)` starts a long-lived process, such as a server: `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Its output is always read, so a process nobody reads never blocks.
-- `readFile(path)`, `writeFile(path, content)` and `list(path?)` work on the workspace, by relative path; a path that leaves it is an error.
+- `home` is the run's private directory, outside the workspace (`/evalkit-home` in a container): for an agent CLI's config and session files. It is not in the workspace snapshot, and is removed with the run.
+- `readFile(path)`, `writeFile(path, content)` and `list(path?)` work on the workspace by relative path, or on the workspace or `home` by absolute path; any other path is an error.
+- Commands run with `$PWD` set to their working directory.
 - Commands stop when the run reaches a limit or is cancelled (they default to `context.signal`), and everything the shell started is stopped when the run ends, background children included.
 
 The project chooses where in `evalkit.config.ts`:
@@ -246,11 +248,50 @@ If `start()`, `send()`, or `close()` throws, the runner records an error, closes
 
 ## Built-in and custom integrations
 
-`piAgent({ command?, args? })` (from `@evalkit/agents` inside this monorepo, or `@leostera/evalkit` from npm in standalone projects) invokes the local `pi` command in the candidate workspace. For **each** `send()`, it runs `pi --print --no-session --no-tools ...args` with the message on stdin, emits the trimmed stdout as an assistant message, and reports a nonzero exit as an error. It runs through `context.shell`, so with container isolation Pi must be in the image. It neither maintains a Pi conversation across messages nor reads `context.parameters` for a model. Configure Pi separately; use `args` for explicit non-secret CLI arguments. See the [starter Pi adapter](https://github.com/leostera/evalkit/blob/main/examples/starter/agents/pi-agent.ts).
+### Coding-agent harnesses
+
+EvalKit runs four coding agents as they ship, with their own tools, system prompts and context handling. Import them from `@leostera/evalkit` (or `@evalkit/agents` inside this monorepo):
+
+| Adapter             | Runs                                                                                                | Its transcript             |
+| ------------------- | --------------------------------------------------------------------------------------------------- | -------------------------- |
+| `piAgent()`         | `pi --print`                                                                                        | Pi's session file          |
+| `codexAgent()`      | `codex exec --json`, with approvals and Codex's own sandbox off: EvalKit's isolation is the sandbox | Codex's rollout            |
+| `opencodeAgent()`   | `opencode run --standalone --auto`, with a private server per command                               | `opencode session export`  |
+| `claudeCodeAgent()` | `claude --print --dangerously-skip-permissions`                                                     | Claude Code's session file |
+
+```ts
+import { defineEval, piAgent, user } from '@leostera/evalkit';
+
+export default defineEval({
+  id: 'fix-the-bug',
+  agent: piAgent({
+    model: ({ model }) => String(model), // from the matrix cell, or a string
+    configFiles: { 'models.json': await Bun.file('pi/models.json').text() },
+    env: { MY_PROVIDER_API_KEY: process.env.MY_PROVIDER_API_KEY ?? '' },
+  }),
+  transcript: [user('The tests in test/ fail. Fix the bug.')],
+  scoring: [/* … */],
+});
+```
+
+Each run is one session: every user message is one invocation of the CLI, through `context.shell`, with the message on stdin, continuing the run's session. After each turn the adapter imports the CLI's own session record through ATXF, so the run's transcript has every message, tool call, token count and step, and limits apply to them. Before failing or being stopped by a limit, what the agent did is still imported. The CLI's output is attached as `logs/<id>.log`.
+
+Every harness takes these options:
+
+- `command`: the CLI to run (`pi`, `codex`, `opencode`, `claude` by default). With container isolation it must be in the image.
+- `model`: in the CLI's own syntax, or a function of the run's parameters, for a [matrix](/docs/manual/cli-and-matrices/) model axis.
+- `args`: more arguments for every turn.
+- `env`: environment variables for the CLI, such as an API key or proxy settings.
+- `config`: `'private'` (the default) points the CLI at a new, empty config directory in the run's private home (`context.shell.home`). Your extensions, skills, instructions and logins never reach the agent, and every run starts the same. `'user'` uses your own config instead, which isolation usually hides: open it with `sandboxExec({ read })`, and expect your setup to change what you measure.
+- `configFiles`: files to write into the private config directory before the first turn, by relative path, such as a provider's settings. The agent can read them, so give it credentials it cannot use elsewhere, or point the CLI at a proxy that adds them.
+
+Each CLI's private config directory is its usual one: `PI_CODING_AGENT_DIR` (`auth.json`, `models.json`, `settings.json`), `CODEX_HOME` (`config.toml`, `auth.json`), `CLAUDE_CONFIG_DIR`, and for opencode `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` below it (`config/opencode/opencode.json`, `data/opencode/auth.json`). With a private config, Pi also runs with `--no-extensions --no-skills --no-prompt-templates --no-themes`. Context files in the workspace, such as an `AGENTS.md` the task provides, are still read.
+
+More options: `piAgent({ skills, appendSystemPrompt, tools: false })` (`tools: false` for a tool-less Pi, such as for a judge), `claudeCodeAgent({ appendSystemPrompt })` and `opencodeAgent({ agent })`. For another CLI, `harnessAgent(spec, options)` takes a `HarnessSpec`: its config variables, each turn's command line, how to find its session, and its ATXF converter.
 
 ### Evaluating tool-assisted agents
 
-The built-in `piAgent()` disables tools, so it cannot measure whether an agent finds or uses live MCP resources. For a live-tool experiment, implement a custom adapter that explicitly configures the intended MCP server/tools and records the tool calls and results it observes. `expectToolCall(...)` asserts that an adapter recorded a matching call; it does not invoke a tool, prove the result was correct, or prove the final answer used it. Score both the retrieval/action and the task outcome.
+The harnesses above record the tool calls the agent made from its own session. For an agent of your own, implement a custom adapter that explicitly configures the intended MCP server/tools and records the tool calls and results it observes. `expectToolCall(...)` asserts that an adapter recorded a matching call; it does not invoke a tool, prove the result was correct, or prove the final answer used it. Score both the retrieval/action and the task outcome.
 
 Keep baseline and treatment prompts, model, and other settings fixed; vary only tool or memory access, repeat runs, and include a negative control for irrelevant context. Passing a saved memory dataset to the model tests the value of **injected memory**, not live retrieval. Label the experiment accordingly. `context.evaluatorWorkspace.root` is trusted data: a controlled adapter may read a specific evaluator dataset for a treatment, but only pass the intended content to the model and treat it as model-visible data. Review prompts, reports, and sandboxes for secrets before sharing.
 

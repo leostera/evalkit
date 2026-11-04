@@ -18,7 +18,7 @@ import {
   signalExitCode,
   STOP_GRACE_MS,
 } from './local-process.js';
-import { insideWorkspace, workspaceFiles } from './workspace-files.js';
+import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /**
  * Runs inside the sandbox and starts every command of the run as its
@@ -43,7 +43,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   let child;
   try {
     child = spawn(message.argv[0], message.argv.slice(1), {
-      cwd: message.cwd, env: message.env, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: message.cwd, env: { ...message.env, PWD: message.cwd }, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch (error) {
     send({ id: message.id, stream: 'stderr', data: String(error.message) + '\\n' });
@@ -166,6 +166,8 @@ type Message =
 export async function sandboxShell(options: {
   isolation: SandboxExecIsolation;
   root: string;
+  /** The run's private home on the host. */
+  home: string;
   projectRoot: string;
   signal: AbortSignal;
 }): Promise<ClosableShell> {
@@ -178,7 +180,10 @@ export async function sandboxShell(options: {
   const profile = sandboxProfile({
     workspace: real(options.root),
     projectRoot: real(options.projectRoot),
-    allow: options.isolation.allow.map(resolveFrom(options.projectRoot)),
+    allow: [
+      real(options.home),
+      ...options.isolation.allow.map(resolveFrom(options.projectRoot)),
+    ],
     read: options.isolation.read.map(resolveFrom(options.projectRoot)),
     deny: options.isolation.deny.map(resolveFrom(options.projectRoot)),
     readable: [process.execPath, script],
@@ -314,7 +319,12 @@ export async function sandboxShell(options: {
       return { ...result, stdout: started.stdout(), stderr: started.stderr() };
     },
     spawn: (command, commandOptions) => start(command, commandOptions),
-    ...workspaceFiles(options.root),
+    ...shellFiles({
+      root: options.root,
+      seenRoot: options.root,
+      home: options.home,
+      seenHome: options.home,
+    }),
     async close() {
       await tracker.close();
       // Closing its input makes the supervisor stop whatever is left, then exit.

@@ -252,13 +252,22 @@ This changes what `tokens` means: before 0.11 it included cache reads. `evalkit 
 - `context.shell`:
   - `exec(command: string | string[], { cwd?, env?, signal?, timeoutMs? }) → { stdout, stderr, exitCode }`.
   - `spawn(command, options) → { pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Output is always read and the last megabyte kept, so a server nobody reads never blocks on a full pipe.
-  - `readFile`, `writeFile`, `list`, relative to `/workspace`.
+  - `readFile`, `writeFile`, `list`, relative to `/workspace`, or absolute inside the workspace or `home`.
+  - `home`: the run's private directory beside the workspace (`<run>/home`, mounted at `/evalkit-home` in a container, a read-write hole in the sandbox), for an agent CLI's config and sessions. Never snapshotted.
+  - Each command's `$PWD` is its working directory.
   - One shell per run, shared by the adapter and the run's scorers. Processes it spawned are killed when the run ends.
 - `fixtures: Record<name, { start, ready?, stop?, port? }>` in config. `port` is taken from `ready` when that is a URL; containers need it to reach the fixture. Each run gets `context.fixtures: Record<name, { url }>`, the address as that run reaches it: `localhost` on the host and in a sandbox, `fixtures.<name>` on the fixtures network, `host.docker.internal` with `network: 'full'`. EvalKit starts each fixture before the first run that needs it and stops it after the last run of the invocation. `ready` is a URL polled until it answers, or a command that must exit 0. Fixture output is attached to every run that ran while it was up, as `logs/fixtures/<name>.log`. Fixtures run on the host, reachable from containers through the `fixtures` network.
 
 ### Dashboard
 
 The trajectory renders the transcript's active path: user messages, assistant messages with their reasoning (folded), text and tool calls paired with results, compactions as a marker with their summary, sub-agents as a nested, foldable transcript, and run events (steps, checkpoints, the limit) placed by their `at`. All events lists the raw ATXF records. A run's Logs section offers `transcript.atxf.jsonl` and, for imported transcripts with native records, the agent's own session file.
+
+### Coding-agent harnesses
+
+- `piAgent`, `codexAgent`, `opencodeAgent` and `claudeCodeAgent` are `harnessAgent(spec, options)` with a spec per CLI: the environment variables that point it at a config directory, each turn's command line, how it names its session (chosen by EvalKit for Pi and Claude Code, read from the CLI's JSON output for Codex and opencode), a command that copies the native session into `home`, and the ATXF converter.
+- Each user message is one invocation through `context.shell`, message on stdin, continuing the run's session. After every turn, including a failed or stopped one, the whole native session is imported; records already imported are skipped by ID.
+- `config: 'private'` (default) points the CLI at `<home>/<id>/config`, seeded with `configFiles`. `config: 'user'` leaves the CLI's own config.
+- Codex runs with approvals and its own sandbox off, Claude Code with `--dangerously-skip-permissions`, opencode with `--auto`: EvalKit's isolation is the sandbox, and Codex's cannot nest in `sandbox-exec`.
 
 ## Data migration and compatibility
 
@@ -320,6 +329,9 @@ Each step lands with tests: unit tests for the writer, the helpers and limit res
 - **Fixtures reach containers through a proxy.** A Docker `--internal` network cannot reach the host, so each fixture gets a small proxy container (busybox `nc`, one process per connection) on both the default network and the internal one, with the alias `fixtures.<name>`, forwarding to the host's port.
 - **One supervisor per sandboxed run.** Each `sandbox-exec` invocation is its own sandbox, so a later command could not signal a server an earlier one started. The run's commands are children of one sandboxed supervisor instead, which they reach over a line protocol.
 - **Each command leads its own process group**, so the run can stop a command's children with it. The terminal's Ctrl+C no longer reaches them; the runner stops them on cancellation, and kills every group still alive when the process exits.
+- **Harnesses read the CLI's own session, not its stdout.** The session file has every message, tool call and token count in a format ATXF already converts; stdout formats differ per CLI and per version. Sessions are copied into `home` and read as files, because a session outgrows a command's kept output.
+- **Harness configs are private by default.** The artifacts evals found that a person's extensions, skills and instructions changed results and leaked credentials into the agent's reach; a fresh config per run makes runs repeatable. Credentials given through `configFiles` or `env` are still readable by the agent, so the docs recommend a proxy that adds them.
+- **The message goes on stdin.** Pi 1.3 is killed when a message argument reaches about 900 characters, and every harness reads stdin.
 - **The manifest records the isolation** (`{ kind, image, network }`, no host paths or environment), so runs from different setups are told apart.
 
 - **Cache reads are their own numbers.** `tokens` and the `tokens` limit count uncached input, cache writes and output; `cached tokens` and `cache hit rate` report the rest (see Usage).

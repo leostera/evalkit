@@ -87,8 +87,10 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
 
 - `defineAgent(adapter: AutAdapter)`  
   Checks an adapter and records where it is defined. See [Agents under test](/docs/manual/agents/).
-- `piAgent({ command?, args? })`  
-  A ready-made adapter that runs `pi --print --no-session --no-tools [args]` through `context.shell`, with the message on stdin, for each user message. Pi gets no tools or memory between turns.
+- `piAgent(options?)`, `codexAgent(options?)`, `opencodeAgent(options?)`, `claudeCodeAgent(options?)`  
+  Coding-agent CLIs as the agent under test, one session per run, each turn through `context.shell` with the message on stdin, the CLI's own session imported through ATXF. `HarnessOptions`: `{ command?, model?, args?, env?, config?: 'private' | 'user', configFiles? }`; `model` may be a function of the run's parameters. `PiOptions` adds `skills`, `appendSystemPrompt` and `tools`; `ClaudeCodeOptions` adds `appendSystemPrompt`; `OpencodeOptions` adds `agent`. See [Coding-agent harnesses](/docs/manual/agents/#coding-agent-harnesses).
+- `harnessAgent(spec: HarnessSpec, options: HarnessOptions)`  
+  The same for another CLI: `HarnessSpec` is `{ id, name, command, configEnv(dir), newSession?(), argv(turn: HarnessTurn), sessionFromOutput?(stdout), saveSession(turn), toAtxf(text) }`.
 - `agentRuntimes(adapter): AgentRuntimes`  
   The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
 - `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  
@@ -121,9 +123,9 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 - `spawn(command, options): ShellProcess`  
   `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`; output is always read, keeping the last megabyte.
 - `readFile(path)`, `writeFile(path, content)`, `list(path?)`  
-  Files in the workspace, by relative path; `list` marks directories with a trailing `/`.
-- `isolation`, `root`  
-  The isolation's kind, and the workspace as commands see it: its host path, or `/workspace`.
+  Files in the workspace by relative path, or in the workspace or `home` by absolute path; `list` marks directories with a trailing `/`.
+- `isolation`, `root`, `home`  
+  The isolation's kind; the workspace as commands see it (its host path, or `/workspace`); and the run's private directory outside it, for an agent CLI's config and sessions (or `/evalkit-home`).
 
 `fixtures` in the config is `Record<name, Fixture>`: `{ start, ready?, stop?, port? }`. Each run gets `context.fixtures`, `Record<name, { url }>`, as it reaches them. See [Fixtures](/docs/manual/agents/#fixtures).
 

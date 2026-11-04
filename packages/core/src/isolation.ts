@@ -223,6 +223,12 @@ export type Shell = {
   readonly isolation: Isolation['kind'];
   /** The workspace as commands see it: its host path, or `/workspace` in a container. */
   readonly root: string;
+  /**
+   * The run's private directory, outside the workspace, as commands see it
+   * (`/evalkit-home` in a container): for an agent CLI's config and session
+   * files. It is never snapshotted, and is removed with the run.
+   */
+  readonly home: string;
   exec(
     command: string | readonly string[],
     options?: ShellOptions,
@@ -231,7 +237,7 @@ export type Shell = {
     command: string | readonly string[],
     options?: Omit<ShellOptions, 'timeoutMs'>,
   ): ShellProcess;
-  /** Relative to the workspace. */
+  /** Relative to the workspace, or absolute inside `root` or `home`. */
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string | Uint8Array): Promise<void>;
   /** A directory's entries, relative to the workspace; directories end with `/`. */

@@ -1,4 +1,4 @@
-import { defineAgent, type AutAdapter } from '@evalkit/core';
+import type { AutAdapter } from '@evalkit/core';
 
 export type AgentsSdkAutOptions = {
   endpoint: string;
@@ -16,52 +16,13 @@ export function agentsSdk(_options: AgentsSdkAutOptions): AutAdapter {
   throw new Error('Agents SDK transport is not implemented yet');
 }
 
-export type PiAutOptions = {
-  command?: string;
-  /** Additional non-secret Pi arguments, such as an explicit model selection. */
-  args?: string[];
-};
-
-/** A local, one-prompt-per-turn AUT backed by Pi's non-interactive print mode. */
-export function piAgent(options: PiAutOptions = {}): AutAdapter {
-  const command = options.command ?? 'pi';
-  return defineAgent({
-    identity: {
-      name: 'Pi Agent',
-      kind: 'process',
-      id: 'pi-agent',
-    },
-    runtimes: { local: { kind: 'process', configuration: { command } } },
-    async start({ context, transcript }) {
-      return {
-        async send(message: string) {
-          const turnId = transcript.turn('start');
-          // Through the run's shell, so Pi runs where the project's isolation
-          // puts it; a limit or cancellation stops it.
-          // The message goes on stdin: Pi 1.3 is killed when a message
-          // argument reaches about 900 characters.
-          const { stdout, stderr, exitCode } = await context.shell.exec(
-            [
-              command,
-              '--print',
-              '--no-session',
-              '--no-tools',
-              ...(options.args ?? []),
-            ],
-            { input: message },
-          );
-          if (exitCode !== 0) {
-            transcript.turn('end', {
-              turnId,
-              outcome: 'failed',
-              error: { message: stderr.trim() || `exit ${exitCode}` },
-            });
-            throw new Error(`Pi exited with ${exitCode}: ${stderr.trim()}`);
-          }
-          transcript.assistant({ content: stdout.trim() });
-          transcript.turn('end', { turnId, outcome: 'succeeded' });
-        },
-      };
-    },
-  });
-}
+export {
+  harnessAgent,
+  type HarnessOptions,
+  type HarnessSpec,
+  type HarnessTurn,
+} from './harness.js';
+export { piAgent, type PiOptions } from './pi.js';
+export { codexAgent, type CodexOptions } from './codex.js';
+export { opencodeAgent, type OpencodeOptions } from './opencode.js';
+export { claudeCodeAgent, type ClaudeCodeOptions } from './claude-code.js';

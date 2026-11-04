@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import type { FixtureAddress, Isolation, Shell } from '@evalkit/core';
 import { containerShell } from './container-shell.js';
 import type { FixtureSet } from './fixtures.js';
@@ -29,6 +31,9 @@ export async function openRunShell(options: {
   fixtures?: FixtureSet;
 }): Promise<RunShell> {
   const { isolation } = options;
+  // <run>/candidate is the workspace; <run>/home is the run's private home beside it.
+  const home = path.join(path.dirname(options.root), 'home');
+  await mkdir(home, { recursive: true });
   await options.fixtures?.ensure();
   const fixtures = options.fixtures?.addresses(isolation) ?? {};
   if (isolation.kind === 'container') {
@@ -40,6 +45,7 @@ export async function openRunShell(options: {
       isolation,
       runId: options.runId,
       root: options.root,
+      home,
       projectRoot: options.projectRoot,
       signal: options.signal,
       ...(fixturesNetwork ? { fixturesNetwork } : {}),
@@ -51,9 +57,10 @@ export async function openRunShell(options: {
       ? await sandboxShell({
           isolation,
           root: options.root,
+          home,
           projectRoot: options.projectRoot,
           signal: options.signal,
         })
-      : hostShell({ root: options.root, signal: options.signal });
+      : hostShell({ root: options.root, home, signal: options.signal });
   return { shell, fixtures, close: () => shell.close() };
 }

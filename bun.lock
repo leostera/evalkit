@@ -75,6 +75,11 @@
       "version": "0.0.1",
       "dependencies": {
         "@evalkit/core": "workspace:*",
+        "@leostera/atxf": "0.1.1",
+      },
+      "devDependencies": {
+        "@evalkit/runner": "workspace:*",
+        "effect": "^3.19.0",
       },
       "peerDependencies": {
         "agents": ">=0.0.0",

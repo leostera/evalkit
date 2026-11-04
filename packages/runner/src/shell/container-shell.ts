@@ -13,10 +13,13 @@ import {
   startLocalProcess,
   type LocalProcess,
 } from './local-process.js';
-import { workspaceFiles } from './workspace-files.js';
+import { shellFiles } from './workspace-files.js';
 
 /** Where the candidate workspace is inside the container. */
 export const CONTAINER_WORKSPACE = '/workspace';
+/** Where the run's private home is mounted. */
+export const CONTAINER_HOME = '/evalkit-home';
+
 /** Where each command records its process ID, so `kill` can reach it. */
 const PID_DIR = '/tmp/.evalkit';
 
@@ -25,6 +28,8 @@ export type ContainerShellOptions = {
   runId: string;
   /** The candidate workspace on the host, mounted at `/workspace`. */
   root: string;
+  /** The run's private home on the host, mounted at `/evalkit-home`. */
+  home: string;
   projectRoot: string;
   signal: AbortSignal;
   /** The fixtures' internal network, for `network: 'fixtures'`. */
@@ -60,6 +65,7 @@ export function containerRunArgs(options: {
   name: string;
   runId: string;
   workspace: string;
+  home: string;
   fixturesNetwork?: string;
 }): string[] {
   const { isolation } = options;
@@ -85,6 +91,8 @@ export function containerRunArgs(options: {
     `evalkit.run=${options.runId}`,
     '--volume',
     `${options.workspace}:${CONTAINER_WORKSPACE}`,
+    '--volume',
+    `${options.home}:${CONTAINER_HOME}`,
     '--workdir',
     CONTAINER_WORKSPACE,
     ...network,
@@ -123,6 +131,7 @@ export async function containerShell(
       name,
       runId: options.runId,
       workspace,
+      home: await realpath(options.home),
       ...(options.fixturesNetwork
         ? { fixturesNetwork: options.fixturesNetwork }
         : {}),
@@ -229,7 +238,12 @@ export async function containerShell(
     exec: async (command, commandOptions) =>
       collect(start(command, commandOptions)),
     spawn: (command, commandOptions) => start(command, commandOptions),
-    ...workspaceFiles(options.root),
+    ...shellFiles({
+      root: options.root,
+      seenRoot: CONTAINER_WORKSPACE,
+      home: options.home,
+      seenHome: CONTAINER_HOME,
+    }),
     async close({ keep = false } = {}) {
       // Removing the container stops everything in it; the exec clients follow.
       await docker(

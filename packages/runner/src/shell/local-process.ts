@@ -147,7 +147,8 @@ export function startLocalProcess(
   try {
     child = spawn(program, args, {
       cwd: options.cwd,
-      env: options.env,
+      // Some programs (opencode) trust $PWD over their real directory.
+      env: { ...options.env, PWD: options.cwd },
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
