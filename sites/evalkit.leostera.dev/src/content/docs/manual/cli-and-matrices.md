@@ -124,7 +124,7 @@ bun run evalkit run --matrix memory-ablation --dry-run
 bun run evalkit run --matrix memory-ablation
 ```
 
-Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat runs and inspect every run's scores; a three-run pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use a tool-enabled custom AUT that records actual tool events; the built-in `piAgent()` disables tools. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
+Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat runs and inspect every run's scores; a three-run pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use an agent with the tool, such as a harness given its MCP config, so the transcript records the actual calls. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
 
 ## Running in CI
 

@@ -11,6 +11,11 @@ export default defineConfig({
       title: 'EvalKit',
       description: 'Write agent evals as code and inspect their results.',
       favicon: '/favicon.svg',
+      logo: {
+        light: './src/assets/mark.svg',
+        dark: './src/assets/mark-dark.svg',
+        alt: '',
+      },
       disable404Route: true,
       editLink: {
         baseUrl:

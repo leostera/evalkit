@@ -85,7 +85,28 @@ export const greetingAgent = defineAgent({
 });
 ```
 
-Use `context.workspace.root` for candidate-visible files and `context.data` for candidate dataset values. Never pass `context.evaluatorWorkspace.root` to a model. For a local Pi process, `piAgent()` is available from `@leostera/evalkit`, but it invokes Pi independently for each message.
+Use `context.workspace.root` for candidate-visible files and `context.data` for candidate dataset values. Never pass `context.evaluatorWorkspace.root` to a model.
+
+To test a coding agent instead, use its harness: `piAgent()`, `codexAgent()`, `opencodeAgent()` or `claudeCodeAgent()`. Each run gets one session of the CLI in its own workspace, and the CLI's own session file becomes the run's transcript:
+
+```ts
+// scenarios/fix-failing-test.eval.ts
+import { defineEval, piAgent, predicate, user } from '@leostera/evalkit';
+
+export default defineEval({
+  id: 'fix-failing-test',
+  agent: piAgent({ config: 'user' }), // your Pi login and models
+  transcript: [user('src/sum.test.ts fails. Fix the code, not the test.')],
+  scoring: [
+    predicate('tests pass', async ({ context }) => {
+      const { exitCode } = await context.shell.exec('bun test');
+      return exitCode === 0;
+    }),
+  ],
+});
+```
+
+By default a harness starts the CLI with a private, empty config, so every run starts the same; `config: 'user'` uses yours. Run the agent in a container with a [sandbox](/docs/manual/agents/#sandboxes) when it should not touch your machine.
 
 Learn more: [Agents under test](/docs/manual/agents/).
 
@@ -142,7 +163,7 @@ jq '{status, error}' "$RUN/summary.json"
 jq -r '.results[] | [.name, .value, .passed] | @tsv' "$RUN/scoring.json"
 ```
 
-> **Important:** Execution status `completed` does not mean the scores passed. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Kept run workspaces (`$TMPDIR/evalkit/<project>-<hash>/`) retain _both_ candidate and evaluator files; review them for sensitive data before sharing.
+> **Important:** A run ends `passed`, `failed` (it finished, but a score did not pass), `errored` (it could not finish), `limited` (it hit a step, token or time limit) or `cancelled`. `evalkit run` exits non-zero when a scenario fails; in CI, add `--junit <file>` for a test report and `evalkit compare` to gate on regressions against the base branch. Kept run workspaces (`$TMPDIR/evalkit/<project>-<hash>/`) retain _both_ candidate and evaluator files; review them for sensitive data before sharing.
 
 Learn more: [Results and reports](/docs/manual/results/).
 
@@ -182,4 +203,9 @@ Learn more: [CLI and matrices](/docs/manual/cli-and-matrices/).
 
 Use the sidebar to explore the [manual](/docs/manual/) for suites, dataset visibility, scorer contracts, CLI selection, and report processing. The generated project is a runnable reference for project layout and matrix configuration; the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter) and [interleaved scenario](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) show additional eval patterns.
 
-Today `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` (with a separate eval-level `judge` agent), and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also run in final `scoring`. Remote Agents SDK transport and enforced timeouts are not available. Install the public npm package to get started; see [project setup](/docs/manual/project-structure/).
+From here:
+
+- **Judge what code cannot check** with `judge(...)`: a rubric answered with a choice or weighted criteria, by a judge agent you choose. See [judges](/docs/manual/scoring-and-evals/), and [`examples/judges`](https://github.com/leostera/evalkit/tree/main/examples/judges) for a model sweep scored by them.
+- **Check the conversation as it happens** with checkpoints between user messages. See [`examples/interleaved-scenario`](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario).
+- **Bound and contain runs** with [limits](/docs/manual/agents/#limits) on steps, tokens and time, [sandboxes](/docs/manual/agents/#sandboxes) (a container per run, or a remote machine) and [fixtures](/docs/manual/agents/#fixtures) for the services runs need.
+- **Run it in CI** with `--junit`, then [share](/docs/manual/cli-and-matrices/#sharing-results) the results and [compare](/docs/manual/cli-and-matrices/#comparing-against-a-base) them against `main`.

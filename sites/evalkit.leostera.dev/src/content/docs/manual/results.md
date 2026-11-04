@@ -22,7 +22,7 @@ _evalkit-results/<run-uuid>/
 
 **Looking for scores?** They are in the run's `scoring.json`, repeated in its `summary.json`. Manifests describe what ran and its status, never scores. From code, use `readRunScoring` and the other readers in the [API reference](/docs/reference/api/#running-and-reading-results-leosteraevalkitrunner).
 
-A newly written manifest has `schemaVersion: 7`, the human-authored `evalId` (and optional `suiteId`), a generated UUID-based `runUri`, optional agent identity (`aut`), optional effective `parameters` and `matrix: { id, cellKey }`, the `limits` in force, `startedAt`, `source` (see below), `process: { pid, hostname }` (the process that owns the run), and `datasets`: every dataset the run used, with its visibility, `static` or `computed` source, and a content digest. A run launched as one of several repeats has `batch: { id, index, size }`: the batch's UUID, its zero-based position, and how many runs were launched together. Directory names are the UUIDs; an eval ID is **not** a directory name. Manifests start with `status: "running"` and are updated when finalized; the summary is written then too. A run with no summary whose owning process is no longer alive on this host is read as **cancelled (interrupted)**; runs owned by another host stay running.
+A newly written manifest has `schemaVersion: 8`, the human-authored `evalId` (and optional `suiteId`), a generated UUID-based `runUri`, optional agent identity (`aut`), optional effective `parameters` and `matrix: { id, cellKey }`, the `limits` in force, the `sandbox` it ran in (`{ id, kind }`, and a container's image and network), `startedAt`, `source` (see below), `process: { pid, hostname }` (the process that owns the run), and `datasets`: every dataset the run used, with its visibility, `static` or `computed` source, and a content digest. A run launched as one of several repeats has `batch: { id, index, size }`: the batch's UUID, its zero-based position, and how many runs were launched together. Directory names are the UUIDs; an eval ID is **not** a directory name. Manifests start with `status: "running"` and are updated when finalized; the summary is written then too. A run with no summary whose owning process is no longer alive on this host is read as **cancelled (interrupted)**; runs owned by another host stay running.
 
 Results from EvalKit before 0.9 (schema versions 2 to 5) held several trials inside one run. `bun run evalkit upgrade` rewrites them in place: An old run of one trial keeps its ID; an old run of several becomes runs with the trials' IDs, in a batch with the old run's ID. Either way, old run and trial links keep working. Runs from EvalKit 0.9 and 0.10 (schema version 6) keep their IDs; their `trajectory.jsonl` becomes `transcript.atxf.jsonl` and `run-events.jsonl`, sealed and checked, and a run that cannot be converted is left as it was and listed with why. It is safe to interrupt and run again, leaves runs that are still running for later, and `--dry-run` reports what it would change. Until then, the CLI and dashboard skip those runs and say how many they skipped.
 
@@ -73,14 +73,17 @@ The local runner also exposes `runEval`, `runMatrix`, and `localReportStore` fro
 ```ts
 // From a project rooted beside scenarios/greeting.eval.ts
 import { Effect } from 'effect';
+import { defineSandbox } from '@leostera/evalkit';
 import { localReportStore, runEval } from '@leostera/evalkit/runner';
 import greetingEval from './scenarios/greeting.eval.js';
+
+const node = defineSandbox({ id: 'node', kind: 'container', image: 'node:24' });
 
 const runs = await Effect.runPromise(
   runEval(greetingEval, {
     report: localReportStore('_evalkit-results'),
     workspaceRoot: '/tmp/my-evals', // omit for cleaned-up temporary workspaces
-    sandbox: node, // a defineSandbox(...); the host by default
+    sandbox: node, // the host when omitted
     repeat: 3, // overrides the scenario's repeat
   }),
 );

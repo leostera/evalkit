@@ -20,7 +20,7 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 - **No answer in the transcript:** return the reply from `send()` (a string, or `{ reply }`), or write it with `transcript.assistant(...)`. Use `output` in scorers for the final reply. [Agents](/docs/manual/agents/#implement-an-adapter)
 - **`completed` run, but a failing eval or nonzero exit:** Execution status and scoring pass/fail are separate. Read `scoring.json` for `passed: false`, errors, and numeric values, then use the CLI exit status or run `summary.failed` for a gate. A score below 1 does not pass unless the predicate has `passAt` or sets `passed: true`. [Score semantics](/docs/manual/scoring-and-evals/#score-return-values)
 - **Invalid score / scorer error:** Return a finite value between 0 and 1, or `skip(reason)`; `evidence` must convert to JSON (no functions, `bigint` or cycles). Predicate exceptions are captured as failed scores; other scorers can still execute. With a failed AUT, only final predicates or judges marked `supportsPartial: true` can run if a context/workspace exists. [Partial errors](/docs/manual/scoring-and-evals/#partial-execution-and-errors)
-- **Missing eval `judge` / judge error:** Any inline or final `judge(...)` rule requires a separate eval-level `judge` agent; the AUT is not implicitly reused. The judge must emit a JSON verdict in `completed.output` or its assistant message. A missing/invalid verdict or failed judge session is a checkpoint execution error inline or a final scorer error. Judge usage appears only if the judge agent emits it; cost is not measured automatically. [Judges](/docs/manual/scoring-and-evals/#judge-agents)
+- **"This judge has no agent" or a judge error:** every `judge(...)` needs a judge agent: `judge` in `evalkit.config.ts`, or `agent` on the rule. The agent under test is never reused. EvalKit asks once more when it cannot read the judge's answer; an answer it still cannot read, or a judge session that fails, is a checkpoint error inline or a scorer error in final scoring. Judge tokens appear only when the judge agent reports `usage`. [Judges](/docs/manual/scoring-and-evals/#judges)
 - **Unexpected number of runs or provider charges:** Inspect `--dry-run`. A matrix has evals × choices across axes, and _each cell_ may `repeat` several times. Narrow with `--eval`, `--model`/`--mode`, or `--select`; cap cells with `execution.maxCells` and set `--repeat` deliberately. [CLI and matrices](/docs/manual/cli-and-matrices/)
 - **Unknown matrix axis/value or sandbox:** A selection must match a configured axis and existing choice (with the right JSON type). `--param` cannot replace an axis selection. A `sandbox` named by a scenario, the config or a matrix cell must be in the config's `sandboxes`. Check `context.parameters` in the adapter if a selection has no effect. [Matrix selection](/docs/manual/cli-and-matrices/#matrix-definitions-and-selection)
 
@@ -33,13 +33,13 @@ Start with a side-effect-free plan from your eval project directory: `bun run ev
 
 ## Current limitations
 
-| Declared feature                           | Current behavior                                                                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `agent(...)` transcript step               | Typed but not executable; inserting it into a transcript fails run execution.                                                |
-| Implicit judge agent                       | None: supply an independent agent in the eval's `judge` field. No judge model or tool permissions are borrowed from the AUT. |
-| `agentsSdk()`                              | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.              |
-| Claude Code harness                        | `claudeCodeAgent()` is tested against recorded sessions, not a live Claude Code install.                                     |
-| npm release                                | Install `@leostera/evalkit` from npm; run `bunx @leostera/evalkit new ./evals` for a standalone project.                     |
-| Hosted sync or automatic report versioning | No automatic sharing, upload, or Git commit for local report/sandbox files.                                                  |
+| Declared feature                           | Current behavior                                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `agent(...)` transcript step               | Typed but not executable; inserting it into a transcript fails run execution.                                           |
+| Implicit judge agent                       | None: set `judge` in the config, or `agent` on the judge. No judge model or tool permissions are borrowed from the AUT. |
+| `agentsSdk()`                              | Throws “not implemented yet”; the Agents SDK example is an integration sketch, not a runnable remote transport.         |
+| Claude Code harness                        | `claudeCodeAgent()` is tested against recorded sessions, not a live Claude Code install.                                |
+| npm release                                | Install `@leostera/evalkit` from npm; run `bunx @leostera/evalkit new ./evals` for a standalone project.                |
+| Hosted sync or automatic report versioning | No automatic sharing, upload, or Git commit for local report/sandbox files.                                             |
 
 For implementation details, consult the [core API](https://github.com/leostera/evalkit/blob/main/packages/core/src/index.ts), [runner](https://github.com/leostera/evalkit/blob/main/packages/runner/src/index.ts), and [CLI project loader](https://github.com/leostera/evalkit/blob/main/packages/cli/src/project.ts).

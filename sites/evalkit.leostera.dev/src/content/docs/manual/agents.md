@@ -7,7 +7,7 @@ The **Agent Under Test (AUT)** is the assistant, process, or service you want to
 
 ## Implement an adapter
 
-An adapter has an `identity` and `start({ context, transcript, attach })`, which returns a session. The session's `send(message)` resolves when the turn is done and may **return the turn's result**, which EvalKit records: a string is the reply; an object can carry the `reply`, the `toolCalls` the agent made, token `usage` and the `model` that answered. `close()` is optional. `runtimes` defaults to `{ local: { kind: 'in-process' } }` and `identity.name` to `identity.id`.
+An adapter has an `identity` and `start({ context, transcript, attach })`, which returns a session. The session's `send(message)` resolves when the turn is done and may **return the turn's result**, which EvalKit records: a string is the reply; an object can carry the `reply`, the `toolCalls` the agent made, token `usage` and the `model` that answered. `close()` is optional. `identity.name` defaults to `identity.id`.
 
 ```ts
 // agents/support-agent.ts
@@ -86,7 +86,7 @@ async start({ context, transcript }) {
 - `turn('start')` and `turn('end', { turnId, outcome })` mark turns as the agent saw them; optional, since EvalKit records each step's start and end.
 - `append(record)` adds any other ATXF record, such as a compaction or a link to a sub-agent.
 
-Record the **actual** calls, results and usage your integration observes, never activity that did not happen. The adapter owns the agent's invocation and isolation; for a multi-message conversation, keep the conversation's state in this per-run session.
+Record the **actual** calls, results and usage your integration observes, never activity that did not happen. The adapter owns the agent's invocation; the run's [sandbox](#sandboxes) decides where it runs. For a multi-message conversation, keep the conversation's state in this per-run session.
 
 ### Agents with their own session files
 

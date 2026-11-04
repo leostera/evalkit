@@ -1,53 +1,139 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+/* The docs share the landing page's identity: Public Sans, ink on paper, one blue. */
+@font-face {
+  font-family: 'Public Sans';
+  src: url('/fonts/public-sans-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 :root {
-  --sl-font: 'DM Sans';
-  --sl-font-mono: 'DM Mono';
+  --sl-font: 'Public Sans', system-ui, sans-serif;
+  --sl-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --sl-content-width: 48rem;
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #eae9e2;
-  --sl-color-accent: #393833;
-  --sl-color-accent-high: #171717;
-  --sl-color-text-accent: #171717;
-  --sl-color-bg: #f5f4ef;
-  --sl-color-bg-nav: #f5f4ef;
-  --sl-color-bg-sidebar: #f5f4ef;
-  --sl-color-bg-inline-code: #eae9e2;
+  --sl-color-accent-low: #eaf0ff;
+  --sl-color-accent: #2455d6;
+  --sl-color-accent-high: #173da3;
+  --sl-color-text-accent: #2455d6;
+  --sl-color-white: #18212f;
+  --sl-color-gray-1: #18212f;
+  --sl-color-gray-2: #2c3746;
+  --sl-color-gray-3: #536071;
+  --sl-color-gray-4: #8b96a6;
+  --sl-color-gray-5: #d9dfe7;
+  --sl-color-gray-6: #eef1f5;
+  --sl-color-gray-7: #f7f8fa;
+  --sl-color-black: #ffffff;
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #f7f8fa;
+  --sl-color-bg-sidebar: #f7f8fa;
+  --sl-color-bg-inline-code: #eef1f5;
+  --sl-color-hairline: #d9dfe7;
+  --sl-color-hairline-light: #e6eaf0;
+  --sl-color-hairline-shade: #d9dfe7;
 }
 
-:root[data-theme='light'] .expressive-code {
-  --ec-codeBg: #faf9f5;
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #18264a;
+  --sl-color-accent: #7a9cff;
+  --sl-color-accent-high: #c9d6ff;
+  --sl-color-text-accent: #9db6ff;
+  --sl-color-bg: #111722;
+  --sl-color-bg-nav: #0d121b;
+  --sl-color-bg-sidebar: #0d121b;
+  --sl-color-bg-inline-code: #1c2433;
+}
+
+/* The wordmark: the mark, then a lowercase, heavy name, as on the landing page. */
+.site-title {
+  gap: 10px;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: lowercase;
+  color: var(--sl-color-white);
+}
+.site-title img {
+  height: 20px;
+  width: 20px;
 }
 
 main h1,
-.sl-markdown-content h2 {
-  font-family: 'Instrument Serif', Georgia, serif;
-  font-weight: 400;
-  letter-spacing: -0.025em;
+.sl-markdown-content :is(h2, h3, h4) {
+  font-family: var(--sl-font);
+  letter-spacing: -0.03em;
+  color: var(--sl-color-white);
+  text-wrap: balance;
+}
+main h1 {
+  font-size: clamp(2.2rem, 4vw, 3.1rem);
+  font-weight: 750;
   line-height: 1.08;
 }
-
-main h1 {
-  font-size: clamp(2.8rem, 5vw, 4.5rem);
+/* Each section starts below a full-width rule. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  margin-top: 2.6rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--sl-color-hairline);
 }
 .sl-markdown-content h2 {
-  font-size: clamp(2rem, 3vw, 2.8rem);
+  font-size: clamp(1.55rem, 2.4vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.sl-markdown-content h3 {
+  margin-top: 2em;
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 .sl-markdown-content {
-  max-width: 72ch;
   line-height: 1.7;
 }
 .sl-markdown-content :not(pre) > code {
   overflow-wrap: anywhere;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.86em;
 }
 /* A table's first column names things; keep each name whole. */
 .sl-markdown-content td:first-child > code {
   overflow-wrap: normal;
   white-space: nowrap;
 }
+.sl-markdown-content table {
+  font-size: 0.9em;
+}
 .sl-markdown-content a {
   text-underline-offset: 0.2em;
+}
+
+/* The sidebar's current page: a tint, not a black block. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+  font-weight: 650;
+}
+.sidebar-content .large {
+  font-weight: 700;
+}
+
+.expressive-code {
+  --ec-brdRad: 8px;
+}
+/* A terminal block without a title needs no mock window bar: the copy button stays. */
+.expressive-code .frame.is-terminal:not(.has-title) .header {
+  display: none;
+}
+.expressive-code .frame.is-terminal:not(.has-title) pre {
+  border-top-left-radius: var(--ec-brdRad);
+  border-top-right-radius: var(--ec-brdRad);
+  border-top: var(--ec-brdWd) solid var(--ec-brdCol);
 }
 
 :root {
@@ -60,7 +146,7 @@ main h1 {
   color-scheme: dark;
 }
 ::selection {
-  background: #393833;
+  background: var(--sl-color-accent);
   color: #fff;
 }
 :focus-visible {

@@ -3,33 +3,33 @@ import { Code } from 'astro:components';
 import Site from '../layouts/Site.astro';
 import Icon from '../components/Icon.astro';
 import {
-  heroDefinition,
+  ciCommands,
+  codeTheme,
+  harnessExample,
+  sandboxExample,
   scaffoldCommand,
   setupCommands,
-  codeTheme,
 } from '../content/snippets';
+
+const examples = 'https://github.com/leostera/evalkit/tree/main/examples';
 ---
 
 <Site
-  title="EvalKit — Open-source evals for AI agents"
-  description="Define agent evals in TypeScript. Run them locally, compare parameters, and inspect every score, event, and artifact. Free and open source. MIT licensed."
+  title="EvalKit — Test AI agents like you test code"
+  description="Write agent evals in TypeScript. Run Pi, Codex, opencode, Claude Code or your own agent through them, score every run with checks and LLM judges, and see why each one passed or failed. Free and open source."
   active="home"
 >
   <section class="hero wrap" aria-labelledby="hero-title">
     <div class="hero-heading">
-      <h1 id="hero-title">
-        Open-source evals
-        <br />
-        for <span>AI agents.</span>
-      </h1>
+      <h1 id="hero-title">Test AI agents like you test code.</h1>
       <div class="hero-copy">
         <p>
-          Write the task. Run the agent.
-          <br class="desktop-break" /> Know what actually happened.
+          Write scenarios in TypeScript. Run your agent through them. See every
+          message, tool call and verdict behind each score.
         </p>
         <p class="hero-detail">
-          A TypeScript kit for repeatable evaluations, reusable scorers, and
-          results you can inspect. On your machine. In your repo.
+          Pi, Codex, opencode, Claude Code or your own agent. On your machine,
+          in containers or on machines you provide. Every run kept on disk.
         </p>
       </div>
     </div>
@@ -62,288 +62,227 @@ import {
         MIT licensed
       </a>
       <span>No EvalKit account</span>
-      <span>Starter needs no model key</span>
+      <span>The starter needs no model key</span>
       <span>Bun + TypeScript</span>
     </div>
     <p class="copy-status" role="status" aria-live="polite"></p>
 
-    <div class="evidence-workbench" aria-label="Recorded greeting evaluation">
-      <div class="workbench-bar">
-        <div class="workbench-title">
-          <span class="status-dot" aria-hidden="true"></span> A run is more than
-          a score.
-        </div>
-        <span class="recording-label">
-          Recorded starter run · not a live demo
-        </span>
-      </div>
-      <div class="workbench-body">
-        <div class="run-outline">
-          <div class="run-label">
-            greeting{' '}
-            <span class="status-pass">
-              <Icon name="check" /> Passed
-            </span>
-          </div>
-          <p>
-            The agent responded. The scorer checked it.
-            <br />
-            The evidence stayed on disk.
-          </p>
-          <dl class="run-facts">
-            <div>
-              <dt>Agent</dt>
-              <dd>Greeting Agent</dd>
-            </div>
-            <div>
-              <dt>Scorer</dt>
-              <dd>returns a greeting</dd>
-            </div>
-            <div>
-              <dt>Runs</dt>
-              <dd>1 of 1 passed</dd>
-            </div>
-            <div>
-              <dt>Events recorded</dt>
-              <dd>7</dd>
-            </div>
-          </dl>
-          <a class="text-link" href="/docs/manual/results/">
-            How to read a run <Icon name="arrow" />
-          </a>
-        </div>
-        <div class="evidence-detail">
-          <div
-            class="evidence-tabs"
-            role="tablist"
-            aria-label="Recorded run evidence"
-            hidden
-          >
-            <button
-              id="tab-score"
-              role="tab"
-              aria-selected="true"
-              aria-controls="panel-score"
-            >
-              Scoring
-            </button>
-            <button
-              id="tab-events"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-events"
-              tabindex="-1"
-            >
-              Trajectory
-            </button>
-            <button
-              id="tab-files"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-files"
-              tabindex="-1"
-            >
-              Files
-            </button>
-          </div>
-          <section
-            id="panel-score"
-            class="evidence-panel"
-            aria-labelledby="tab-score"
-          >
-            <h2>See why it passed.</h2>
-            <div class="response">
-              <span>Assistant response</span>
-              <code>Hello from EvalKit: Ada</code>
-            </div>
-            <div class="score-line">
-              <span>returns a greeting</span>
-              <strong class="status-pass">
-                <Icon name="check" /> 1 / 1 · Passed
-              </strong>
-            </div>
-            <p class="evidence-explanation">
-              “The AUT should return the expected greeting.”
-            </p>
-            <code class="file-path">&lt;run-id&gt;/scoring.json</code>
-          </section>
-          <section
-            id="panel-events"
-            class="evidence-panel"
-            aria-labelledby="tab-events"
-          >
-            <h2>Follow the agent’s steps.</h2>
-            <ol class="event-list">
-              <li>
-                <code>Say hello to Ada</code>
-                <span>user</span>
-              </li>
-              <li>
-                <code>read_file greeting.txt</code>
-                <span>tool call</span>
-              </li>
-              <li>
-                <code>Hello from EvalKit</code>
-                <span>tool result</span>
-              </li>
-              <li class="message-event">
-                <code>Hello from EvalKit: Ada</code>
-                <span>assistant</span>
-              </li>
-              <li>
-                <code>2 steps · 1,240 tokens</code>
-                <span>usage</span>
-              </li>
-            </ol>
-            <p class="evidence-explanation">
-              Every message, tool call and token, as an open ATXF transcript.
-            </p>
-            <code class="file-path">
-              &lt;run-id&gt;/transcript.atxf.jsonl
-            </code>
-          </section>
-          <section
-            id="panel-files"
-            class="evidence-panel"
-            aria-labelledby="tab-files"
-          >
-            <h2>Keep the underlying files.</h2>
-            <dl class="file-list">
-              <div>
-                <dt>
-                  <code>summary.json</code>
-                </dt>
-                <dd>Run status and pass/fail counts</dd>
-              </div>
-              <div>
-                <dt>
-                  <code>scoring.json</code>
-                </dt>
-                <dd>Scorer values and explanations</dd>
-              </div>
-              <div>
-                <dt>
-                  <code>transcript.atxf.jsonl</code>
-                </dt>
-                <dd>What the agent did, in ATXF</dd>
-              </div>
-              <div>
-                <dt>
-                  <code>artifacts/candidate/</code>
-                </dt>
-                <dd>Files from the agent workspace</dd>
-              </div>
-            </dl>
-            <code class="file-path">_evalkit-results/&lt;run-id&gt;/</code>
-          </section>
-        </div>
-      </div>
-      <div class="workbench-footer">
-        <span>Real output from the repository’s greeting example.</span>
-        <a href="https://github.com/leostera/evalkit/tree/main/examples/starter">
-          Inspect the example <Icon name="external" />
+    <figure class="shot shot-hero">
+      <a class="shot-link" href="/images/dashboard-run.webp" aria-label="Open the full-size screenshot">
+<img
+        src="/images/dashboard-run.webp"
+        alt="A failed run in the EvalKit dashboard: the run's details on the left, the conversation in the middle, and on the right why it failed: the correctness judge answered C because the reply recommends Purge Everything, with the prompt the judge saw, a failed docs-link check and a passed tone judge."
+        width="2880"
+        height="1800"
+        fetchpriority="high"
+        decoding="async"
+      />
+</a>
+      <figcaption>
+        A failed run, opened in <code>evalkit dev</code>: the reply, why each
+        check and judge decided, and the prompt the judge saw.
+        <a href={`${examples}/judges`}>
+          examples/judges <Icon name="external" />
         </a>
-      </div>
-    </div>
+      </figcaption>
+    </figure>
   </section>
 
-  <section class="section wrap workflow" aria-labelledby="workflow-title">
-    <div class="section-intro">
-      <h2 id="workflow-title">
-        Your eval suite.
-        <br />
-        Just another part of your codebase.
-      </h2>
+  <section class="feature wrap" aria-labelledby="agents-title">
+    <div class="feature-text">
+      <h2 id="agents-title">Run the agents you already use.</h2>
       <p>
-        Define behavior in TypeScript, review it in a pull request, and rerun it
-        when your agent changes.
+        Coding agents come with harnesses: each run starts its own session in a
+        fresh workspace, with a private config, and the agent's own session
+        file becomes the run's transcript, with every tool call and token.
       </p>
+      <ul class="feature-points">
+        <li>
+          <code>piAgent()</code>, <code>codexAgent()</code>,
+          <code>opencodeAgent()</code>, <code>claudeCodeAgent()</code>
+        </li>
+        <li><code>defineAgent()</code> for your own service or SDK</li>
+        <li>Pick the model per matrix cell; EvalKit never calls a provider</li>
+      </ul>
+      <a class="text-link" href="/docs/manual/agents/">
+        Agents under test <Icon name="arrow" />
+      </a>
     </div>
-    <div class="workflow-layout">
-      <div class="workflow-steps">
-        <article>
-          <h3>Define what good looks like.</h3>
-          <p>
-            Write each scenario as a small file: an agent, datasets, a transcript, and scoring rules.
-            Start with deterministic checks you can read and debug.
-          </p>
-          <a class="text-link" href="/docs/manual/scoring-and-evals/">
-            Evals and scoring <Icon name="arrow" />
-          </a>
-        </article>
-        <article>
-          <h3>Change one thing. Run it again.</h3>
-          <p>
-            Sweep parameter settings with a matrix. Your adapter applies each
-            setting; EvalKit keeps each cell’s results separate.
-          </p>
-          <a class="text-link" href="/docs/manual/cli-and-matrices/">
-            Parameter matrices <Icon name="arrow" />
-          </a>
-        </article>
-        <article>
-          <h3>Give the agent only what it needs.</h3>
-          <p>
-            Share datasets across scenarios and isolated runs. Keep expected
-            answers in evaluator datasets, out of the agent’s inputs.
-          </p>
-          <a class="text-link" href="/docs/manual/datasets/">
-            Datasets and visibility <Icon name="arrow" />
-          </a>
-        </article>
+    <div class="code-example">
+      <div class="code-header">
+        <span>scenarios/fix-failing-test.eval.ts</span>
+        <span>TypeScript</span>
       </div>
-      <div class="code-example">
-        <div class="code-header">
-          <span>scenarios/greeting.eval.ts</span>
-          <span>TypeScript</span>
-        </div>
-        <Code code={heroDefinition} lang="ts" theme={codeTheme} />
-        <div class="code-caption">
-          Included in the generated project.{' '}
-          <a href="https://github.com/leostera/evalkit/blob/main/packages/cli/src/new-project-template.ts">
-            View template <Icon name="external" />
-          </a>
-        </div>
-      </div>
+      <Code code={harnessExample} lang="ts" theme={codeTheme} />
     </div>
   </section>
 
-  <section class="dashboard-section" aria-labelledby="dashboard-title">
+  <section class="feature feature-flip wrap" aria-labelledby="judges-title">
+    <div class="feature-text">
+      <h2 id="judges-title">Score it like a reviewer would.</h2>
+      <p>
+        Use checks for what code can decide: the tests pass, the file exists,
+        the right tool was called. Use judges for the rest: a rubric, answered
+        with a choice or weighted criteria. Every verdict says why, with the
+        evidence it looked at.
+      </p>
+      <ul class="feature-points">
+        <li>Criteria with their own weight, score and evidence</li>
+        <li>Judges run by an agent you choose, recorded in full</li>
+        <li>Pass marks per scorer, partial credit for partial runs</li>
+      </ul>
+      <a class="text-link" href="/docs/manual/scoring-and-evals/">
+        Scoring and judges <Icon name="arrow" />
+      </a>
+    </div>
+    <figure class="shot">
+      <a class="shot-link" href="/images/dashboard-evidence.webp" aria-label="Open the full-size screenshot">
+<img
+        src="/images/dashboard-evidence.webp"
+        alt="A run's trajectory and verdicts: a notes service check scored 0.33 as the weighted mean of three criteria, saves passed, history and one commit per save failed, each with its evidence shown as a tree."
+        width="1840"
+        height="1600"
+        loading="lazy"
+        decoding="async"
+      />
+</a>
+      <figcaption>
+        One check, three criteria, the evidence behind each.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="feature wrap" aria-labelledby="checkpoints-title">
+    <div class="feature-text">
+      <h2 id="checkpoints-title">Check the conversation as it happens.</h2>
+      <p>
+        A scenario is a transcript: user messages, and checkpoints between
+        them. Check the first reply before sending the second, assert a tool
+        call, and stop early with <code>failfast</code> when there is no point
+        going on.
+      </p>
+      <ul class="feature-points">
+        <li>Scripted turns, or files and values from datasets</li>
+        <li>Expected answers kept out of the agent's reach</li>
+        <li>Limits on steps, tokens and time end a run as limited</li>
+      </ul>
+      <a class="text-link" href="/docs/manual/datasets/">
+        Scenarios and datasets <Icon name="arrow" />
+      </a>
+    </div>
+    <figure class="shot">
+      <a class="shot-link" href="/images/dashboard-checkpoints.webp" aria-label="Open the full-size screenshot">
+<img
+        src="/images/dashboard-checkpoints.webp"
+        alt="A trajectory with checkpoints: first reply passed, write_file passed, first file version failed, and the remaining steps skipped after the failed checkpoint."
+        width="1840"
+        height="1000"
+        loading="lazy"
+        decoding="async"
+      />
+</a>
+      <figcaption>
+        A failed checkpoint stops the run; the steps after it are skipped.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="wide-feature" aria-labelledby="sweep-title">
     <div class="wrap">
-      <div class="section-intro dashboard-intro">
-        <div>
-          <h2 id="dashboard-title">Don’t stop at pass or fail.</h2>
-          <p>
-            Open the local dashboard. Follow a run from its score to the
-            messages, events, and files behind it.
-          </p>
-        </div>
-        <a class="text-link" href="/docs/manual/results/">
-          Explore reports <Icon name="arrow" />
-        </a>
+      <div class="feature-text wide-text">
+        <h2 id="sweep-title">Change one thing. See what moved.</h2>
+        <p>
+          Sweep models, prompts or tools with a matrix, repeat each cell, and
+          read the scoreboard: every scenario and setting with its latest run,
+          pass rate, time and tokens. In CI, write JUnit, share the results and
+          fail the merge request on a regression against <code>main</code>.
+        </p>
       </div>
-      <figure class="dashboard-figure">
-        <a
-          href="/images/dashboard-run.png"
-          aria-label="Open full-size screenshot of the local dashboard"
-        >
-          <img
-            src="/images/dashboard-run.png"
-            alt="EvalKit local dashboard showing a run of the starter greeting scenario: its conversation beside the scenario, agent, passing predicate score, metrics, dataset and candidate artifacts, with the Evals and Library navigation."
-            width="2560"
-            height="1380"
-            loading="lazy"
-            decoding="async"
-          />
-        </a>
+      <figure class="shot">
+        <a class="shot-link" href="/images/dashboard-scoreboard.webp" aria-label="Open the full-size screenshot">
+<img
+          src="/images/dashboard-scoreboard.webp"
+          alt="The scoreboard for a model sweep: scenarios grouped into chat and apps suites, each with its judge model and agent model, latest status, score, mean score, last runs, pass rate, mean agent time and mean tokens."
+          width="2880"
+          height="1340"
+          loading="lazy"
+          decoding="async"
+        />
+</a>
         <figcaption>
-          <span>Actual local dashboard · repository greeting example</span>
-          <a href="/images/dashboard-run.png">
-            View full size <Icon name="external" />
+          Three agent models, one judge model, two suites.
+          <a href={`${examples}/judges`}>
+            examples/judges <Icon name="external" />
           </a>
         </figcaption>
       </figure>
+      <div class="setup-code ci-code">
+        <div class="code-header">
+          <span>CI</span>
+          <span>Report, share, gate</span>
+        </div>
+        <Code code={ciCommands} lang="sh" theme={codeTheme} />
+      </div>
     </div>
+  </section>
+
+  <section class="feature feature-flip wrap" aria-labelledby="sandbox-title">
+    <div class="feature-text">
+      <h2 id="sandbox-title">Give every run its own machine.</h2>
+      <p>
+        Runs happen in a sandbox: this machine, a container per run, or a
+        remote machine you provide, such as a VM or a cloud sandbox. The agent
+        does what it likes inside; the checks see what it left. Services the
+        runs need start once, as fixtures.
+      </p>
+      <ul class="feature-points">
+        <li>A sandbox per scenario, or swept as a matrix axis</li>
+        <li>Containers from a Dockerfile, with only the network you allow</li>
+        <li>Everything a run started is stopped when it ends</li>
+      </ul>
+      <a class="text-link" href="/docs/manual/agents/#sandboxes">
+        Sandboxes and fixtures <Icon name="arrow" />
+      </a>
+    </div>
+    <div class="code-example">
+      <div class="code-header">
+        <span>evalkit.config.ts</span>
+        <span>TypeScript</span>
+      </div>
+      <Code code={sandboxExample} lang="ts" theme={codeTheme} />
+    </div>
+  </section>
+
+  <section class="feature wrap" aria-labelledby="results-title">
+    <div class="feature-text">
+      <h2 id="results-title">Keep every run. Share the ones that matter.</h2>
+      <p>
+        Each run is a directory: its transcript in the open ATXF format, its
+        scores, its logs and the files the agent left. Share a commit's results
+        with a server your team runs, or build a static snapshot for any host.
+      </p>
+      <ul class="feature-points">
+        <li><code>evalkit share</code> and <code>evalkit compare</code></li>
+        <li><code>evalkit build</code> for a read-only dashboard</li>
+        <li><code>evalkit upgrade</code> moves old results forward</li>
+      </ul>
+      <a class="text-link" href="/docs/manual/results/">
+        Results and reports <Icon name="arrow" />
+      </a>
+    </div>
+    <figure class="shot">
+      <a class="shot-link" href="/images/dashboard-workspace.webp" aria-label="Open the full-size screenshot">
+<img
+        src="/images/dashboard-workspace.webp"
+        alt="A run's workspace files: notes.json, the file the agent wrote, shown with syntax highlighting."
+        width="1840"
+        height="1000"
+        loading="lazy"
+        decoding="async"
+      />
+</a>
+      <figcaption>What the agent left in its workspace.</figcaption>
+    </figure>
   </section>
 
   <section class="section wrap ownership" aria-labelledby="ownership-title">
@@ -374,15 +313,14 @@ import {
       <div>
         <dt>Results on disk</dt>
         <dd>
-          JSON summaries, JSONL trajectories, and workspace artifacts. No hosted
+          JSON scores, ATXF transcripts and workspace snapshots. No hosted
           account required.
         </dd>
       </div>
       <div>
-        <dt>Bring your own agent</dt>
+        <dt>Bring your own agent and model</dt>
         <dd>
-          Connect your system with an adapter. You choose the model and where it
-          runs.
+          EvalKit never calls a model provider. Your agent does, with your keys.
         </dd>
       </div>
       <div>
@@ -444,42 +382,4 @@ import {
         }
       });
     });
-  const tablist = document.querySelector<HTMLElement>('.evidence-tabs');
-  const tabs = Array.from(
-    document.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
-  );
-  const activate = (tab: HTMLButtonElement, focus = false) => {
-    for (const item of tabs) {
-      const selected = item === tab;
-      item.setAttribute('aria-selected', String(selected));
-      item.tabIndex = selected ? 0 : -1;
-      const panel = document.getElementById(
-        item.getAttribute('aria-controls') ?? '',
-      );
-      if (panel) {
-        panel.hidden = !selected;
-        panel.setAttribute('role', 'tabpanel');
-        panel.tabIndex = 0;
-      }
-    }
-    if (focus) tab.focus();
-  };
-  if (tablist && tabs[0]) {
-    tablist.hidden = false;
-    activate(tabs[0]);
-    tabs.forEach((tab, index) => {
-      tab.addEventListener('click', () => activate(tab));
-      tab.addEventListener('keydown', (event) => {
-        let next: number;
-        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-        else if (event.key === 'ArrowLeft')
-          next = (index - 1 + tabs.length) % tabs.length;
-        else if (event.key === 'Home') next = 0;
-        else if (event.key === 'End') next = tabs.length - 1;
-        else return;
-        event.preventDefault();
-        activate(tabs[next]!, true);
-      });
-    });
-  }
 </script>

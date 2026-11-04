@@ -1,32 +1,31 @@
 ---
 title: Manual overview
-description: How EvalKit's local authoring, execution, and reports fit together.
+description: How EvalKit's scenarios, agents, sandboxes, scoring and results fit together.
 ---
 
-EvalKit is a local-first kit for **authoring agent evals as code**. Define tasks and scoring rules in TypeScript, review and version those definitions in Git, then run them against an **Agent Under Test (AUT)**. The AUT is the assistant, process, or service being measured; a scorer evaluates the evidence it produces. EvalKit does not automatically commit or share the resulting reports.
+EvalKit tests AI agents the way you test code. You write **scenarios** in TypeScript, run an **Agent Under Test (AUT)** through them (a coding agent such as Pi, Codex, opencode or Claude Code, or your own service), and **score** every run with checks and judges. Each run keeps its transcript, scores, logs and the files the agent left, so you can see why it passed or failed. EvalKit never calls a model provider; your agent does.
 
-## The execution model
+## How a run works
 
-1. The CLI loads a project: by default, it discovers default-exported scenarios under `scenarios/`, and each directory below it is a suite. Configuration or an explicit registry is optional.
-2. A **scenario** (an eval, `defineEval`) selects an AUT, an ordered transcript of user messages and optional interleaved checkpoints, optional **datasets**, and final scoring rules. A **suite** groups scenarios; a **matrix** expands them across parameter choices.
-3. A **run** is one execution of a scenario: fresh candidate and evaluator workspaces with its datasets' files, and a new AUT session. `repeat: n` starts `n` independent runs as one **batch**.
-4. The runner sends each user message to the session, evaluates any following checkpoints against the completed turn and live workspace, records what the agent did in an ATXF **transcript**, closes the session, then executes final predicate scorers. The adapter returns the AUT's reply from `send()` or writes it to the transcript.
-5. The runner writes a local report for each run, with one status: `passed`, `failed` (it finished but a score did not pass), `errored` (it could not finish) or `cancelled`.
+1. **The CLI loads the project.** It discovers default-exported scenarios under `scenarios/`; each directory below it is a suite. `evalkit.config.ts` adds a matrix, limits, sandboxes, fixtures and a default judge.
+2. **A scenario** (`defineEval`) names an agent, a transcript of user messages with optional **checkpoints** between them, optional **datasets**, and final scoring rules. A **matrix** runs scenarios across parameter choices, such as models; `repeat: n` starts `n` runs of each as one **batch**.
+3. **A run** is one execution of one scenario in one **sandbox**: this machine, a container, or a remote machine you provide. It gets a fresh candidate workspace with its datasets' files, a separate evaluator workspace for expected answers, and a new session of the agent.
+4. **The runner drives the conversation.** It sends each user message, checks each checkpoint against the completed turn and the workspace, and records everything the agent did as an [ATXF](https://atxf.leostera.dev) **transcript**. Limits on steps, tokens and time stop a run that goes too far.
+5. **Scoring** runs predicates (checks in code) and judges (a rubric, answered by a judge agent) over the transcript, the files and the datasets. Each verdict keeps its explanation and evidence.
+6. **Each run is saved** with one status: `passed`, `failed` (it finished, but a score did not pass), `errored` (it could not finish), `limited` (it hit a limit) or `cancelled`. `evalkit dev` shows it; `evalkit share` and `evalkit build` publish it.
 
-For a first provider-free run, use the [getting-started guide](/docs/) or the [zero-config starter](https://github.com/leostera/evalkit/tree/main/examples/starter). The [configured matrix example](https://github.com/leostera/evalkit/tree/main/examples/configured-matrix) sweeps local text styles without a model provider. The [interleaved scenario example](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) has passing and intentionally failing, provider-free checkpoints.
+For a first run that needs no model key, follow [Get started](/docs/). Each [example](https://github.com/leostera/evalkit/tree/main/examples) runs without a provider: `starter` is the generated project, `configured-matrix` a parameter sweep, `interleaved-scenario` checkpoints that pass and fail, `judges` a model sweep scored by judges, and `support-suite` suites, datasets and tool calls.
 
 ## Find the right chapter
 
-- [Project structure and discovery](/docs/manual/project-structure/) — installation state, file matching, config precedence, IDs, and suites.
-- [Agents under test](/docs/manual/agents/) — session lifecycle, event evidence, runtime selection, and the Pi adapter.
-- [Datasets](/docs/manual/datasets/) — files and values for scenarios, computed and cached inputs, and candidate versus evaluator data.
-- [Scorers and evals](/docs/manual/scoring-and-evals/) — intermediate and final predicates/judges, score semantics, and partial failures.
-- [CLI and matrices](/docs/manual/cli-and-matrices/) — commands, selection, parameter forwarding, CI reporting, `compare`, and the dashboard.
-- [Results and reports](/docs/manual/results/) — the report format, statuses, artifact snapshots, and running from code.
-- [Troubleshooting and limitations](/docs/manual/troubleshooting/) — common errors and declared APIs that are not executable yet.
+- [Project structure and discovery](/docs/manual/project-structure/): installing, file discovery, the config file, IDs and suites.
+- [Agents under test](/docs/manual/agents/): adapters and sessions, coding-agent harnesses, transcripts, limits, sandboxes and fixtures.
+- [Datasets](/docs/manual/datasets/): files and values for scenarios, computed inputs, and keeping expected answers from the agent.
+- [Scorers and evals](/docs/manual/scoring-and-evals/): checkpoints, predicates, judges with choices or criteria, pass marks and partial runs.
+- [CLI and matrices](/docs/manual/cli-and-matrices/): commands, matrices and selection, CI, `compare`, the dashboard, sharing, `tidy` and `upgrade`.
+- [Results and reports](/docs/manual/results/): the files a run leaves, statuses, workspace snapshots, and running from code.
+- [Troubleshooting](/docs/manual/troubleshooting/): common errors and what is not available yet.
 
-## What works today
+## Where things live
 
-This manual describes the **local CLI**, which runs on Bun or Node 22.18+. `user(...)`, deterministic `predicate(...)`, agent-backed `judge(...)` with a separate eval-level `judge` agent, and observed `expectToolCall(...)` transcript steps execute. Predicates and judges also work as final scoring rules. `agent(...)` remains an API declaration, not a working transcript feature. `agentsSdk()` is not an implemented remote transport. `bunx @leostera/evalkit new ./agent-evals` generates a standalone project from the npm package. Parameter choices such as `model` only change an AUT if its adapter reads `context.parameters` and applies them. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
-
-Run the CLI from the eval project directory (or select a config with `--config`). Reports go to `_evalkit-results/` under that project; run workspaces go to `$TMPDIR/evalkit/<project>-<hash>/`, outside it. The definitions are suitable for Git; reports and workspaces are local evidence that you must explicitly archive or share. Both may contain sensitive data.
+Run the CLI from the eval project's directory, or point it at a config with `--config`. It runs on Bun, or Node 22.18 or later. Results go to `_evalkit-results/` in the project; run workspaces go to `$TMPDIR/evalkit/<project>-<hash>/`, outside it. Keep the definitions in Git. Results and workspaces stay on your machine until you share them, and may contain sensitive data: transcripts, files, and the evaluator's expected answers in kept workspaces.
