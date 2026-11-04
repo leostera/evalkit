@@ -108,7 +108,7 @@ test('correlated cases cross independent axes, preserve keys and select case val
   });
   expect(new Set(selected.map((cell) => cell.key)).size).toBe(3);
   expect(() => m.count({ overrides: { language: 'ruby' } })).toThrow(
-    'Select axis language',
+    'language is a matrix axis: pick its value with -a language=<value>',
   );
 });
 

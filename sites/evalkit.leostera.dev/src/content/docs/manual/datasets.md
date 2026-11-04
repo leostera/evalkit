@@ -94,6 +94,8 @@ Scorers see every dataset's value as `data[id]` on the scoring context.
 
 These are directory conventions, **not** a security sandbox. A trusted adapter can read both; never pass evaluator paths or contents to a model. The CLI keeps both workspaces of a run that did not pass for debugging, so keep that directory private too. Workspaces live outside the project, but every run of a project shares one parent directory, so an agent that walks up from its workspace can still reach other runs and its own evaluator files. Real confinement is the adapter's job: run the agent in a container or an OS sandbox.
 
+Confine processes as well as files. Runs that execute at once, and any fixture they share (a local server, an emulator), are processes on the same machine: an agent that cleans up with `pkill -f 'node server.js'` stops every run's server, not only its own, and the runs after it fail for reasons that have nothing to do with them. Let an agent signal only processes it started (a container per run, or with `sandbox-exec` a `(deny signal)` rule plus `(allow signal (target same-sandbox))`), and keep one sandboxed shell per agent session so it can still stop a server it started in an earlier command.
+
 ## Paths and mounts
 
 A dataset's files go below a directory named after its ID: `help-center` writes `help-center/…` in the workspace. Set `mount` to choose another directory, or `mount: '.'` for the workspace root. Paths may not escape the mount, and two datasets in one scenario may not write the same file. `{ file }` sources and directories resolve from the project root, not from the dataset's file.

@@ -125,7 +125,9 @@ export function defineEvalMatrix<const T extends EvalMatrixDefinition>(
     }
     for (const key of Object.keys(selection.overrides ?? {})) {
       if (declared.has(key))
-        throw new Error(`Select axis ${key}; do not override it`);
+        throw new Error(
+          `${key} is a matrix axis: pick its value with -a ${key}=<value> (--select), not --param`,
+        );
     }
     canonicalParameters(selection.overrides ?? {});
     for (const name of selection.evals ?? []) {

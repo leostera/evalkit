@@ -133,7 +133,7 @@ export function createProgram(actions: Actions): Command {
     )
     .option(
       '-a, --select <axis=value>',
-      'keep only these values of a matrix axis (a for axis); repeatable, comma-separated',
+      'keep only these values of a matrix axis (a for axis); repeatable, comma-separated; one value per axis runs one cell',
       collect,
     )
     .option(
@@ -177,6 +177,7 @@ export function createProgram(actions: Actions): Command {
         'evalkit run -s billing --junit _evalkit-results/junit.xml',
         'evalkit run -m models --model model-a,model-b --dry-run',
         'evalkit run -m models -s testing -a model=luna -a toolchain=riot',
+        'evalkit run todo-app -a model=luna -a skills=none -a docs=search',
       ]),
     )
     .action((evalIds: string[], options: RunFlags) => {

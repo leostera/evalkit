@@ -300,6 +300,8 @@ A grader that checks what the agent's program did (repositories it created, rows
 
 Put what you saw before and after in the criterion's `evidence`, so a surprising verdict explains itself.
 
+Such a grader cannot be re-run on a saved run: the state it reads lived while the run did. After you fix a bug in one, run the affected scenarios again; the new runs are scored by the fixed grader, and the old ones keep the verdicts they had. A judge that reads only saved inputs, such as the agent's code, is a good second opinion here: when it passes work your checks fail, suspect the check.
+
 ### Metrics
 
 Scores decide pass or fail; **metrics** measure. A metric is a number recorded for every run, such as tokens, retries, mistakes or web searches, and it never affects whether the run passes. List them in `metrics`:

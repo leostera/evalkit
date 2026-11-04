@@ -31,6 +31,7 @@ import {
 } from './project.js';
 import { createRunReporter, runReport, totalsLine } from './run-reporter.js';
 import { junitReport } from './junit.js';
+import { detectPackageManager, evalkitCommand } from './package-manager.js';
 import { VERSION } from './version.js';
 
 /** Validates `run` flags into a selection, parameter overrides and limits. */
@@ -402,13 +403,13 @@ export async function runProjectCommand(
   else {
     console.log(`\n${totalsLine(totals)}`);
     if (values.junit) console.log(`  ${dim(`JUnit report: ${values.junit}`)}`);
-    console.log(
-      `  ${cyan('➜')} bun run evalkit dev        ${dim('to inspect')}`,
-    );
-    if (project.config.share)
+    const manager = detectPackageManager(project.root);
+    const hint = (args: string, why: string) =>
       console.log(
-        `  ${cyan('➜')} bun run evalkit share      ${dim('to publish')}`,
+        `  ${cyan('➜')} ${evalkitCommand(manager, args).padEnd(24)} ${dim(why)}`,
       );
+    hint('dev', 'to inspect');
+    if (project.config.share) hint('share', 'to publish');
     console.log('');
   }
   if (controller.signal.aborted) process.exitCode = 130;

@@ -2,6 +2,18 @@
 
 All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may include breaking changes; they are marked **Breaking**.
 
+## [Unreleased]
+
+### Fixed
+
+- **The hint after a run uses your package manager.** It says `pnpm run evalkit dev` in a pnpm project (or yarn, or `npm run evalkit -- dev`), from the manager that started the run or the nearest lockfile, instead of always `bun run`.
+- **Overriding a matrix axis says how to pick it.** `--param model=…` on a matrix axis now answers "model is a matrix axis: pick its value with -a model=<value> (--select), not --param". `run --help` shows running one cell.
+
+### Documentation
+
+- Confining concurrent runs: processes as well as files, since one agent's `pkill` can stop every run's shared server.
+- Graders that read live state cannot re-score saved runs; after fixing one, run the affected scenarios again.
+
 ## [0.10.0] - 2026-11-04
 
 You can see what a judge checks before a run and why it passed or failed after. A judge is now a rubric plus what it sees and how it answers: EvalKit builds the prompt, enforces the answer, and records the prompt, reply, model and cost, which a matrix axis can vary. Run pages put why a run failed beside what it did, a scorer can report several checks from one exercise, and run workspaces move out of the project.
@@ -281,7 +293,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[0.10.0]: https://github.com/leostera/evalkit/compare/f06b26a...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/498c5a5...main
+[0.10.0]: https://github.com/leostera/evalkit/compare/f06b26a...498c5a5
 [0.9.0]: https://github.com/leostera/evalkit/compare/2c62b85...f06b26a
 [0.8.0]: https://github.com/leostera/evalkit/compare/7e8c3e5...2c62b85
 [0.7.0]: https://github.com/leostera/evalkit/compare/1ca784e...7e8c3e5
