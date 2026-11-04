@@ -33,7 +33,51 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+/** Starts a process in a new session, outside every process group of the run. */
+const escape = (pidFile: string) =>
+  `perl -MPOSIX -e 'exit if fork; POSIX::setsid(); open(F, ">${pidFile}"); print F $$; close F; exec "sleep", "600"' > /dev/null 2>&1; nohup sleep 601 > /dev/null 2>&1 & echo $! > ${pidFile}.nohup`;
+
+async function expectSwept(
+  open: () => Promise<{
+    exec: (command: string) => Promise<{ stdout: string }>;
+    close: () => Promise<void>;
+  }>,
+) {
+  const shell = await open();
+  const pidFile = path.join(home, 'escaped.pid');
+  expect((await shell.exec('echo $TMPDIR')).stdout.trim()).toBe(
+    path.join(home, 'tmp'),
+  );
+  await shell.exec(escape(pidFile));
+  let pids: number[] = [];
+  for (let attempt = 0; attempt < 50 && pids.length < 2; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    pids = await Promise.all(
+      [pidFile, `${pidFile}.nohup`].map((file) =>
+        readFile(file, 'utf8').then(Number, () => NaN),
+      ),
+    ).then((values) => values.filter(Number.isInteger));
+  }
+  expect(pids).toHaveLength(2);
+  expect(pids.every(alive)).toBe(true);
+  await shell.close();
+  // Killed processes linger until their new parent reaps them.
+  for (let attempt = 0; attempt < 100 && pids.some(alive); attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(pids.filter(alive)).toEqual([]);
+}
+
 describe('host shell', () => {
+  test('stops processes that left the run, and gives it its own TMPDIR', async () => {
+    await expectSwept(async () =>
+      hostShell({
+        root: workspace,
+        home,
+        signal: new AbortController().signal,
+      }),
+    );
+  });
+
   test('home is a private directory beside the workspace, reachable by path', async () => {
     const shell = hostShell({
       root: workspace,
@@ -46,7 +90,7 @@ describe('host shell', () => {
       expect(
         await readFile(path.join(home, 'cli', 'config.json'), 'utf8'),
       ).toBe('{}');
-      expect(await shell.list(home)).toEqual(['cli/']);
+      expect(await shell.list(home)).toEqual(['cli/', 'tmp/']);
       // $PWD is the command's directory, not EvalKit's.
       expect((await shell.exec('echo $PWD')).stdout.trim()).toBe(workspace);
       expect((await shell.exec(`cat ${home}/cli/config.json`)).stdout).toBe(
@@ -215,6 +259,18 @@ describe.if(process.platform === 'darwin')('sandbox-exec shell', () => {
 });
 
 describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
+  test('stops processes that left the run, and gives it its own TMPDIR', async () => {
+    await expectSwept(() =>
+      sandboxShell({
+        isolation: sandboxExec(),
+        root: workspace,
+        home,
+        projectRoot: path.join(root, 'project'),
+        signal: new AbortController().signal,
+      }),
+    );
+  });
+
   test('deny more paths, open read-only holes, and scrub the environment', async () => {
     const project = path.join(root, 'project');
     const state = path.join(root, 'fixture-state');

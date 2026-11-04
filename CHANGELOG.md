@@ -4,6 +4,13 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-11-04
+
+### Fixed
+
+- **Processes that leave a run are stopped with it.** A process an agent started in a new session (`setsid`, or a server that daemonizes) escaped the run's process groups and kept running after it, sometimes for hours. When a run ends, EvalKit now also stops every process carrying the run's marker variable, or working inside the run's workspace or home.
+- **Each run has its own temporary directory.** On the host and in a sandbox, `TMPDIR`, `TMP` and `TEMP` point into the run's home, so one run no longer reads another's scratch files.
+
 ## [0.11.1] - 2026-11-04
 
 ### Fixed

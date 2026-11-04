@@ -165,8 +165,8 @@ async start({ context, transcript }) {
 - `spawn(command, options)` starts a long-lived process, such as a server: `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Its output is always read, so a process nobody reads never blocks.
 - `home` is the run's private directory, outside the workspace (`/evalkit-home` in a container): for an agent CLI's config and session files. It is not in the workspace snapshot, and is removed with the run.
 - `readFile(path)`, `writeFile(path, content)` and `list(path?)` work on the workspace by relative path, or on the workspace or `home` by absolute path; any other path is an error.
-- Commands run with `$PWD` set to their working directory.
-- Commands stop when the run reaches a limit or is cancelled (they default to `context.signal`), and everything the shell started is stopped when the run ends, background children included.
+- Commands run with `$PWD` set to their working directory, and on the host or in a sandbox with `$TMPDIR` (and `TMP`, `TEMP`) set to the run's own directory in `home`, so runs do not share scratch files. Programs that write to `/tmp` by name still share it.
+- Commands stop when the run reaches a limit or is cancelled (they default to `context.signal`), and everything the shell started is stopped when the run ends: background children, and processes that left the run's process groups (`setsid`, a daemon), found by a variable every command carries (`EVALKIT_RUN_MARKER`) or by working inside the run's workspace or home.
 
 The project chooses where in `evalkit.config.ts`:
 

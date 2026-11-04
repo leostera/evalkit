@@ -18,6 +18,7 @@ import {
   signalExitCode,
   STOP_GRACE_MS,
 } from './local-process.js';
+import { killRunProcesses, runEnvironment } from './run-marker.js';
 import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /**
@@ -183,7 +184,8 @@ export async function sandboxShell(options: {
       'sandboxExec() isolation needs macOS sandbox-exec; use container() on other systems',
     );
   const script = await supervisorScript();
-  const baseEnv = sandboxEnv(options.isolation.env);
+  const { env: runEnv, markerEnv, marker } = runEnvironment(options.home);
+  const baseEnv = { ...sandboxEnv(options.isolation.env), ...runEnv };
   const profile = sandboxProfile({
     workspace: real(options.root),
     projectRoot: real(options.projectRoot),
@@ -295,7 +297,7 @@ export async function sandboxShell(options: {
       id,
       argv: argv(command),
       cwd: insideWorkspace(options.root, commandOptions.cwd),
-      env: { ...baseEnv, ...commandOptions.env },
+      env: { ...baseEnv, ...commandOptions.env, ...markerEnv },
       ...(commandOptions.input !== undefined
         ? { input: commandOptions.input }
         : {}),
@@ -340,6 +342,8 @@ export async function sandboxShell(options: {
       timer.unref?.();
       await gone;
       clearTimeout(timer);
+      // Processes that left the supervisor's groups (setsid), by the run's marker.
+      await killRunProcesses(marker, [options.root, options.home]);
     },
   };
 }

@@ -5,6 +5,7 @@ import {
   ProcessTracker,
   startLocalProcess,
 } from './local-process.js';
+import { killRunProcesses, runEnvironment } from './run-marker.js';
 import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /** A string runs with `sh -c`; an array runs as it is. */
@@ -37,13 +38,14 @@ export type ClosableShell = Shell & {
 export function hostShell(options: HostShellOptions): ClosableShell {
   const tracker = new ProcessTracker();
   const groups = new Set<number>();
+  const { env: runEnv, markerEnv, marker } = runEnvironment(options.home);
   const start = (
     command: string | readonly string[],
     commandOptions: ShellOptions = {},
   ) => {
     const process_ = startLocalProcess(argv(command), {
       cwd: insideWorkspace(options.root, commandOptions.cwd),
-      env: { ...process.env, ...commandOptions.env },
+      env: { ...process.env, ...runEnv, ...commandOptions.env, ...markerEnv },
       signal: commandOptions.signal ?? options.signal,
       ...(commandOptions.timeoutMs !== undefined
         ? { timeoutMs: commandOptions.timeoutMs }
@@ -80,6 +82,8 @@ export function hostShell(options: HostShellOptions): ClosableShell {
         }
         forgetGroup(group);
       }
+      // And any that left the group, by the run's marker.
+      await killRunProcesses(marker, [options.root, options.home]);
     },
   };
 }
