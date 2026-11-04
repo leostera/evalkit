@@ -12,10 +12,9 @@
 
 A **sandbox** is where a run happens: the machine its agent runs on and its workspace lives in. `defineSandbox({ ... })` defines one, with a lifecycle EvalKit drives: `prepare` once per invocation, then `start`, `mount`, `unmount` and `stop` for each run, and `teardown` at the end. A scenario names the sandbox it runs in. The project sets a default, and a matrix axis can pick between named sandboxes.
 
-EvalKit ships three kinds:
+EvalKit ships two kinds:
 
 - `host()`: this machine, no isolation;
-- `sandboxExec()`: this machine under macOS `sandbox-exec`;
 - `container({ image | dockerfile })`: a container per run.
 
 A remote sandbox, such as a Cloudflare Sandbox or a Durable Object running an agent like pi-durable, is a `defineSandbox` of your own. It uploads the workspace in `mount` and pulls it back in `unmount`.
@@ -158,7 +157,6 @@ A cancelled or limited run goes through 4 to 6 as well, so what it left is score
 | Kind                                                                | `mount`                                                                                           | `unmount`                                                 | Notes                                                                                                                             |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `host()`                                                            | Uses the directory in place                                                                       | Nothing to do                                             | The default. No isolation.                                                                                                        |
-| `sandboxExec({ allow, read, deny, env })`                           | In place, as a hole in the profile                                                                | Nothing to do                                             | macOS; the RFD0009 profile.                                                                                                       |
 | `container({ image \| dockerfile, network, env, mounts, runtime })` | Creates the container with the workspace bind-mounted at `/workspace` and home at `/evalkit-home` | Nothing to do: the bind mount already wrote the host copy | `prepare` builds the Dockerfile once. `start` is cheap; the container is created at `mount`, since volumes are fixed at creation. |
 
 A remote kind copies in `mount` and back in `unmount`. Nothing in EvalKit assumes the workspace is on the host between the two.
@@ -184,13 +182,14 @@ Fixtures still start on the host (RFD0009). Each run gets them as its sandbox re
 
 ### No policy
 
-EvalKit runs the agent inside the sandbox and does not restrict it further: no allowed commands, no tool permissions, no check of what it touched. The sandbox's own definition (a container's network, a `sandbox-exec` profile) is what isolates the run. A run that damages its workspace is scored on what is left.
+EvalKit runs the agent inside the sandbox and does not restrict it further: no allowed commands, no tool permissions, no check of what it touched. The sandbox's own definition (a container's image and network, a remote machine) is what isolates the run. A run that damages its workspace is scored on what is left.
 
 ### Removed
 
 - `AutAdapter.runtimes`, `AgentRuntime`, `AgentRuntimes`, `AgentRuntimeName`, `agentRuntimes()`, `DEFAULT_AGENT_RUNTIMES`.
 - `runEval`/`runMatrix` option `runtime`, the CLI's `--local`, and `runtimes` in the catalog.
 - The config's `isolation` key, replaced by `sandboxes` and `sandbox`.
+- `sandboxExec()` and its `sandbox-exec` shell (the generated profile, the supervisor, `allow`/`read`/`deny`/`env`). A run that needs isolation without containers uses a remote sandbox.
 - `context.runtime` and the `runtime` argument to `start()`.
 
 ### Manifest
@@ -202,14 +201,15 @@ EvalKit runs the agent inside the sandbox and does not restrict it further: no a
 `evalkit upgrade` (schema 8):
 
 - `isolation: { kind: 'container', image, network }` becomes `sandbox: { id: 'container', kind: 'container', image, network }`;
-- `sandbox-exec` and `none` likewise, with `none` becoming `host`;
+- `none` becomes `host`;
+- `sandbox-exec` is kept as `{ id: 'sandbox-exec', kind: 'sandbox-exec' }`, a record of how an old run ran, with nothing to run it again;
 - `runtime` is dropped.
 
 The share server does the same for stored and incoming runs. Projects change `isolation: container(...)` to `sandbox: container(...)`, or name it in `sandboxes`; the CHANGELOG migration guide says how.
 
 ## Rollout
 
-1. Move the three existing kinds behind `defineSandbox`, with `mount` and `unmount`, and choose a run's sandbox from the config. Same behaviour as 0.11.
+1. Move `none()` and `container()` behind `defineSandbox` as `host()` and `container()`, and delete `sandboxExec()`, with `mount` and `unmount`, and choose a run's sandbox from the config. Same behaviour as 0.11 for hosts and containers.
 2. Per-scenario `sandbox`, named `sandboxes`, the matrix axis, and per-sandbox concurrency.
 3. Remove `runtimes` and `isolation`, with the upgrade.
 4. A remote sandbox against a real service as the first user, to test the interface: a Cloudflare Sandbox or pi-durable on a Durable Object. It may stay an example rather than a built-in.
