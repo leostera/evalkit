@@ -242,7 +242,8 @@ This changes what `tokens` means: before 0.11 it included cache reads. `evalkit 
 - `isolation` in config takes `none()` (the default), `container(options)` or `sandboxExec(options)` (macOS).
 - `container({ image, network = 'none', runtime?, env?, mounts? })`:
   - `image` is an image reference or a Dockerfile path. A Dockerfile is built once per invocation, tagged by the hash of its directory, and reused while unchanged.
-  - `runtime` picks the OCI CLI. Default: the first of `container` (Apple), `docker`, `podman` found on `PATH`. EvalKit talks to it through its CLI only.
+  - EvalKit talks to Docker through the `docker` CLI only, so anything that provides it works: Docker Desktop, OrbStack, Colima, Rancher Desktop, or podman's `docker` command. `runtime` names another binary with the same commands (`'podman'`). When none is found, a run with container isolation fails before it starts, saying what to install.
+  - The `fixtures` network is a Docker network created with `--internal` for the invocation, with the fixtures attached through the host gateway, and removed at the end.
   - One container per run, started before the session and removed after scoring, kept when the run did not pass and `keep` says so, like workspaces today.
   - The candidate workspace is bind-mounted at `/workspace`, read-write. `mounts` adds read-only host paths. The evaluator workspace is never mounted.
   - `network`: `none` (no network), `fixtures` (an internal network shared with the fixtures only), `full` (the runtime's default).
@@ -291,7 +292,7 @@ Every adapter and every scorer that reads `ctx.trajectory` changes. The CHANGELO
 3. Isolation: `context.shell` on the host first (the default), then `container`, then `fixtures`, then `sandboxExec`.
 4. Release 0.11.0 with all three.
 
-Each step lands with tests: unit tests for the writer, the helpers and limit resolution; an end-to-end test of a limited run; and container tests that run only when an OCI runtime is present.
+Each step lands with tests: unit tests for the writer, the helpers and limit resolution; an end-to-end test of a limited run; and container tests that run only when `docker` is present.
 
 ## Drawbacks
 
@@ -319,14 +320,17 @@ Each step lands with tests: unit tests for the writer, the helpers and limit res
 - **Cache reads are their own numbers.** `tokens` and the `tokens` limit count uncached input, cache writes and output; `cached tokens` and `cache hit rate` report the rest (see Usage).
 - **A step is an assistant message**, one model call, which is what agents call a step. Turns stay visible in the trajectory.
 - **Transcripts are sealed.** EvalKit writes every transcript with integrity hashes (`integrity: { alg: 'sha256', canon: 'jcs' }`) and appends a seal when the run ends. The share server stores them; verifying uploads is left for later. Converted transcripts are sealed too.
+- **Docker only, for now.** Container isolation uses the `docker` CLI (or a compatible one such as podman's). One implementation covers most machines, and Docker's internal networks give `network: 'fixtures'` directly.
 - **Fixtures run on the host**, reachable from containers through the `fixtures` network. Running them in containers can come later without changing how scenarios use them.
 - **Old total-only usage.** An old turn that reported only `totalTokens` is converted as `input: 0, output: 0, total: <total>` with `ext.evalkit.totalOnly: true`, and counts toward `tokens` by its total. If ATXF later allows `total` alone, the converter follows.
 
 ## Unresolved questions
 
-- Apple's `container` CLI may not support an internal network shared by containers the way Docker does. If not, `network: 'fixtures'` there falls back to the host network with only the fixtures' ports reachable, or is unsupported with a clear error; to be settled when implementing.
+None open. Apple's `container` CLI is left for later (see Future possibilities).
 
 ## Future possibilities
+
+- Apple's `container` CLI as a second container runtime, once its networking can give runs a private network shared only with the fixtures.
 
 - `evalkit rescore`: re-run judges on saved transcripts, since they read only saved inputs, so a rubric or judge model can change without re-running agents.
 - Remote isolation backends (a hosted sandbox service) behind the same `context.shell`.
