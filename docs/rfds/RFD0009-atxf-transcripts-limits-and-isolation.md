@@ -1,7 +1,7 @@
 # RFD0009 - ATXF Transcripts, Run Limits and Isolation
 
 - Feature Name: `atxf-limits-isolation`
-- Status: Draft
+- Status: Accepted
 - Author: `leostera`
 - Start Date: `2026-11-04`
 - Updated: `2026-11-04`
@@ -137,7 +137,7 @@ A scenario can set its own `limits`; `evalkit run --limit steps=80 --limit time=
 ✗ todo-app  model=luna  limited: 40 of 40 steps · score 0.40 (graded what it left)
 ```
 
-Scorers with `supportsPartial: true` grade what the agent left; the rest are skipped. A limited run does not pass. The scoreboard and Compare count limited runs apart from failures, and `steps`, `time` and `tokens` against their limits are built-in metrics.
+Scorers with `supportsPartial: true` grade what the agent left; the rest are skipped. A limited run does not pass. The scoreboard and Compare count limited runs apart from failures, and `steps` and `time` are built-in metrics next to the token metrics, each shown against its limit when one is set.
 
 ### Isolation
 
@@ -198,7 +198,19 @@ A run's directory:
 
 ### Usage
 
-EvalKit's `Usage` becomes ATXF's: disjoint `input`, `cacheRead`, `cacheWrite` and `output` (which includes `reasoning`), with `total` their sum. Adapters convert their provider's conventions; the old `inputTokens`/`cachedInputTokens` (cached as a subset of input) go away. The built-in `tokens` metric is the transcript total, the sum of usage on assistant messages, compactions and branch summaries, and non-cumulative usage records, as the ATXF spec defines it. `judge tokens` is the same sum over judge transcripts.
+EvalKit's `Usage` becomes ATXF's: disjoint `input`, `cacheRead`, `cacheWrite` and `output` (which includes `reasoning`), with `total` their sum. Adapters convert their provider's conventions; the old `inputTokens`/`cachedInputTokens` (cached as a subset of input) go away. Cache reads are cheap and dominate long coding sessions, so EvalKit keeps them apart from tokens the model had to process. Every sum below is over usage on assistant messages, compactions and branch summaries, and non-cumulative usage records, as the ATXF spec defines transcript totals. The built-in metrics:
+
+| Metric           | Sum of                                         | Better |
+| ---------------- | ---------------------------------------------- | ------ |
+| `tokens`         | `input + cacheWrite + output` (uncached)       | lower  |
+| `cached tokens`  | `cacheRead`                                    | —      |
+| `output tokens`  | `output`                                       | lower  |
+| `cache hit rate` | `cacheRead / (input + cacheRead + cacheWrite)` | higher |
+| `judge tokens`   | `tokens`, over judge transcripts               | lower  |
+
+`cache hit rate` is the share of input tokens read from a cache, between 0 and 1, and **not measured** when the run reported no input. The run page shows the split under the agent's tokens ("1.2M tokens · 9.8M cached · 89% cache hits"), and the scoreboard and Compare can show any of them.
+
+This changes what `tokens` means: before 0.11 it included cache reads. `evalkit upgrade` recomputes it from the converted transcripts, so old and new runs compare.
 
 ### Scorer and judge API
 
@@ -218,7 +230,7 @@ EvalKit's `Usage` becomes ATXF's: disjoint `input`, `cacheRead`, `cacheWrite` an
 
 - Resolution, later wins: config `limits`, scenario `limits`, the matrix cell's `limits` axes, `--limit kind=value` (repeatable). Each kind resolves separately.
 - **Steps**: assistant messages in the run's transcript, sub-agents included. Checked when each record is appended.
-- **Tokens**: the transcript total as defined above, sub-agents included, judges not. Checked on each append.
+- **Tokens**: the `tokens` metric (uncached input, cache writes and output; cache reads do not count), sub-agents included, judges not. Checked on each append.
 - **Time**: from the session's start to the end of its last turn, scoring excluded. Checked by a timer.
 - When exceeded: EvalKit appends a `limit-reached` run event, aborts `context.signal`, waits up to 10 seconds for the current `send` to settle, calls `close()`, and stops the container if isolated. Records appended after the limit are kept, so the transcript shows what the agent did.
 - The run's status is `limited`. Final scorers with `supportsPartial` run; others are recorded as skipped with the reason. Checkpoints not reached are skipped.
@@ -264,7 +276,7 @@ The trajectory renders the transcript's active path: user messages, assistant me
 - **Native records.** Every ATXF record carries the old events it came from in `native`, so the old trajectory can be rebuilt exactly. A converted transcript is lossless; it only lacks what the old format never had.
 - **Run events.** Every `source: 'runner'` event goes to `run-events.jsonl` in order, with `at` set to the ID of the last transcript record derived from an AUT event before it.
 - **References.** A checkpoint's `matchedToolCall: { eventIndex, id }` becomes the ID of the assistant message holding the call and the call's ID. Judge results' `events` become `judge.transcript`, converted the same way with the judge agent as `source.agent`.
-- **Metrics.** `tokens` and `judge tokens` are recomputed from the converted transcripts and must equal the saved values; the converter fails the run's conversion if they do not, and leaves the run untouched.
+- **Metrics.** The token metrics are recomputed from the converted transcripts. As a check, `tokens + cached tokens` must equal the saved `tokens` (which included cache reads), and likewise for `judge tokens`; the converter fails the run's conversion if they do not, and leaves the run untouched.
 
 Upgrading is idempotent and per run: a run that fails to convert is left at version 6 and reported, and the rest go on. The share server converts stored runs when it upgrades (`POST /api/v1/upgrade`) and runs uploaded by older CLIs as they arrive, as it does for version 5.
 
@@ -302,15 +314,17 @@ Each step lands with tests: unit tests for the writer, the helpers and limit res
 - SWE-bench builds one Docker image per task environment.
 - The real project above, whose `sandbox-exec` profile and per-session shell are the model for `sandboxExec` and `context.shell`.
 
+## Decisions
+
+- **Cache reads are their own numbers.** `tokens` and the `tokens` limit count uncached input, cache writes and output; `cached tokens` and `cache hit rate` report the rest (see Usage).
+- **A step is an assistant message**, one model call, which is what agents call a step. Turns stay visible in the trajectory.
+- **Transcripts are sealed.** EvalKit writes every transcript with integrity hashes (`integrity: { alg: 'sha256', canon: 'jcs' }`) and appends a seal when the run ends. The share server stores them; verifying uploads is left for later. Converted transcripts are sealed too.
+- **Fixtures run on the host**, reachable from containers through the `fixtures` network. Running them in containers can come later without changing how scenarios use them.
+- **Old total-only usage.** An old turn that reported only `totalTokens` is converted as `input: 0, output: 0, total: <total>` with `ext.evalkit.totalOnly: true`, and counts toward `tokens` by its total. If ATXF later allows `total` alone, the converter follows.
+
 ## Unresolved questions
 
-- An old turn that reported only `totalTokens` has no input or output split, and ATXF requires both. The proposal records `input: 0, output: 0, total: <total>` with `ext.evalkit.totalOnly: true`; ATXF may want `total` to be allowed alone instead.
-
-- Should the `tokens` limit count cache reads? They are cheap and dominate long coding sessions. The proposal counts the total; counting `input + output` may be the better default.
-- Should EvalKit write transcripts with integrity hashes and a seal at the end of each run, so the share server can verify uploads? Cheap to write; the question is whether verifying is worth requiring.
-- Should a step be an assistant message or a turn? Assistant messages match what agents call steps; turns match what users send.
-- Should fixtures run in containers when isolation is on, rather than on the host?
-- Apple's `container` CLI networking may not support an internal shared network the way Docker does; `fixtures` may need a different mechanism there.
+- Apple's `container` CLI may not support an internal network shared by containers the way Docker does. If not, `network: 'fixtures'` there falls back to the host network with only the fixtures' ports reachable, or is unsupported with a clear error; to be settled when implementing.
 
 ## Future possibilities
 
