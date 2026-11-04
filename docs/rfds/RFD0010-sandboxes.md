@@ -25,7 +25,7 @@ Sandboxes replace both the project-wide `isolation` setting from RFD0009 and age
 
 ## Motivation
 
-0.11 made `isolation` a project setting. Three things need more:
+0.11 made `isolation` a project setting, and this RFD removes it entirely: sandboxes take its place. Three things it could not do:
 
 1. **Different scenarios need different machines.** A scenario that builds a Worker needs Node and wrangler; one that tests an OCaml toolchain needs opam. One image per project means one image with everything, or one project per image.
 2. **Some agents only run elsewhere.** An agent that lives in a Durable Object (pi-durable) or a hosted sandbox cannot be started on the laptop at all. Its run has to happen there, with the workspace there.
