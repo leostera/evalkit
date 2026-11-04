@@ -1,4 +1,8 @@
-import { convertTrajectory, upgradeScoring } from '@evalkit/core/upgrade';
+import {
+  convertTrajectory,
+  upgradeManifestToV8,
+  upgradeScoring,
+} from '@evalkit/core/upgrade';
 import type { SnapshotFiles } from './legacy.js';
 
 /**
@@ -74,7 +78,7 @@ export function upgradeV2Run(files: SnapshotFiles): SnapshotFiles {
       scores: scoring.results,
       ...(scoring.metrics ? { metrics: scoring.metrics } : {}),
       ...(scoring.checkpoints ? { checkpoints: scoring.checkpoints } : {}),
-      manifest: { ...manifest, schemaVersion: 7 },
+      manifest: upgradeManifestToV8({ ...manifest, schemaVersion: 7 }),
       ...(summary
         ? {
             summary: {
@@ -101,6 +105,28 @@ export function upgradeV2Run(files: SnapshotFiles): SnapshotFiles {
 }
 
 /** True when the stored run is in snapshot format version 2. */
+/**
+ * A run from EvalKit 0.11 (report schema version 7) as 0.12 records it
+ * (RFD0010): the manifest in `detail.json` and the run in `run.json` say
+ * which sandbox it ran in instead of its isolation. Runs already recording
+ * one are returned as they are.
+ */
+export function withSandbox(files: SnapshotFiles): SnapshotFiles {
+  const detail = parse(files.get('detail.json'));
+  const run = parse(files.get('run.json'));
+  if (!isRecord(detail) || !isRecord(detail.manifest)) return files;
+  const manifest = detail.manifest;
+  if (manifest.schemaVersion !== 7) return files;
+  const upgraded = upgradeManifestToV8(manifest);
+  const result = new Map(files);
+  result.set('detail.json', encode({ ...detail, manifest: upgraded }));
+  if (isRecord(run)) {
+    const { isolation: _isolation, ...rest } = run;
+    result.set('run.json', encode({ ...rest, sandbox: upgraded.sandbox }));
+  }
+  return result;
+}
+
 export function isV2Run(runJson: unknown): boolean {
   return isRecord(runJson) && runJson.snapshotVersion === 2;
 }

@@ -39,7 +39,6 @@ test('discovers and runs the starter eval without a config or registry', async (
       runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b3c',
       // The scenario repeats 10 times; once is enough here.
       repeat: 1,
-      runtime: 'local',
     }),
   );
 

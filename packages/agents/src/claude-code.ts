@@ -15,7 +15,7 @@ export type ClaudeCodeOptions = HarnessOptions & {
 
 /**
  * Claude Code as the agent under test: `claude -p` with every tool allowed
- * (EvalKit's isolation is the sandbox), one session per run. Its session
+ * (the run's EvalKit sandbox is the boundary), one session per run. Its session
  * file becomes the run's transcript.
  */
 export function claudeCodeAgent(

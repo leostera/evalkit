@@ -200,19 +200,6 @@ export function LatestRun({ run }: { run?: RunSummary }) {
   );
 }
 
-function runtimes(agent: CatalogAgent) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      {agent.runtimes.map((runtime) => (
-        <Pill key={runtime.name}>
-          {runtime.name}{' '}
-          <span className="text-kumo-subtle">({runtime.kind})</span>
-        </Pill>
-      ))}
-    </span>
-  );
-}
-
 // ── Agents ──────────────────────────────────────────────────────────────────
 
 export function AgentsPage({ catalog }: Data) {
@@ -226,7 +213,6 @@ export function AgentsPage({ catalog }: Data) {
             <Table.Row>
               <Table.Head>Agent</Table.Head>
               <Table.Head>Kind</Table.Head>
-              <Table.Head>Runtimes</Table.Head>
               <Table.Head>Scenarios</Table.Head>
               <Table.Head>Defined in</Table.Head>
             </Table.Row>
@@ -251,7 +237,6 @@ export function AgentsPage({ catalog }: Data) {
                   </span>
                 </Table.Cell>
                 <Table.Cell>{agent.kind}</Table.Cell>
-                <Table.Cell>{runtimes(agent)}</Table.Cell>
                 <Table.Cell className="tabular-nums">
                   {scenarios.length}
                   {judging.length ? (
@@ -297,7 +282,6 @@ export function AgentPage({
             ],
             ['Kind', agent.kind],
             ...(agent.version ? ([['Version', agent.version]] as const) : []),
-            ['Runtimes', runtimes(agent)],
             ['Defined in', <DefinedAt key="at" at={agent.definedAt} />],
           ]}
         />

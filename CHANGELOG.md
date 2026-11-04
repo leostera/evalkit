@@ -4,6 +4,16 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Sandboxes ([RFD0010](docs/rfds/RFD0010-sandboxes.md)).** `defineSandbox({ id, kind: 'host' | 'container' | 'remote', ... })` says where runs happen. A scenario names its own with `sandbox`, a matrix sweeps them with an axis named `sandbox`, and `sandboxes` and `sandbox` in the config name them and set the default; the host is used when nothing names one. A container sandbox takes a `dockerfile` or an `image` and `containerOpts: { network, env, mounts, runtime }`. A remote sandbox implements `prepare`, `start` (returning its shell, `mount`, `unmount` and `stop`) and `teardown`, for a VM, a cloud sandbox or a Durable Object; the workspace is mounted into it before the agent starts and brought back after scoring, and the evaluator workspace never leaves this machine. Each sandbox is prepared once per invocation, and `concurrency` caps its runs at once.
+
+### Changed
+
+- **Breaking:** `isolation` in the config is replaced by `sandboxes` and `sandbox`, and `none()`, `container()` and `sandboxExec()` by `defineSandbox`. `container({ image: './Dockerfile', network })` becomes `defineSandbox({ id: 'node', kind: 'container', dockerfile: './Dockerfile', containerOpts: { network } })`. `sandboxExec()` has no replacement: use a container.
+- **Breaking:** agent `runtimes` are removed, with `context.runtime`, the `runtime` argument to `start`, `agentRuntimes`, `DEFAULT_AGENT_RUNTIMES`, `runEval`'s `runtime` option and `evalkit run --local`. Where an agent runs is its sandbox.
+- **Breaking:** `context.shell.isolation` is now `context.shell.sandbox` (`{ id, kind }`), and manifests record `sandbox` instead of `isolation` (report schema version 8). Run `evalkit upgrade` to convert saved runs; runs without isolation ran on the host. The share server converts runs shared by 0.11.
+
 ## [0.11.3] - 2026-11-04
 
 ### Fixed

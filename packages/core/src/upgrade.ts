@@ -2,7 +2,8 @@
  * Pure conversions of results written by older EvalKits: from before report
  * schema version 6, where a run held trials, to version 6, where each trial
  * is a run (RFD0008), and from version 6 to 7, where the agent's trajectory
- * is an ATXF transcript (RFD0009, in `upgrade-transcript.ts`). Shared by
+ * is an ATXF transcript (RFD0009, in `upgrade-transcript.ts`), and from
+ * version 7 to 8, where a run records its sandbox (RFD0010). Shared by
  * `evalkit upgrade` and the share server, so both upgrade the same way. No
  * runtime dependencies: the share server's Worker bundles this file.
  */
@@ -10,6 +11,38 @@ export * from './upgrade-transcript.js';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonRecord = { [key: string]: Json };
+
+/**
+ * A version 7 manifest as version 8 (RFD0010): its `isolation` becomes its
+ * `sandbox`, a run without one ran on the host, and the agent `runtime` it
+ * selected is dropped.
+ */
+export function upgradeManifestToV8<T extends Record<string, unknown>>(
+  manifest: T,
+): Omit<T, 'isolation' | 'runtime' | 'schemaVersion'> & {
+  schemaVersion: 8;
+  sandbox: { id: string; kind: string; image?: string; network?: string };
+} {
+  const {
+    isolation,
+    runtime: _runtime,
+    schemaVersion: _version,
+    ...rest
+  } = manifest as T & { isolation?: unknown; runtime?: unknown };
+  const old = isRecord(isolation) ? isolation : undefined;
+  const sandbox =
+    old?.kind === 'container'
+      ? {
+          id: 'container',
+          kind: 'container',
+          ...(typeof old.image === 'string' ? { image: old.image } : {}),
+          ...(typeof old.network === 'string' ? { network: old.network } : {}),
+        }
+      : old?.kind === 'sandbox-exec'
+        ? { id: 'sandbox-exec', kind: 'sandbox-exec' }
+        : { id: 'host', kind: 'host' };
+  return { ...rest, schemaVersion: 8, sandbox };
+}
 
 /** Report schema versions `evalkit upgrade` converts to version 6 first. */
 export const UPGRADABLE_SCHEMA_VERSIONS: readonly number[] = [2, 3, 4, 5];

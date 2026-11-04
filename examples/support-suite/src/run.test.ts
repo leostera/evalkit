@@ -55,7 +55,6 @@ test('every scenario passes in both tones, in suites from its directory', async 
         report: localReportStore(reports),
         root: projectRoot,
         workspaceRoot: join(temporaryRoot, 'sandbox'),
-        runtime: 'local',
         concurrency: 8,
         repeat: 2,
       }),

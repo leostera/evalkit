@@ -3,6 +3,7 @@ import { ListBulletsIcon, PlayIcon } from '@phosphor-icons/react';
 import type { CatalogEval, RunSummary } from '../api.js';
 import { agentKey, agentName } from './agentName.js';
 import { monoClass, tableLinkClass } from './DataTable.js';
+import { sandboxName } from './sandboxName.js';
 import { agentHref, runHref, scenarioHref } from './links.js';
 import { runsHref } from './run-facets.js';
 import { StatusBadge } from './StatusBadge.js';
@@ -62,10 +63,7 @@ export function EvalRow({
           agentName(evaluation)
         )}
       </Table.Cell>
-      <Table.Cell>
-        {evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ||
-          'default'}
-      </Table.Cell>
+      <Table.Cell>{sandboxName(evaluation, cellParameters)}</Table.Cell>
       <Table.Cell className="tabular-nums">
         {repeat ?? evaluation?.repeat ?? 1}
       </Table.Cell>

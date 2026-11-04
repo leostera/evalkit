@@ -11,7 +11,7 @@ import type {
   RunStatus,
   LimitReached,
   Limits,
-  RunIsolation,
+  RunSandbox,
 } from '@evalkit/core';
 import { REPORT_SCHEMA_VERSION } from '@evalkit/core';
 import {
@@ -59,7 +59,7 @@ export type LocalRun = {
   /** The limit a `limited` run reached. */
   limit?: LimitReached;
   /** Where its processes ran; absent on the host. */
-  isolation?: RunIsolation;
+  sandbox?: RunSandbox;
 };
 
 export type RunScorer = {
@@ -260,7 +260,7 @@ export function createDashboardReportReader(root: string) {
         : {}),
       status: summary ? summary.status : interrupted ? 'cancelled' : 'running',
       ...(manifest.limits ? { limits: manifest.limits } : {}),
-      ...(manifest.isolation ? { isolation: manifest.isolation } : {}),
+      ...(manifest.sandbox ? { sandbox: manifest.sandbox } : {}),
       ...(summary?.limit ? { limit: summary.limit } : {}),
       ...(interrupted ? { interrupted: true as const } : {}),
       startedAt: manifest.startedAt,

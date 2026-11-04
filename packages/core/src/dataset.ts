@@ -1,6 +1,6 @@
 import { authorId } from './identity.js';
 import type { Batch, JsonObject } from './index.js';
-import type { FixtureAddress } from './isolation.js';
+import type { FixtureAddress } from './sandbox.js';
 import { internalModule, markDefinitionSite } from './definition-site.js';
 
 internalModule(import.meta.url);

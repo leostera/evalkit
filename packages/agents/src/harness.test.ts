@@ -6,11 +6,9 @@ import { Effect } from 'effect';
 import {
   defineEval,
   lastReply,
-  sandboxExec,
   toolCalls,
   user,
   type AutAdapter,
-  type Isolation,
 } from '@evalkit/core';
 import { localReportStore, readRunTranscript, runEval } from '@evalkit/runner';
 import {
@@ -52,11 +50,7 @@ ${body}
   return file;
 }
 
-async function runTwoTurns(
-  agent: AutAdapter,
-  dir: string,
-  isolation?: Isolation,
-) {
+async function runTwoTurns(agent: AutAdapter, dir: string) {
   const scenario = defineEval({
     id: 'harness',
     agent,
@@ -68,7 +62,6 @@ async function runTwoTurns(
       report: localReportStore(path.join(dir, 'reports')),
       workspaceRoot: path.join(dir, 'sandbox'),
       root: dir,
-      ...(isolation ? { isolation } : {}),
       parameters: { model: 'anthropic/claude-sonnet-4-5' },
     }),
   );
@@ -218,37 +211,6 @@ echo '{"type":"result","result":"done"}'`,
     expect(argvs[1]).toContain(`--resume ${id}`);
     expect(toolCalls({ transcript }).length).toBeGreaterThan(0);
   });
-
-  test.if(process.platform === 'darwin')(
-    'piAgent inside sandboxExec: the private home is usable, the project is not',
-    async () => {
-      const dir = await root();
-      const command = await fakeCli(
-        dir,
-        `WANT=--session-dir; sessions=$(arg "$@")
-WANT=--session-id; id=$(arg "$@")
-cat ${JSON.stringify(path.join('$PWD', '..', '..', '..', 'package.json'))} >/dev/null 2>&1 && echo "project: readable" >> "$LOG"
-mkdir -p "$sessions" && cp "$FIXTURES/pi.jsonl" "$sessions/x_$id.jsonl"
-echo Done.`,
-      );
-      await writeFile(path.join(dir, 'package.json'), '{}');
-      await writeFile(path.join(dir, 'calls.log'), '');
-      const { result, transcript, calls } = await runTwoTurns(
-        piAgent({ command }),
-        dir,
-        // The stand-in and its log are in the project, which the sandbox hides.
-        sandboxExec({
-          read: [fixtures, command],
-          allow: [path.join(dir, 'calls.log')],
-        }),
-      );
-      expect(result.status).toBe('passed');
-      expect(calls).not.toContain('project: readable');
-      expect(toolCalls({ transcript }).map((call) => call.name)).toEqual([
-        'write',
-      ]);
-    },
-  );
 
   test('options may be picked per run from its context', async () => {
     const dir = await root();

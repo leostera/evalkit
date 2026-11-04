@@ -2,8 +2,10 @@ import type { EvalkitConfig } from '@evalkit/core';
 import { parseLimits } from '@evalkit/core/limits';
 import {
   fixtureSet,
+  sandboxSet,
   type FixtureSet,
   type RunEvalOptions,
+  type SandboxSet,
 } from '@evalkit/runner';
 
 /**
@@ -16,7 +18,8 @@ export function projectRunOptions(
 ): Pick<
   RunEvalOptions,
   | 'root'
-  | 'isolation'
+  | 'sandboxes'
+  | 'sandbox'
   | 'limits'
   | 'keepWorkspaces'
   | 'artifactExclude'
@@ -25,7 +28,8 @@ export function projectRunOptions(
 > {
   return {
     root,
-    ...(config?.isolation ? { isolation: config.isolation } : {}),
+    ...(config?.sandboxes ? { sandboxes: config.sandboxes } : {}),
+    ...(config?.sandbox !== undefined ? { sandbox: config.sandbox } : {}),
     limits: { base: parseLimits(config?.limits, 'The config') },
     ...(config?.keepSandboxes ? { keepWorkspaces: config.keepSandboxes } : {}),
     ...(config?.artifacts?.exclude
@@ -51,16 +55,44 @@ export function projectFixtures(
   return fixtureSet(fixtures, { root });
 }
 
-/** Runs `work` with the project's fixtures, stopping them afterwards. */
-export async function withFixtures<T>(
+/** The container runtime of each container sandbox the project names, by id. */
+export function containerRuntimes(
+  config: EvalkitConfig | undefined,
+): Record<string, string> {
+  const runtimes: Record<string, string> = {};
+  const sandboxes = [
+    ...Object.values(config?.sandboxes ?? {}),
+    ...(typeof config?.sandbox === 'object' ? [config.sandbox] : []),
+  ];
+  for (const sandbox of sandboxes)
+    if (sandbox.kind === 'container') runtimes[sandbox.id] = sandbox.runtime;
+  return runtimes;
+}
+
+/** What one invocation's runs share: the project's fixtures and its sandboxes. */
+export type RunResources = { fixtures?: FixtureSet; sandboxSet: SandboxSet };
+
+/**
+ * Runs `work` with the invocation's fixtures and sandboxes, then tears the
+ * sandboxes down and stops the fixtures.
+ */
+export async function withRunResources<T>(
   root: string,
   config: EvalkitConfig | undefined,
-  work: (fixtures: FixtureSet | undefined) => Promise<T>,
+  work: (resources: RunResources) => Promise<T>,
 ): Promise<T> {
   const fixtures = projectFixtures(root, config);
+  const sandboxes = sandboxSet({ root });
   try {
-    return await work(fixtures);
+    return await work({
+      ...(fixtures ? { fixtures } : {}),
+      sandboxSet: sandboxes,
+    });
   } finally {
-    await fixtures?.stop();
+    try {
+      await sandboxes.teardown();
+    } finally {
+      await fixtures?.stop();
+    }
   }
 }

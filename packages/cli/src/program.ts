@@ -151,7 +151,6 @@ export function createProgram(actions: Actions): Command {
       'stop each run past this limit: steps=80, tokens=2000000, time=20m; repeatable; overrides config, scenario and matrix',
       collect,
     )
-    .option('--local', "require the agent's local runtime")
     .option('--all', 'allow more matrix cells than execution.maxCells')
     .option('--dry-run', 'print the plan as JSON; run nothing')
     .option('--json', 'print one JSON result per matrix cell')
@@ -363,7 +362,6 @@ type RunFlags = {
   repeat?: string;
   concurrency?: string;
   limit?: string[];
-  local?: boolean;
   all?: boolean;
   dryRun?: boolean;
   json?: boolean;
@@ -390,7 +388,6 @@ function runInput(evalIds: string[], flags: RunFlags): RunInput {
       json: flags.json,
       'dry-run': flags.dryRun,
       all: flags.all,
-      local: flags.local,
       junit: flags.junit,
       verbose: flags.verbose,
       'skip-broken': flags.skipBroken,

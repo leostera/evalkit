@@ -299,14 +299,14 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
       'utf8',
     ),
   );
-  expect(manifest.schemaVersion).toBe(7);
+  expect(manifest.schemaVersion).toBe(8);
   expect(manifest.evalId).toBe('task-1');
   expect(manifest.evalUri).toBeUndefined();
   expect(manifest.parameters).toEqual({ model: 'a', mode: 'with-docs' });
   expect(manifest.limits).toEqual({ tokens: 10000 });
   expect(manifest.matrix.id).toBe('models');
   expect(manifest.matrix.cellKey).toContain('with-docs');
-});
+}, 30_000);
 
 test('run workspaces live outside the project unless sandboxDir puts them inside', () => {
   const root = '/work/my-evals';

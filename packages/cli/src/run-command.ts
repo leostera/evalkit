@@ -37,7 +37,7 @@ import {
 } from './project.js';
 import { createRunReporter, runReport, totalsLine } from './run-reporter.js';
 import { junitReport } from './junit.js';
-import { projectRunOptions, withFixtures } from './run-options.js';
+import { projectRunOptions, withRunResources } from './run-options.js';
 import { detectPackageManager, evalkitCommand } from './package-manager.js';
 import { VERSION } from './version.js';
 
@@ -58,7 +58,6 @@ export function normalizeRunOptions(
     json?: boolean;
     'dry-run'?: boolean;
     all?: boolean;
-    local?: boolean;
     junit?: string;
     verbose?: boolean;
     'skip-broken'?: boolean;
@@ -269,8 +268,12 @@ export async function runProjectCommand(
     repeat: repeat ?? 'scenario',
     // The project's limits and --limit; a scenario's and a cell's come between.
     limits: { config: configLimits, cli: parsed.limits },
-    // Where the runs' processes run, and the fixtures they reach.
-    isolation: project.config.isolation ?? { kind: 'none' },
+    // Where runs happen unless a scenario or cell says otherwise, and the fixtures they reach.
+    sandbox:
+      typeof project.config.sandbox === 'string'
+        ? project.config.sandbox
+        : (project.config.sandbox?.id ?? 'host'),
+    sandboxes: Object.keys(project.config.sandboxes ?? {}),
     fixtures: Object.keys(project.config.fixtures ?? {}),
     // What each scenario checks, before anything runs.
     scoring: Object.fromEntries(
@@ -356,54 +359,58 @@ export async function runProjectCommand(
   reporter.start();
   let summary;
   try {
-    summary = await withFixtures(project.root, project.config, (fixtures) =>
-      Effect.runPromise(
-        runnerLogs(
-          runMatrix(matrix, {
-            ...projectRunOptions(project.root, project.config),
-            ...(fixtures ? { fixtures } : {}),
-            selection,
-            concurrency:
-              parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
-            ...(repeat ? { repeat } : {}),
-            ...(suiteId ? { suiteId } : {}),
-            suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
-            ...(values.local ? { runtime: 'local' as const } : {}),
-            ...(source ? { source } : {}),
-            catalog: runCatalog(registry, project.root),
-            report: localReportStore(reportDir),
-            workspaceRoot: sandboxDir,
-            signal: controller.signal,
-            limits: {
-              base: configLimits,
-              override: parsed.limits,
-            },
-            onUpdate: (run, update) => reporter.onUpdate(run, update),
-            onResult: (cell, results) => {
-              for (const result of results) {
-                const report = runReport(
-                  cell,
-                  result,
-                  suiteFor(authoringId(cell.eval)),
-                );
-                if (values.json)
-                  console.log(
-                    JSON.stringify({
-                      cell: {
-                        key: cell.key,
-                        eval: authoringId(cell.eval),
-                        parameters: cell.parameters,
-                      },
-                      outcome: report.outcome,
-                      result,
-                    }),
+    summary = await withRunResources(
+      project.root,
+      project.config,
+      (resources) =>
+        Effect.runPromise(
+          runnerLogs(
+            runMatrix(matrix, {
+              ...projectRunOptions(project.root, project.config),
+              ...resources,
+              selection,
+              concurrency:
+                parsed.concurrency ??
+                project.config.execution?.concurrency ??
+                4,
+              ...(repeat ? { repeat } : {}),
+              ...(suiteId ? { suiteId } : {}),
+              suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
+              ...(source ? { source } : {}),
+              catalog: runCatalog(registry, project.root),
+              report: localReportStore(reportDir),
+              workspaceRoot: sandboxDir,
+              signal: controller.signal,
+              limits: {
+                base: configLimits,
+                override: parsed.limits,
+              },
+              onUpdate: (run, update) => reporter.onUpdate(run, update),
+              onResult: (cell, results) => {
+                for (const result of results) {
+                  const report = runReport(
+                    cell,
+                    result,
+                    suiteFor(authoringId(cell.eval)),
                   );
-                reporter.onRun(report);
-              }
-            },
-          }),
+                  if (values.json)
+                    console.log(
+                      JSON.stringify({
+                        cell: {
+                          key: cell.key,
+                          eval: authoringId(cell.eval),
+                          parameters: cell.parameters,
+                        },
+                        outcome: report.outcome,
+                        result,
+                      }),
+                    );
+                  reporter.onRun(report);
+                }
+              },
+            }),
+          ),
         ),
-      ),
     );
   } finally {
     for (const signal of STOP_SIGNALS) process.off(signal, onStop);

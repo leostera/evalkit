@@ -24,7 +24,8 @@ export type HostShellOptions = {
   signal: AbortSignal;
 };
 
-export type ClosableShell = Shell & {
+/** A shell the runner owns: the sandbox's commands and files, with where they are, until `close`. */
+export type ClosableShell = Omit<Shell, 'sandbox'> & {
   /** Stops every process the run started; the shell takes no more commands. */
   close(): Promise<void>;
 };
@@ -61,7 +62,6 @@ export function hostShell(options: HostShellOptions): ClosableShell {
     return tracker.track(process_);
   };
   return {
-    isolation: 'none',
     root: options.root,
     exec: async (command, commandOptions) =>
       collect(start(command, commandOptions)),

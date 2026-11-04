@@ -13,7 +13,7 @@ import type { RunEvent } from './index.js';
 const runUri = 'evalkit:run:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const runManifest = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   runUri,
   evalId: 'cron-trigger',
   startedAt: '2026-01-01T00:00:00Z',

@@ -53,9 +53,9 @@ export function MatrixCellHeader({
         ))}
         {sortable('Agent', 'agent')}
         {planned ? (
-          <Table.Head>Runtime</Table.Head>
+          <Table.Head>Sandbox</Table.Head>
         ) : (
-          sortable('Runtime', 'runtime')
+          sortable('Sandbox', 'sandbox')
         )}
         {sortable('Repeat', 'repeat')}
         {planned ? (

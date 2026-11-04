@@ -223,12 +223,7 @@ function ScenarioDefinition({
           ...(policy?.failfast
             ? ([['Failfast', 'stops at the first failed checkpoint']] as const)
             : []),
-          [
-            'Runtimes',
-            scenario.agent.runtimes
-              .map((runtime) => `${runtime.name} (${runtime.kind})`)
-              .join(', ') || 'default',
-          ],
+          ['Sandbox', scenario.sandbox ?? 'default'],
           ['Defined in', <DefinedAt key="at" at={scenario.definedAt} />],
         ]}
       />

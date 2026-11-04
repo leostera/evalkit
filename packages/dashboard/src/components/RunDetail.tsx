@@ -63,18 +63,22 @@ const EMPTY_SESSION: RunTranscriptView = {
   runEvents: [],
 };
 
-/** Where a run's processes ran, in a few words. */
-export function isolationLabel(
-  isolation: NonNullable<RunSummary['isolation']>,
+/** Where a run happened, in a few words: the sandbox and what it is. */
+export function sandboxLabel(
+  sandbox: NonNullable<RunSummary['sandbox']>,
 ): string {
-  if (isolation.kind === 'sandbox-exec') return 'sandbox-exec';
+  if (sandbox.kind !== 'container')
+    return sandbox.id === sandbox.kind
+      ? sandbox.kind
+      : `${sandbox.id} · ${sandbox.kind}`;
   const network =
-    isolation.network === 'full'
+    sandbox.network === 'full'
       ? 'full network'
-      : isolation.network === 'fixtures'
+      : sandbox.network === 'fixtures'
         ? 'fixtures only'
         : 'no network';
-  return `container ${isolation.image} · ${network}`;
+  const image = sandbox.image ?? sandbox.dockerfile;
+  return `${sandbox.id} · container ${image} · ${network}`;
 }
 
 /** The question the verdicts answer, by how the run ended. */
@@ -176,10 +180,8 @@ export function RunFacts({
           ],
         ] as Array<[string, ReactNode]>)
       : []),
-    ...(run.isolation
-      ? ([['Isolation', isolationLabel(run.isolation)]] as Array<
-          [string, ReactNode]
-        >)
+    ...(run.sandbox
+      ? ([['Sandbox', sandboxLabel(run.sandbox)]] as Array<[string, ReactNode]>)
       : []),
     ['Commit', <CommitLabel key="commit" source={run.source} />],
     [

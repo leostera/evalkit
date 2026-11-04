@@ -4,7 +4,7 @@ import {
   upgradeCatalogFile,
   upgradeSnapshotRun,
 } from './legacy.js';
-import { isV2Run, upgradeV2Run } from './transcripts.js';
+import { isV2Run, upgradeV2Run, withSandbox } from './transcripts.js';
 import {
   allowedLegacyRunPath,
   allowedRunPath,
@@ -120,6 +120,7 @@ function runUpload(
   files: Map<string, Uint8Array>,
   catalog: Uint8Array | undefined,
 ): RunUpload {
+  files = withSandbox(files);
   const runJson = files.get('run.json')!;
   return {
     run: parseRun(runJson),

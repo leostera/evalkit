@@ -12,7 +12,6 @@ import { assertNoRemovedOptions } from '@evalkit/core/upgrade';
 import os from 'node:os';
 import { Effect, Exit, Scope } from 'effect';
 import {
-  agentRuntimes,
   assertJudgesIndependent,
   type AutAdapter,
   DEFAULT_ARTIFACT_EXCLUDE,
@@ -20,12 +19,10 @@ import {
   resourceUri,
   authoringId,
   toJsonObject,
-  type AgentRuntimeName,
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
-  type Isolation,
-  none,
+  type Sandbox,
   type EntryRecord,
   type JsonValue,
   type LimitReached,
@@ -56,7 +53,15 @@ import {
 } from '@evalkit/core/limits';
 import { uncachedTokens } from '@evalkit/core/usage';
 import { RunTranscript } from './run-transcript.js';
-import { openRunShell, type FixtureSet, type RunShell } from './shell/index.js';
+import {
+  openRunSandbox,
+  resolveSandbox,
+  runSandboxRecord,
+  sandboxSet,
+  type FixtureSet,
+  type RunSandboxHandle,
+  type SandboxSet,
+} from './shell/index.js';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createRunWorkspace, type RunWorkspace } from './workspace.js';
 import {
@@ -93,7 +98,10 @@ export { upgradeReports, type UpgradeReport } from './upgrade.js';
 export {
   fixtureSet,
   removeRunContainer,
+  resolveSandbox,
+  sandboxSet,
   type FixtureSet,
+  type SandboxSet,
 } from './shell/index.js';
 
 export type RunEvalOptions = {
@@ -105,16 +113,18 @@ export type RunEvalOptions = {
   repeat?: number;
   /** Parameters made available to the AUT, and to judges, for this invocation. */
   parameters?: JsonObject;
-  /** Where each run's processes run, through `context.shell`. Default `none()`: on the host. */
-  isolation?: Isolation;
+  /** The project's sandboxes by id, for scenarios and the `sandbox` parameter that name one. */
+  sandboxes?: Readonly<Record<string, Sandbox>>;
+  /** Where runs happen when neither the cell nor the scenario says. Default: this machine. */
+  sandbox?: Sandbox | string;
+  /** The invocation's sandboxes, prepared once and torn down at the end; each run gets its own otherwise. */
+  sandboxSet?: SandboxSet;
   /** The project's fixtures, shared by an invocation's runs; started by the first run. */
   fixtures?: FixtureSet;
   /** The agent for judges that name none (`judge` in evalkit.config.ts). */
   judge?: AutAdapter;
   /** Matrix provenance recorded in every run's manifest. */
   matrix?: RunMetadata['matrix'];
-  /** Selects a declared AUT runtime such as local, sandbox, or remote. */
-  runtime?: AgentRuntimeName;
   /** Maximum number of this batch's runs executing concurrently. */
   concurrency?: number;
   /** Optional shared limiter for coordinating runs across batches. */
@@ -225,10 +235,13 @@ function runMetadata(
   options: RunOnceOptions,
   runId: string,
   startedAt: string,
-  extra: Pick<RunMetadata, 'workspaceIgnore' | 'datasets' | 'limits'>,
+  extra: Pick<
+    RunMetadata,
+    'workspaceIgnore' | 'datasets' | 'limits' | 'sandbox'
+  >,
 ): RunMetadata {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
@@ -286,6 +299,18 @@ async function executeBatch(
   if (repeat === 1) return [await runOnce(definition, options)];
   if (options.runId)
     throw new Error('runId names one run; it cannot be used with repeat');
+  if (!options.sandboxSet) {
+    // The batch's runs share one set: the sandbox is prepared once for all of them.
+    const sandboxes = sandboxSet({ root: options.root ?? process.cwd() });
+    try {
+      return await executeBatch(definition, {
+        ...options,
+        sandboxSet: sandboxes,
+      });
+    } finally {
+      await sandboxes.teardown().catch(() => undefined);
+    }
+  }
 
   const batchId = createId();
   const signal = options.signal;
@@ -315,18 +340,35 @@ async function runOnce(
   definition: EvalDefinition,
   options: RunOnceOptions,
 ): Promise<RunResult> {
+  const sandbox = resolveSandbox({
+    ...(options.parameters ? { parameters: options.parameters } : {}),
+    ...(definition.sandbox !== undefined
+      ? { scenario: definition.sandbox }
+      : {}),
+    ...(options.sandbox !== undefined ? { fallback: options.sandbox } : {}),
+    ...(options.sandboxes ? { sandboxes: options.sandboxes } : {}),
+  });
+  const own = options.sandboxSet === undefined;
+  const sandboxes =
+    options.sandboxSet ?? sandboxSet({ root: options.root ?? process.cwd() });
+  const release = await sandboxes.acquire(sandbox);
+  try {
+    return await runInSandbox(definition, options, sandbox, sandboxes);
+  } finally {
+    release();
+    if (own) await sandboxes.teardown();
+  }
+}
+
+async function runInSandbox(
+  definition: EvalDefinition,
+  options: RunOnceOptions,
+  sandbox: Sandbox,
+  sandboxes: SandboxSet,
+): Promise<RunResult> {
   const now = options.now ?? (() => new Date());
   const runId = options.runId ?? createId();
   const startedAt = now().toISOString();
-  const selectedRuntime = options.runtime;
-  const runtime = selectedRuntime
-    ? agentRuntimes(definition.agent)[selectedRuntime]
-    : undefined;
-  if (selectedRuntime && !runtime) {
-    throw new Error(
-      `AUT does not declare the requested ${selectedRuntime} runtime`,
-    );
-  }
 
   const randomSeed = crypto.getRandomValues(new Uint32Array(1))[0]!;
   const batch = options.batch;
@@ -341,7 +383,6 @@ async function runOnce(
       randomSeed,
     },
     ...(options.parameters ? { parameters: options.parameters } : {}),
-    ...(selectedRuntime ? { runtime: selectedRuntime } : {}),
   } as const;
   // Loading may fail; the run then errors with the error recorded in its report.
   let datasetsError: unknown;
@@ -355,7 +396,7 @@ async function runOnce(
       ...(batch ? { batch } : {}),
       seed: randomSeed,
       parameters: options.parameters ?? {},
-      fixtures: options.fixtures?.addresses(none()) ?? {},
+      fixtures: options.fixtures?.addresses() ?? {},
       signal,
     });
   } catch (error) {
@@ -378,17 +419,7 @@ async function runOnce(
       workspaceIgnore,
       ...(prepared.length ? { datasets: runDatasets(prepared) } : {}),
       ...(Object.keys(limits).length ? { limits } : {}),
-      ...(options.isolation?.kind === 'container'
-        ? {
-            isolation: {
-              kind: 'container' as const,
-              image: options.isolation.image,
-              network: options.isolation.network,
-            },
-          }
-        : options.isolation?.kind === 'sandbox-exec'
-          ? { isolation: { kind: 'sandbox-exec' as const } }
-          : {}),
+      sandbox: runSandboxRecord(sandbox),
     }),
     { catalog: options.catalog },
   );
@@ -490,7 +521,7 @@ async function runOnce(
   };
 
   let workspace: RunWorkspace | undefined;
-  let runShell: RunShell | undefined;
+  let runSandbox: RunSandboxHandle | undefined;
   let context: AutContext | undefined;
   let primaryError: unknown;
   let closeError: unknown;
@@ -547,29 +578,31 @@ async function runOnce(
       ).pipe(Effect.provideService(Scope.Scope, workspaceScope)),
     );
     const runWorkspace = workspace;
-    // Opened after the workspace, so it closes first: a container goes before its mount.
-    runShell = await runBoundary(
+    // Opened after the workspace, so it stops first: a container goes before its mount.
+    runSandbox = await runBoundary(
       Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>
-            openRunShell({
-              isolation: options.isolation ?? none(),
+            openRunSandbox({
+              sandbox,
+              sandboxes,
               runId,
+              evalId: definition.id,
+              parameters: options.parameters ?? {},
               root: runWorkspace.artifacts.candidate.root,
-              projectRoot: options.root ?? process.cwd(),
               signal: runSignal,
               ...(options.fixtures ? { fixtures: options.fixtures } : {}),
             }),
           catch: (cause) =>
             new AutExecutionError({
               cause,
-              message: `Could not set up the run's ${isolationLabel(options.isolation)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+              message: `Could not start the run's sandbox ${sandbox.id}: ${cause instanceof Error ? cause.message : String(cause)}`,
             }),
         }),
         (opened) =>
           Effect.promise(() =>
             opened
-              .close({
+              .stop({
                 keep: keepWorkspace(
                   options.keepWorkspaces,
                   scoring?.passed === true,
@@ -585,8 +618,8 @@ async function runOnce(
       ...baseContext,
       signal: runSignal,
       limits,
-      shell: runShell.shell,
-      fixtures: runShell.fixtures,
+      shell: runSandbox.shell,
+      fixtures: runSandbox.fixtures,
       data: candidateData,
       workspace: runWorkspace.artifacts.candidate,
       evaluatorWorkspace: runWorkspace.artifacts.evaluator,
@@ -613,7 +646,6 @@ async function runOnce(
           try: () =>
             definition.agent.start({
               context: runContext,
-              ...(runtime ? { runtime } : {}),
               transcript: transcript.writer(),
               attach: attachments.attach,
             }),
@@ -746,7 +778,22 @@ async function runOnce(
     scoring = scoreSummary(scoreResults, checkpoints, skippedScorers, metrics);
     await runWriter.writeScores(scoring);
 
-    if (workspace) {
+    // The workspace comes back from the sandbox before anything reads it on the host.
+    let recovered = true;
+    if (runSandbox) {
+      try {
+        await runSandbox.unmount();
+      } catch (cause) {
+        recovered = false;
+        const unrecovered = new AutExecutionError({
+          cause,
+          message: `Could not bring the workspace back from the sandbox ${sandbox.id}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        });
+        if (!primaryError) primaryError = unrecovered;
+        await tryEmitError(unrecovered, emitRunner, now);
+      }
+    }
+    if (workspace && recovered) {
       try {
         artifacts = await snapshotCandidateWorkspace(
           workspace.artifacts.candidate.root,
@@ -850,12 +897,6 @@ function datasetValues(
 }
 
 /** Persistent workspaces of runs that did not pass are kept for debugging by default. */
-function isolationLabel(isolation: Isolation | undefined): string {
-  if (isolation?.kind === 'container') return 'container';
-  if (isolation?.kind === 'sandbox-exec') return 'sandbox';
-  return 'shell';
-}
-
 function keepWorkspace(
   policy: KeepSandboxes = 'failed',
   passed: boolean,

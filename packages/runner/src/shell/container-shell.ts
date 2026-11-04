@@ -1,11 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
-import type {
-  ContainerIsolation,
-  ShellOptions,
-  ShellProcess,
-} from '@evalkit/core';
-import { docker, ensureRuntime, resolveImage } from './docker.js';
+import type { Sandbox, ShellOptions, ShellProcess } from '@evalkit/core';
+import { docker } from './docker.js';
 import type { ClosableShell } from './host-shell.js';
 import {
   collect,
@@ -23,14 +19,18 @@ export const CONTAINER_HOME = '/evalkit-home';
 /** Where each command records its process ID, so `kill` can reach it. */
 const PID_DIR = '/tmp/.evalkit';
 
+/** A container sandbox, as `defineSandbox` checked it. */
+export type ContainerSandbox = Extract<Sandbox, { kind: 'container' }>;
+
 export type ContainerShellOptions = {
-  isolation: ContainerIsolation;
+  sandbox: ContainerSandbox;
+  /** The image to start: the sandbox's, or the one its Dockerfile built. */
+  image: string;
   runId: string;
   /** The candidate workspace on the host, mounted at `/workspace`. */
   root: string;
   /** The run's private home on the host, mounted at `/evalkit-home`. */
   home: string;
-  projectRoot: string;
   signal: AbortSignal;
   /** The fixtures' internal network, for `network: 'fixtures'`. */
   fixturesNetwork?: string;
@@ -61,18 +61,18 @@ export async function removeRunContainer(
 
 /** Arguments for `docker run`: everything but the image and its command. */
 export function containerRunArgs(options: {
-  isolation: ContainerIsolation;
+  sandbox: ContainerSandbox;
   name: string;
   runId: string;
   workspace: string;
   home: string;
   fixturesNetwork?: string;
 }): string[] {
-  const { isolation } = options;
+  const { sandbox } = options;
   const network =
-    isolation.network === 'none'
+    sandbox.network === 'none'
       ? ['--network', 'none']
-      : isolation.network === 'fixtures'
+      : sandbox.network === 'fixtures'
         ? ['--network', options.fixturesNetwork ?? 'none']
         : // The host, and fixtures on it, as host.docker.internal.
           ['--add-host', 'host.docker.internal:host-gateway'];
@@ -97,8 +97,8 @@ export function containerRunArgs(options: {
     CONTAINER_WORKSPACE,
     ...network,
     ...user,
-    ...isolation.env.flatMap((name) => ['--env', name]),
-    ...isolation.mounts.flatMap((mount) => [
+    ...sandbox.env.flatMap((name) => ['--env', name]),
+    ...sandbox.mounts.flatMap((mount) => [
       '--volume',
       `${path.resolve(mount.host)}:${mount.path}:ro`,
     ]),
@@ -115,19 +115,13 @@ export function containerRunArgs(options: {
 export async function containerShell(
   options: ContainerShellOptions,
 ): Promise<ContainerShell> {
-  const { isolation } = options;
-  const runtime = isolation.runtime;
-  await ensureRuntime(runtime);
-  const image = await resolveImage(
-    runtime,
-    isolation.image,
-    options.projectRoot,
-  );
+  const { sandbox, image } = options;
+  const runtime = sandbox.runtime;
   const name = containerName(options.runId);
   const workspace = await realpath(options.root);
   await docker(runtime, [
     ...containerRunArgs({
-      isolation,
+      sandbox,
       name,
       runId: options.runId,
       workspace,
@@ -232,7 +226,6 @@ export async function containerShell(
   };
 
   return {
-    isolation: 'container',
     root: CONTAINER_WORKSPACE,
     container: name,
     exec: async (command, commandOptions) =>

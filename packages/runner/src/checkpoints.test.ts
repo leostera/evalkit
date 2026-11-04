@@ -153,7 +153,7 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
   expect(result.scoring?.overall).toBe(1);
   expect(aut.sends).toEqual(['first', 'revise']);
   expect(aut.closed).toBe(1);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(7);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(8);
   const scoring = await readRunScoring(dir, result.runId);
   expect(scoring.checkpoints?.map((c) => c.status)).toEqual([
     'passed',

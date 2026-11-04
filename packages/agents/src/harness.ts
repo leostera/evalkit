@@ -25,8 +25,8 @@ export type HarnessOptions = {
    * new, empty config directory in the run's private home, so the person's
    * extensions, skills, instructions and logins never reach the agent and
    * every run starts the same; give it what it needs with `configFiles`
-   * and `env`. `'user'` uses the person's own config, which isolation
-   * usually hides: allow it with `sandboxExec({ read })`.
+   * and `env`. `'user'` uses the person's own config, which a container
+   * or remote sandbox does not have unless it mounts or copies it in.
    */
   config?: 'private' | 'user';
   /**
@@ -94,20 +94,8 @@ export function harnessAgent<O extends HarnessOptions>(
   spec: HarnessSpec<O>,
   input: HarnessOptionsInput<O>,
 ): AutAdapter {
-  // What is known before a run; options picked per run are recorded by each run's transcript.
-  const fixed = typeof input === 'function' ? undefined : input;
   return defineAgent({
     identity: { name: spec.name, kind: 'process', id: spec.id },
-    runtimes: {
-      local: {
-        kind: 'process',
-        configuration: {
-          command: fixed?.command ?? spec.command,
-          ...(typeof fixed?.model === 'string' ? { model: fixed.model } : {}),
-          ...(fixed ? { config: fixed.config ?? 'private' } : {}),
-        },
-      },
-    },
     async start({ context, transcript, attach }) {
       const options = typeof input === 'function' ? input(context) : input;
       const command = options.command ?? spec.command;

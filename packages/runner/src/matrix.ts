@@ -1,5 +1,4 @@
 import { Effect } from 'effect';
-import { agentRuntimes } from '@evalkit/core';
 import type {
   EvalMatrix,
   EvalMatrixCell,
@@ -7,6 +6,7 @@ import type {
   RunResult,
 } from '@evalkit/core';
 import { runEval, type RunEvalOptions } from './index.js';
+import { sandboxSet } from './shell/index.js';
 
 /**
  * Cells and runs; a run that errored counts as failed, one stopped at a
@@ -38,6 +38,10 @@ export function runMatrix(
     const concurrency = options.concurrency ?? 4;
     if (!Number.isSafeInteger(concurrency) || concurrency < 1)
       throw new Error('Concurrency must be a positive integer');
+    // One set for the whole matrix: each sandbox prepared once, torn down at the end.
+    const own = options.sandboxSet === undefined;
+    const sandboxes =
+      options.sandboxSet ?? sandboxSet({ root: options.root ?? process.cwd() });
     const count = matrix.count(options.selection);
     const iterator = matrix.cells(options.selection);
     const summary: MatrixSummary = {
@@ -48,24 +52,19 @@ export function runMatrix(
       limited: 0,
       cancelled: 0,
     };
-    yield* Effect.all(
+    const workers = Effect.all(
       Array.from({ length: Math.min(count, concurrency) }, () =>
         Effect.gen(function* () {
           while (!options.signal?.aborted) {
             const next = iterator.next();
             if (next.done) return;
             const cell = next.value;
-            const runtime =
-              options.runtime ??
-              (['local', 'remote', 'sandbox'] as const).find(
-                (name) => agentRuntimes(cell.eval.agent)[name],
-              );
             const suiteId = options.suiteId ?? options.suiteFor?.(cell);
             const runs = yield* runEval(cell.eval, {
               ...options,
               ...(suiteId ? { suiteId } : {}),
               concurrency: 1,
-              runtime,
+              sandboxSet: sandboxes,
               parameters: cell.parameters,
               matrix: { id: matrix.id, cellKey: cell.key },
             });
@@ -86,6 +85,12 @@ export function runMatrix(
       ),
       { concurrency },
     );
+    yield* own
+      ? Effect.ensuring(
+          workers,
+          Effect.promise(() => sandboxes.teardown().catch(() => undefined)),
+        )
+      : workers;
     return summary;
   });
 }

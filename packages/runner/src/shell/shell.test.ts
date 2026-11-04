@@ -3,11 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { container, sandboxExec } from '@evalkit/core';
+import { defineSandbox } from '@evalkit/core';
 import { containerShell } from './container-shell.js';
 import { fixtureSet } from './fixtures.js';
 import { hostShell } from './host-shell.js';
-import { sandboxShell } from './sandbox-shell.js';
 
 const alive = (pid: number) => {
   try {
@@ -228,135 +227,16 @@ describe('host shell', () => {
   });
 });
 
-describe.if(process.platform === 'darwin')('sandbox-exec shell', () => {
-  test('confines files and signals to the run', async () => {
-    const project = path.join(root, 'project');
-    await mkdir(project);
-    await writeFile(path.join(project, 'secret.txt'), 'answer');
-    const evaluator = path.join(root, 'runs', 'run-1', 'evaluator');
-    await mkdir(evaluator);
-    await writeFile(path.join(evaluator, 'expected.txt'), 'answer');
-    const outside = Bun.spawn(['sleep', '30']);
-    const shell = await sandboxShell({
-      isolation: sandboxExec(),
-      root: workspace,
-      home,
-      projectRoot: project,
-      signal: new AbortController().signal,
-    });
-    try {
-      expect(
-        await shell.exec('echo built > out.txt && cat out.txt'),
-      ).toMatchObject({
-        exitCode: 0,
-        stdout: 'built\n',
-      });
-      expect(await readFile(path.join(workspace, 'out.txt'), 'utf8')).toBe(
-        'built\n',
-      );
-      expect(
-        (await shell.exec(`cat ${path.join(project, 'secret.txt')}`)).exitCode,
-      ).not.toBe(0);
-      expect(
-        (await shell.exec(`cat ${path.join(evaluator, 'expected.txt')}`))
-          .exitCode,
-      ).not.toBe(0);
-      expect(
-        (await shell.exec(`echo x > ${path.join(project, 'new.txt')}`))
-          .exitCode,
-      ).not.toBe(0);
-      // Signals reach only the sandbox.
-      expect((await shell.exec(`kill ${outside.pid}`)).exitCode).not.toBe(0);
-      expect(alive(outside.pid)).toBe(true);
-      // A later command can stop a server an earlier one started.
-      const server = shell.spawn('echo $$; exec sleep 30');
-      while (!server.stdout())
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      const pid = server.stdout().trim();
-      expect((await shell.exec(`kill ${pid}`)).exitCode).toBe(0);
-      expect((await server.wait()).exitCode).toBe(143);
-    } finally {
-      await shell.close();
-      outside.kill();
-    }
+const busybox = (network: 'none' | 'fixtures' = 'none') => {
+  const sandbox = defineSandbox({
+    id: 'busybox',
+    kind: 'container',
+    image: 'busybox:stable',
+    containerOpts: { network },
   });
-});
-
-describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
-  test('stops processes that left the run, and gives it its own TMPDIR', async () => {
-    await expectSwept(() =>
-      sandboxShell({
-        isolation: sandboxExec(),
-        root: workspace,
-        home,
-        projectRoot: path.join(root, 'project'),
-        signal: new AbortController().signal,
-      }),
-    );
-  });
-
-  test('deny more paths, open read-only holes, and scrub the environment', async () => {
-    const project = path.join(root, 'project');
-    const state = path.join(root, 'fixture-state');
-    const toolchain = path.join(state, 'toolchain');
-    await mkdir(project);
-    await mkdir(toolchain, { recursive: true });
-    await writeFile(path.join(state, 'db.json'), 'secret state');
-    await writeFile(path.join(toolchain, 'tool.txt'), 'tool');
-    const otherRun = path.join(
-      tmpdir(),
-      'evalkit',
-      `other-project-${crypto.randomUUID()}`,
-      'secret.txt',
-    );
-    await mkdir(path.dirname(otherRun), { recursive: true });
-    await writeFile(otherRun, 'secret');
-    process.env.EVALKIT_TEST_SECRET = 'leaked';
-    process.env.EVALKIT_TEST_KEY = 'passed';
-    const shell = await sandboxShell({
-      isolation: sandboxExec({
-        deny: [state],
-        read: [toolchain],
-        env: ['EVALKIT_TEST_KEY'],
-      }),
-      root: workspace,
-      home,
-      projectRoot: project,
-      signal: new AbortController().signal,
-    });
-    try {
-      expect(
-        (await shell.exec(`cat ${path.join(state, 'db.json')}`)).exitCode,
-      ).not.toBe(0);
-      expect(
-        (await shell.exec(`cat ${path.join(toolchain, 'tool.txt')}`)).stdout,
-      ).toBe('tool');
-      expect(
-        (await shell.exec(`echo s > ${home}/s.txt && cat ${home}/s.txt`))
-          .stdout,
-      ).toBe('s\n');
-      expect((await shell.exec('echo $PWD')).stdout.trim()).toBe(workspace);
-      // Another project's runs, in the default place.
-      expect((await shell.exec(`cat ${otherRun}`)).exitCode).not.toBe(0);
-      expect(
-        (await shell.exec(`echo x > ${path.join(toolchain, 'new.txt')}`))
-          .exitCode,
-      ).not.toBe(0);
-      const env = await shell.exec(
-        'echo "$EVALKIT_TEST_KEY:${EVALKIT_TEST_SECRET:-none}:$FENCE"',
-        {
-          env: { FENCE: 'on' },
-        },
-      );
-      expect(env.stdout.trim()).toBe('passed:none:on');
-    } finally {
-      await shell.close();
-      await rm(path.dirname(otherRun), { recursive: true, force: true });
-      delete process.env.EVALKIT_TEST_SECRET;
-      delete process.env.EVALKIT_TEST_KEY;
-    }
-  });
-});
+  if (sandbox.kind !== 'container') throw new Error('a container');
+  return sandbox;
+};
 
 const hasDocker =
   spawnSync('docker', ['version', '--format', '{{.Server.Version}}']).status ===
@@ -367,11 +247,11 @@ describe.if(hasDocker)('container shell', () => {
     await writeFile(path.join(workspace, 'input.txt'), 'from the host');
     const outside = Bun.spawn(['sleep', '30']);
     const shell = await containerShell({
-      isolation: container({ image: 'busybox:stable' }),
+      sandbox: busybox(),
+      image: 'busybox:stable',
       runId: `test-${crypto.randomUUID()}`,
       root: workspace,
       home,
-      projectRoot: root,
       signal: new AbortController().signal,
     });
     try {
@@ -438,19 +318,16 @@ describe.if(hasDocker)('container shell', () => {
     );
     try {
       await fixtures.ensure();
-      const isolation = container({
-        image: 'busybox:stable',
-        network: 'fixtures',
-      });
-      expect(fixtures.addresses(isolation)).toEqual({
+      const sandbox = busybox('fixtures');
+      expect(fixtures.addresses({ container: 'fixtures' })).toEqual({
         store: { url: 'http://fixtures.store:18788' },
       });
       const shell = await containerShell({
-        isolation,
+        sandbox,
+        image: 'busybox:stable',
         runId: `test-${crypto.randomUUID()}`,
         root: workspace,
         home,
-        projectRoot: root,
         signal: new AbortController().signal,
         fixturesNetwork: await fixtures.network('docker'),
       });
@@ -488,7 +365,7 @@ describe('fixtures', () => {
     );
     expect(fixtures.started).toBe(false);
     await Promise.all([fixtures.ensure(), fixtures.ensure()]);
-    expect(fixtures.addresses({ kind: 'none' })).toEqual({
+    expect(fixtures.addresses()).toEqual({
       store: { url: 'http://localhost:18789' },
     });
     expect(await (await fetch('http://localhost:18789/')).text()).toBe('ok');

@@ -47,7 +47,7 @@ test('dashboard API lists a run before its summary exists', async () => {
     await writeFile(
       join(runDir, 'manifest.json'),
       JSON.stringify({
-        schemaVersion: 7,
+        schemaVersion: 8,
         runUri: `evalkit:run:${runId}`,
         evalId: 'echo',
         matrix: { id: 'benchmark', cellKey: 'echo-glm-with' },

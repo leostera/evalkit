@@ -113,7 +113,6 @@ export default defineEval({
   id: 'hello',
   agent: defineAgent({
     identity: { id: 'hello-agent', kind: 'local' },
-    runtimes: { local: { kind: 'in-process' } },
     async start({ transcript }) {
       return {
         async send(message: string) {
@@ -134,7 +133,7 @@ export default defineEval({
     projectRoot,
   );
   const output = run(
-    ['bun', 'run', 'evalkit', 'run', 'hello', '--repeat', '1', '--local'],
+    ['bun', 'run', 'evalkit', 'run', 'hello', '--repeat', '1'],
     projectRoot,
   );
   if (!output.includes('✓ hello') || !output.includes('1 passed'))

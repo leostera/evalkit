@@ -6,7 +6,6 @@ import { fileAgent } from '../agents/file-agent.js';
 // other, independent from the agent under test.
 const localJudge = defineAgent({
   identity: { id: 'local-fake-judge', kind: 'in-process', name: 'Local judge' },
-  runtimes: { local: { kind: 'in-process' } },
   async start({ context }) {
     return {
       async send(prompt: string) {

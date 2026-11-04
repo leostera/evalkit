@@ -14,7 +14,7 @@ bun run evalkit dev                                 # inspect each cell's run
 To run just one cell:
 
 ```bash
-bun run evalkit run --matrix letter-case --eval case-transform --select style=upper --local
+bun run evalkit run --matrix letter-case --eval case-transform --select style=upper
 ```
 
 `evalkit.config.ts` defines the `letter-case` matrix and execution limits. `scenarios/case-transform.eval.ts` is discovered automatically by its default export; no `src/registry.ts` is needed. The runner expands cells lazily, saves effective parameters and a canonical cell key in each manifest, and writes `_evalkit-results/` locally (ignored by Git), with run workspaces in the system temp directory. See `src/run.test.ts` for an isolated, provider-free integration test.

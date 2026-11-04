@@ -91,12 +91,8 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
   Coding-agent CLIs as the agent under test, one session per run, each turn through `context.shell` with the message on stdin, the CLI's own session imported through ATXF. `HarnessOptions`: `{ command?, model?, args?, env?, config?: 'private' | 'user', configFiles? }`; `model` may be a function of the run's parameters, and the options a function of the run's `AutContext` (`HarnessOptionsInput`). `PiOptions` adds `skills`, `appendSystemPrompt` and `tools`; `ClaudeCodeOptions` adds `appendSystemPrompt`; `OpencodeOptions` adds `agent`. See [Coding-agent harnesses](/docs/manual/agents/#coding-agent-harnesses).
 - `harnessAgent(spec: HarnessSpec, options: HarnessOptions)`  
   The same for another CLI: `HarnessSpec` is `{ id, name, command, configEnv(dir), newSession?(), argv(turn: HarnessTurn), sessionFromOutput?(stdout), saveSession(turn), toAtxf(text) }`.
-- `agentRuntimes(adapter): AgentRuntimes`  
-  The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
-- `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  
-  Used when an adapter declares no runtimes.
 
-An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, transcript, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage?, model? }`, instead of writing to the transcript. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files). `context.signal` aborts when the run hits a limit or is cancelled, `context.limits` holds the limits in force, `context.shell` runs commands where the project's [isolation](#isolation-and-fixtures) puts them, and `context.fixtures` has the fixtures' addresses.
+An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`) and `start({ context, transcript, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage?, model? }`, instead of writing to the transcript. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files). `context.signal` aborts when the run hits a limit or is cancelled, `context.limits` holds the limits in force, `context.shell` runs commands in the run's [sandbox](#sandboxes-and-fixtures), and `context.fixtures` has the fixtures' addresses.
 
 `transcript` is a `TranscriptWriter`, which records what the agent did as an ATXF transcript. Each method appends one record and returns its ID:
 
@@ -111,10 +107,12 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 - `subagent(transcript)`  
   Keeps a sub-agent's transcript with the run. Its steps and tokens count toward the limits.
 
-## Isolation and fixtures
+## Sandboxes and fixtures
 
-- `none()`, `container({ image, network?, runtime?, env?, mounts? })`, `sandboxExec({ allow?, read?, deny?, env? })`  
-  Where each run's processes run, for `isolation` in `evalkit.config.ts`: the host (the default), a container per run (`network`: `'none'`, `'fixtures'` or `'full'`; `image` an image name or a Dockerfile path), or macOS `sandbox-exec`. See [Isolation](/docs/manual/agents/#isolation).
+- `defineSandbox(definition: SandboxDefinition): Sandbox`  
+  Where runs happen, for `sandboxes` and `sandbox` in `evalkit.config.ts` and `sandbox` in a scenario. Each has an `id` (lowercase letters, digits, `-`, `_`) and an optional `concurrency`, then a kind: `{ kind: 'host' }`; `{ kind: 'container', dockerfile | image, containerOpts?: { network?, env?, mounts?, runtime? } }` (`network`: `'none'`, `'fixtures'` or `'full'`); or `{ kind: 'remote', prepare?, start, teardown? }`, a `SandboxLifecycle`. `start(run: SandboxRunContext)` resolves to a `SandboxSession`: `{ shell, mount(workspace), unmount(workspace), fixtures?, stop({ keep }) }`. See [Sandboxes](/docs/manual/agents/#sandboxes).
+- `HOST_SANDBOX`  
+  The sandbox runs get when nothing names one: `{ id: 'host', kind: 'host' }`.
 
 `context.shell`, a `Shell`, runs commands there, for adapters and scorers alike:
 
@@ -124,8 +122,8 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
   `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`; output is always read, keeping the last megabyte.
 - `readFile(path)`, `writeFile(path, content)`, `list(path?)`  
   Files in the workspace by relative path, or in the workspace or `home` by absolute path; `list` marks directories with a trailing `/`.
-- `isolation`, `root`, `home`  
-  The isolation's kind; the workspace as commands see it (its host path, or `/workspace`); and the run's private directory outside it, for an agent CLI's config and sessions (or `/evalkit-home`).
+- `sandbox`, `root`, `home`  
+  The run's sandbox (`{ id, kind }`); the workspace as commands see it (its host path, or `/workspace`); and the run's private directory outside it, for an agent CLI's config and sessions (`/evalkit-home` in a container).
 
 `fixtures` in the config is `Record<name, Fixture>`: `{ start, ready?, stop?, port? }`. Each run gets `context.fixtures`, `Record<name, { url }>`, as it reaches them. See [Fixtures](/docs/manual/agents/#fixtures).
 
@@ -172,7 +170,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 - `resourceUri(kind, uuid)`, `parseResourceUri(uri, kind?)`, `resourceUuid(value, kind?)`, `resourceUriSchema(kind)`  
   Build and parse the `evalkit:run:<uuid>` URIs in manifests (kinds `run`, `artifact`).
 
-Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `RunEventSchema`, `TranscriptSchema`, `LimitsSchema`, `LimitReachedSchema`, `RunIsolationSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 7. `TranscriptSchema` checks a value with ATXF's validator.
+Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `RunEventSchema`, `TranscriptSchema`, `LimitsSchema`, `LimitReachedSchema`, `RunSandboxSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 8. `TranscriptSchema` checks a value with ATXF's validator.
 
 ## Running and reading results (`@leostera/evalkit/runner`)
 
@@ -187,13 +185,17 @@ Every report file has an [Effect Schema](https://effect.website/docs/schema/intr
 - `readRunTranscript(root, runId): Promise<Transcript>`, `readRunSubagents(root, runId): Promise<Record<string, Transcript>>`  
   Read a run's ATXF transcript (`transcript.atxf.jsonl`), and the sub-agent transcripts kept in `transcripts/`, by ID.
 - `upgradeReports(root, { dryRun? }): Promise<UpgradeReport>`  
-  Converts results saved by older versions, as `evalkit upgrade` does: `{ upgraded, runs, batches, running, transcripts, failed }`. `transcripts` counts trajectories converted to ATXF; `failed` lists runs that could not be, left as they were, with why.
+  Converts results saved by older versions, as `evalkit upgrade` does: `{ upgraded, runs, batches, running, transcripts, sandboxes, failed }`. `transcripts` counts trajectories converted to ATXF; `sandboxes` manifests that now record their sandbox; `failed` lists runs that could not be, left as they were, with why.
 - `ownerIsGone(process?): boolean`  
   True when a run's owning process ran on this host and no longer exists, meaning the run was interrupted.
 - `staticDatasetFiles(dataset, root)`, `staticDatasetFile(dataset, root, file)`  
   List or read a static dataset's files without running any project code; computed datasets give `undefined`.
 - `runWorkspacePath(sandboxDir, runId): string`  
   Where a run's kept workspace lives.
+- `resolveSandbox({ parameters?, scenario?, fallback?, sandboxes? }): Sandbox`  
+  The sandbox a run uses: the cell's `sandbox` parameter, then the scenario's, then `fallback` (the config's), then the host. Names must be in `sandboxes`.
+- `sandboxSet({ root }): SandboxSet`  
+  Prepares each sandbox once and caps its concurrent runs, for `sandboxSet` in `runEval` or `runMatrix` when several calls should share them; `teardown()` when done. Without one, each call makes and tears down its own.
 - `fixtureSet(fixtures, { root }): FixtureSet`  
   The project's fixtures for one invocation, to pass as `fixtures` to `runEval` or `runMatrix`: started by the first run, `stop()` when done. `logs()` returns their output.
 - `removeRunContainer(runId, runtime?): Promise<boolean>`  

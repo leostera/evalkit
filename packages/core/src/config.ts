@@ -1,5 +1,5 @@
 import type { AutAdapter, EvalDefinition, EvalRegistry } from './index.js';
-import type { Fixture, Isolation } from './isolation.js';
+import type { Fixture, Sandbox } from './sandbox.js';
 import type { LimitsInput } from './limits.js';
 import type { EvalMatrixDefinition } from './matrix.js';
 
@@ -25,11 +25,15 @@ export type EvalkitConfig = {
    */
   limits?: LimitsInput;
   /**
-   * Where each run's processes run: `none()` (the default, on the host),
-   * `container({ image, network })` or `sandboxExec({ allow })`. Adapters
-   * and scorers run commands through `context.shell`, which puts them there.
+   * The project's sandboxes by id, so scenarios, the `sandbox` default and a
+   * matrix axis named `sandbox` can name them. Each key is its sandbox's id.
    */
-  isolation?: Isolation;
+  sandboxes?: Readonly<Record<string, Sandbox>>;
+  /**
+   * Where runs happen unless their scenario or matrix cell says otherwise:
+   * a `defineSandbox(...)` or a name in `sandboxes`. Default: this machine.
+   */
+  sandbox?: Sandbox | string;
   /**
    * Services runs reach, by name: started on the host before the first run
    * that needs them and stopped after the invocation's last. Each run finds
@@ -109,5 +113,18 @@ export type ShareConfig = {
 export function defineConfig<const T extends EvalkitConfig>(
   configuration: T,
 ): T {
+  const sandboxes = configuration.sandboxes ?? {};
+  for (const [name, sandbox] of Object.entries(sandboxes))
+    if (sandbox.id !== name)
+      throw new Error(
+        `sandboxes.${name} is the sandbox ${JSON.stringify(sandbox.id)}: name it by its id`,
+      );
+  if (
+    typeof configuration.sandbox === 'string' &&
+    !sandboxes[configuration.sandbox]
+  )
+    throw new Error(
+      `sandbox ${JSON.stringify(configuration.sandbox)} is not in sandboxes (${Object.keys(sandboxes).join(', ') || 'none'})`,
+    );
   return configuration;
 }

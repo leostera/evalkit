@@ -44,7 +44,6 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
         runEval(evaluation, {
           report: localReportStore(reports),
           workspaceRoot: join(temporaryRoot, 'sandbox'),
-          runtime: 'local',
         }),
       );
     };
@@ -54,7 +53,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     expect(passed.scoring?.passed).toBe(true);
     expect(passed.scoring?.overall).toBe(1);
     expect((await readRunManifest(reports, passed.runId)).schemaVersion).toBe(
-      7,
+      8,
     );
     const passedScores = await readRunScoring(reports, passed.runId);
     expect(passedScores.checkpoints?.map((entry) => entry.status)).toEqual([

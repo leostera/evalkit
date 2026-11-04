@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Fixture, FixtureAddress, Isolation } from '@evalkit/core';
+import type { ContainerNetwork, Fixture, FixtureAddress } from '@evalkit/core';
 import { docker, ensureRuntime } from './docker.js';
 import {
   collect,
@@ -21,8 +21,13 @@ export type FixtureSet = {
   ensure(): Promise<void>;
   /** True once `ensure` was called. */
   readonly started: boolean;
-  /** The fixtures as a run with this isolation reaches them. */
-  addresses(isolation: Isolation): Record<string, FixtureAddress>;
+  /**
+   * The fixtures as a run reaches them: from the host, or from a container
+   * on `network`.
+   */
+  addresses(from?: {
+    container: ContainerNetwork;
+  }): Record<string, FixtureAddress>;
   /** The internal network containers share with the fixtures' proxies, created on first use. */
   network(runtime: string): Promise<string>;
   /** Each fixture's output so far. */
@@ -150,22 +155,22 @@ export function fixtureSet(
       })();
       return starting;
     },
-    addresses(isolation) {
+    addresses(from) {
       const addresses: Record<string, FixtureAddress> = {};
       for (const entry of running) {
         const origin = readyUrl(entry.fixture.ready);
         const scheme = origin?.protocol ?? 'http:';
-        if (isolation.kind !== 'container') {
+        if (!from) {
           if (entry.port !== undefined)
             addresses[entry.name] = {
               url: `${scheme}//localhost:${entry.port}`,
             };
           continue;
         }
-        if (entry.port === undefined || isolation.network === 'none') continue;
+        if (entry.port === undefined || from.container === 'none') continue;
         addresses[entry.name] = {
           url:
-            isolation.network === 'fixtures'
+            from.container === 'fixtures'
               ? `${scheme}//fixtures.${entry.name}:${entry.port}`
               : `${scheme}//host.docker.internal:${entry.port}`,
         };

@@ -56,6 +56,8 @@ export default defineConfig({
 
 With one discovered eval and two styles this plans **two cells**. Axis names are sorted for stable expansion; each `cellKey` is a canonical JSON key of the matrix ID, eval ID, and **effective** parameters. Defaults are merged with CLI non-axis overrides, then each axis supplies its selected value. Duplicate axis values or empty axes fail configuration; axis selections must be among the configured choices. Cell parameters and matrix provenance are written to every run's manifest.
 
+An axis named `sandbox` picks each cell's [sandbox](/docs/manual/agents/#sandboxes): its values are names in the config's `sandboxes`, as in `parameters: { sandbox: ['node', 'cloud'] }`, to compare the same scenarios in two places.
+
 To avoid combinations you cannot run, add a partial exclusion: `exclude: [{ os: 'windows', arch: 'arm64' }]` removes Windows ARM across every other axis. To correlate choices, use `cases: [{ language: 'ruby', framework: 'rails' }, { language: 'go', framework: 'gin' }]`; each complete case crosses with the independent `parameters` axes. Case keys must be consistent, must not overlap axis or default keys, and can be selected with `--select language=ruby`. Exclusions match declared dimensions, not non-axis overrides. `--dry-run` and `maxCells` count only eligible cells; selecting an excluded combination produces a zero-cell error. For details and future comparison work, see [RFD0005](https://github.com/leostera/evalkit/blob/main/docs/rfds/RFD0005-constrained-matrices-and-comparisons.md).
 
 ```sh
@@ -90,14 +92,13 @@ An AUT only responds to these choices if its adapter reads `context.parameters`.
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--concurrency <n>`                     | Maximum concurrent **cells** for CLI matrix runs; default is `execution.concurrency` or 4. The repeats of one cell run one at a time.                                                    |
 | `-n, --repeat <n>`                      | Run each selected cell `n` times, as one batch. Overrides `execution.repeat` and each scenario's `repeat`; otherwise `execution.repeat` overrides the scenario; default 1.               |
-| `--local`                               | Require a declared `local` AUT runtime rather than auto-selecting the first declared runtime (`local`, then `remote`, then `sandbox`).                                                   |
 | `--limit <kind=value>`                  | Stop each run past this [limit](/docs/manual/agents/#limits): `steps=80`, `tokens=2000000`, `time=20m`. Repeatable or comma-separated; overrides the config, scenarios and matrix cells. |
 | `--json`                                | Print one JSON object **per completed cell** containing the cell key, eval ID, effective parameters, and run result; not a single JSON array.                                            |
 | `--junit <file>`                        | Write a JUnit XML report with one test case per scenario and matrix cell. See [Running in CI](#running-in-ci).                                                                           |
 | `--skip-broken`                         | Run the healthy scenarios when some files fail to load, then exit 1. See [load errors](/docs/manual/project-structure/#load-errors).                                                     |
 | `--config <file>`, `--dry-run`, `--all` | Choose a config, inspect a no-execution plan, or lift the cell-count limit.                                                                                                              |
 
-CLI flags expecting positive integers reject zero, fractions, and negative numbers. Cell count does **not** include repeats; a plan of two cells with `repeat: 10` performs twenty runs. Factor that into provider costs and rate limits. `--local` does not magically run a remote-only adapter locally; it fails if `local` is undeclared.
+CLI flags expecting positive integers reject zero, fractions, and negative numbers. Cell count does **not** include repeats; a plan of two cells with `repeat: 10` performs twenty runs. Factor that into provider costs and rate limits.
 
 ## Comparing an intervention against a baseline
 
@@ -120,7 +121,7 @@ First inspect the planned cells without invoking the agent, then run just the ex
 
 ```sh
 bun run evalkit run --matrix memory-ablation --dry-run
-bun run evalkit run --matrix memory-ablation --local
+bun run evalkit run --matrix memory-ablation
 ```
 
 Use the same prompt, model, and other settings in both conditions. Add a negative control where irrelevant memory is present, and score both task success and undesirable side effects. Repeat runs and inspect every run's scores; a three-run pilot is directional, not evidence of statistical significance. EvalKit only records provider cost, latency, or token counts when the adapter emits those measurements. For a live MCP retrieval study, use a tool-enabled custom AUT that records actual tool events; the built-in `piAgent()` disables tools. See [agents under test](/docs/manual/agents/#evaluating-tool-assisted-agents).
@@ -284,4 +285,4 @@ To try it without Cloudflare, `bun run evalkit share serve` runs the same server
 
 ## Upgrading results from older versions
 
-EvalKit 0.9 saves each run as one execution, where earlier versions saved a run of trials. `bun run evalkit upgrade` converts the project's saved results once: An old run of one trial keeps its ID; an old run of several becomes runs with the trials' IDs, in a batch with the old run's ID. Either way, old run and trial links keep working. Pass `--dry-run` to see what it would change. It only reads the project's config, so it works before every scenario is updated for 0.9, and it is safe to interrupt and run again. See [Results and reports](/docs/manual/results/#files-on-disk).
+EvalKit 0.9 saves each run as one execution, where earlier versions saved a run of trials. `bun run evalkit upgrade` converts the project's saved results once: An old run of one trial keeps its ID; an old run of several becomes runs with the trials' IDs, in a batch with the old run's ID. Either way, old run and trial links keep working. EvalKit 0.12 records the [sandbox](/docs/manual/agents/#sandboxes) each run ran in instead of its isolation; `upgrade` rewrites older manifests too, and a run without isolation ran on the host. Pass `--dry-run` to see what it would change. It only reads the project's config, so it works before every scenario is updated for 0.9, and it is safe to interrupt and run again. See [Results and reports](/docs/manual/results/#files-on-disk).

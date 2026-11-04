@@ -23,6 +23,7 @@ import {
 } from '@evalkit/core';
 import {
   UPGRADABLE_SCHEMA_VERSIONS,
+  upgradeManifestToV8,
   convertTrajectory,
   upgradeCatalog,
   upgradeManifest,
@@ -45,6 +46,8 @@ export type UpgradeReport = {
   running: string[];
   /** Version 6 runs whose trajectory became an ATXF transcript (or would). */
   transcripts: number;
+  /** Version 7 runs whose manifest now records its sandbox (or would). */
+  sandboxes: number;
   /** Runs that could not be converted, left as they were, with why. */
   failed: Array<{ runId: string; reason: string }>;
 };
@@ -79,6 +82,7 @@ export async function upgradeReports(
     batches: 0,
     running: [],
     transcripts: 0,
+    sandboxes: 0,
     failed: [],
   };
   let entries: string[];
@@ -140,6 +144,27 @@ export async function upgradeReports(
       });
     }
   }
+  // Then every version 7 run, including those just written, to version 8.
+  for (const entry of await readdir(root)) {
+    if (entry.startsWith('.')) continue;
+    const file = join(root, entry, 'manifest.json');
+    const manifest = await readJson(file);
+    const version = manifest?.schemaVersion;
+    // In a dry run, version 6 runs were not converted to 7, but would be.
+    if (version !== 7 && !(options.dryRun && version === 6)) continue;
+    if (
+      !(await readJson(join(root, entry, 'summary.json'))) &&
+      !ownerIsGone(manifest!.process as RunProcess | undefined)
+    ) {
+      if (!report.running.includes(entry)) report.running.push(entry);
+      continue;
+    }
+    report.sandboxes += 1;
+    if (options.dryRun) continue;
+    await writeJsonFile(file, upgradeManifestToV8(manifest!));
+  }
+  // Old runs a dry run would convert become version 8 too.
+  if (options.dryRun) report.sandboxes += report.runs;
   return report;
 }
 

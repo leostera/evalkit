@@ -92,17 +92,16 @@ export const LimitReachedSchema = Schema.Struct({
   used: Schema.Number,
 });
 
-export const RunIsolationSchema = Schema.Union(
-  Schema.Struct({
-    kind: Schema.Literal('container'),
-    image: Schema.String,
-    network: Schema.Literal('none', 'fixtures', 'full'),
-  }),
-  Schema.Struct({ kind: Schema.Literal('sandbox-exec') }),
-);
+export const RunSandboxSchema = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literal('host', 'container', 'remote', 'sandbox-exec'),
+  image: Schema.optional(Schema.String),
+  dockerfile: Schema.optional(Schema.String),
+  network: Schema.optional(Schema.Literal('none', 'fixtures', 'full')),
+});
 
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(7),
+  schemaVersion: Schema.Literal(8),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -119,7 +118,7 @@ export const RunMetadataSchema = Schema.Struct({
   workspaceIgnore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   datasets: Schema.optional(Schema.mutable(Schema.Array(RunDatasetSchema))),
   limits: Schema.optional(LimitsSchema),
-  isolation: Schema.optional(RunIsolationSchema),
+  sandbox: Schema.optional(RunSandboxSchema),
 });
 
 /** On-disk manifests include a lifecycle status. */

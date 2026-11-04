@@ -115,7 +115,7 @@ describe('runEval', () => {
       await readFile(path.join(runDirectory, 'manifest.json'), 'utf8'),
     );
     expect(manifest).toMatchObject({
-      schemaVersion: 7,
+      schemaVersion: 8,
       evalId: 'eval-01',
       status: 'passed',
     });
@@ -208,58 +208,6 @@ describe('runEval', () => {
         runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b32',
       }),
     ).rejects.toThrow('cannot be used with repeat');
-  });
-
-  test('selects a declared AUT runtime', async () => {
-    const root = await reportDirectory();
-    let selectedRuntime: string | undefined;
-    const evaluation = defineEval({
-      id: 'eval-08',
-      agent: defineAgent({
-        runtimes: {
-          local: {
-            kind: 'process',
-            configuration: { command: 'test-agent' },
-          },
-        },
-        async start({ context, runtime }) {
-          selectedRuntime = context.runtime;
-          expect(runtime).toEqual({
-            kind: 'process',
-            configuration: { command: 'test-agent' },
-          });
-          return { async send() {}, async close() {} };
-        },
-      }),
-      transcript: [],
-      scoring: [],
-    });
-
-    const result = await execute(evaluation, {
-      report: localReportStore(root),
-      runtime: 'local',
-      runId: '0197f17c-4d89-7f81-9d42-6c497e6f6b33',
-    });
-
-    expect(result.status).toBe('passed');
-    expect(selectedRuntime).toBe('local');
-  });
-
-  test('rejects an undeclared AUT runtime', async () => {
-    const root = await reportDirectory();
-    const evaluation = defineEval({
-      id: 'eval-09',
-      agent: testAgent('unused'),
-      transcript: [],
-      scoring: [],
-    });
-
-    await expect(
-      execute(evaluation, {
-        report: localReportStore(root),
-        runtime: 'sandbox',
-      }),
-    ).rejects.toThrow('does not declare the requested sandbox runtime');
   });
 
   test('provisions isolated candidate and evaluator datasets', async () => {
@@ -360,7 +308,7 @@ describe('runEval', () => {
     const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
       JSON.parse(await readFile(path.join(runRoot, 'manifest.json'), 'utf8')),
     );
-    expect(manifest.schemaVersion).toBe(7);
+    expect(manifest.schemaVersion).toBe(8);
     expect(
       manifest.datasets?.map(({ id, visibility }) => [id, visibility]),
     ).toEqual([

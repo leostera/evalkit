@@ -157,6 +157,7 @@ test('a run of one trial keeps its ID; a run of several becomes a batch of its t
     batches: 1,
     running: [],
     transcripts: 4,
+    sandboxes: 4,
     failed: [],
   });
   expect((await readdir(root)).sort()).toEqual([id(1), id(2)]); // nothing changed
@@ -167,13 +168,15 @@ test('a run of one trial keeps its ID; a run of several becomes a batch of its t
     batches: 1,
     running: [],
     transcripts: 4,
+    sandboxes: 4,
     failed: [],
   });
   expect((await readdir(root)).sort()).toEqual([id(2), id(11), id(12), id(13)]);
 
   const manifest = await readRunManifest(root, id(12));
   expect(manifest).toMatchObject({
-    schemaVersion: 7,
+    schemaVersion: 8,
+    sandbox: { id: 'host', kind: 'host' },
     runUri: `evalkit:run:${id(12)}`,
     evalId: 'lint-and-fix',
     suiteId: 'testing',
@@ -231,6 +234,7 @@ test('a run of one trial keeps its ID; a run of several becomes a batch of its t
     batches: 0,
     running: [],
     transcripts: 0,
+    sandboxes: 0,
     failed: [],
   });
 });
@@ -310,7 +314,7 @@ test('a same-ID replacement interrupted at either rename is finished', async () 
   await rename(join(first, id(7)), join(first, `.upgraded-${id(7)}`));
   expect(await upgradeReports(first)).toMatchObject({ upgraded: 0 });
   expect((await readdir(first)).sort()).toEqual([id(7)]);
-  expect((await readRunManifest(first, id(7))).schemaVersion).toBe(7);
+  expect((await readRunManifest(first, id(7))).schemaVersion).toBe(8);
 
   // Crashed after moving the new one in, before removing the old one.
   const second = await results();
@@ -431,7 +435,7 @@ test('version 6 runs become ATXF transcripts; their tokens and tool matches carr
     transcripts: 1,
     failed: [],
   });
-  expect((await readRunManifest(root, id(90))).schemaVersion).toBe(7);
+  expect((await readRunManifest(root, id(90))).schemaVersion).toBe(8);
   expect(await readdir(join(root, id(90)))).not.toContain('trajectory.jsonl');
   expect(await readdir(join(root, id(90)))).not.toContain('.v6');
 
@@ -485,4 +489,58 @@ test('a version 6 run that cannot be converted is left as it was and reported', 
   expect(await readFile(join(root, id(91), 'trajectory.jsonl'), 'utf8')).toBe(
     '{not json\n',
   );
+});
+
+test('a version 7 run records its sandbox: isolation becomes sandbox, runtime goes', async () => {
+  const root = await results();
+  const write = async (run: string, extra: Record<string, unknown>) => {
+    await mkdir(join(root, run), { recursive: true });
+    await writeFile(
+      join(root, run, 'manifest.json'),
+      JSON.stringify({
+        schemaVersion: 7,
+        runId: run,
+        runUri: `evalkit:run:${run}`,
+        evalId: 'e',
+        startedAt: '2026-11-04T10:00:00.000Z',
+        ...extra,
+      }),
+    );
+    await writeFile(join(root, run, 'summary.json'), '{}');
+  };
+  await write(id(70), {
+    isolation: { kind: 'container', image: 'node:24', network: 'fixtures' },
+    runtime: 'local',
+  });
+  await write(id(71), { isolation: { kind: 'sandbox-exec' } });
+  await write(id(72), {});
+  expect(await upgradeReports(root, { dryRun: true })).toMatchObject({
+    sandboxes: 3,
+  });
+  expect(await upgradeReports(root)).toMatchObject({
+    sandboxes: 3,
+    failed: [],
+  });
+  const manifest = async (run: string) =>
+    JSON.parse(await readFile(join(root, run, 'manifest.json'), 'utf8'));
+  expect(await manifest(id(70))).toMatchObject({
+    schemaVersion: 8,
+    sandbox: {
+      id: 'container',
+      kind: 'container',
+      image: 'node:24',
+      network: 'fixtures',
+    },
+  });
+  expect(await manifest(id(70))).not.toHaveProperty('isolation');
+  expect(await manifest(id(70))).not.toHaveProperty('runtime');
+  expect((await manifest(id(71))).sandbox).toEqual({
+    id: 'sandbox-exec',
+    kind: 'sandbox-exec',
+  });
+  expect((await manifest(id(72))).sandbox).toEqual({
+    id: 'host',
+    kind: 'host',
+  });
+  expect(await upgradeReports(root)).toMatchObject({ sandboxes: 0 });
 });

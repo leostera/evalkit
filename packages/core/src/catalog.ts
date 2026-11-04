@@ -2,9 +2,7 @@ import { parseLimits, type Limits } from './limits.js';
 import type { Dataset, DatasetVisibility } from './dataset.js';
 import { definitionSite, relativeSite } from './definition-site.js';
 import {
-  agentRuntimes,
   authoringId,
-  type AgentRuntimeName,
   type AutAdapter,
   type EvalDefinition,
   type EvalSuite,
@@ -34,7 +32,6 @@ export type EvalCatalogAgent = {
   kind: string;
   id?: string;
   version?: string;
-  runtimes: Array<{ name: AgentRuntimeName; kind: string }>;
   /** `file:line` of its `defineAgent` call, relative to the project. */
   definedAt?: string;
 };
@@ -102,6 +99,8 @@ export type EvalCatalogEntry = {
   policy: { failfast?: boolean };
   /** The scenario's own limits; the project's, a cell's and `--limit` may add to them. */
   limits?: Limits;
+  /** The sandbox it names: its id, or a name in the config's `sandboxes`. */
+  sandbox?: string;
   transcript: EvalCatalogStep[];
   scorers: EvalCatalogScorer[];
   metadata?: JsonValue;
@@ -129,6 +128,14 @@ export function catalogEntry(
     ),
     repeat: evaluation.repeat ?? 1,
     policy: policy.failfast !== undefined ? { failfast: policy.failfast } : {},
+    ...(evaluation.sandbox
+      ? {
+          sandbox:
+            typeof evaluation.sandbox === 'string'
+              ? evaluation.sandbox
+              : evaluation.sandbox.id,
+        }
+      : {}),
     ...(evaluation.limits
       ? { limits: parseLimits(evaluation.limits, `Eval ${evaluation.id}`) }
       : {}),
@@ -155,10 +162,6 @@ function catalogAgent(agent: AutAdapter, at: At): EvalCatalogAgent {
     kind: identity?.kind ?? 'adapter',
     ...(identity?.id ? { id: identity.id } : {}),
     ...(identity?.version ? { version: identity.version } : {}),
-    runtimes: Object.entries(agentRuntimes(agent)).map(([name, runtime]) => ({
-      name: name as AgentRuntimeName,
-      kind: runtime.kind,
-    })),
     ...(definedAt ? { definedAt } : {}),
   };
 }

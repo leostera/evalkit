@@ -7,7 +7,7 @@ The **Agent Under Test (AUT)** is the assistant, process, or service you want to
 
 ## Implement an adapter
 
-An adapter has an `identity` and `start({ context, runtime?, transcript, attach })`, which returns a session. The session's `send(message)` resolves when the turn is done and may **return the turn's result**, which EvalKit records: a string is the reply; an object can carry the `reply`, the `toolCalls` the agent made, token `usage` and the `model` that answered. `close()` is optional. `runtimes` defaults to `{ local: { kind: 'in-process' } }` and `identity.name` to `identity.id`.
+An adapter has an `identity` and `start({ context, transcript, attach })`, which returns a session. The session's `send(message)` resolves when the turn is done and may **return the turn's result**, which EvalKit records: a string is the reply; an object can carry the `reply`, the `toolCalls` the agent made, token `usage` and the `model` that answered. `close()` is optional. `runtimes` defaults to `{ local: { kind: 'in-process' } }` and `identity.name` to `identity.id`.
 
 ```ts
 // agents/support-agent.ts
@@ -145,15 +145,15 @@ A matrix can sweep a limit, as an axis named `limits.steps` (`defineEvalMatrix({
 
 Steps and tokens are checked as each record is written, time by a timer. When a run reaches a limit, EvalKit records a `limit-reached` event and aborts `context.signal`; a turn in progress gets 10 seconds to stop, and whatever it writes in that time is kept. The run ends **limited**: scorers that support partial runs grade what the agent left, the others are listed as not run, and the run counts as a failure in CI and JUnit. Pass `context.signal` to model calls and tool processes so they stop at once; `context.limits` holds the limits in force.
 
-## Isolation
+## Sandboxes
 
-Each run has a shell, `context.shell`, that runs commands where the project's isolation puts them. Run the agent's tools through it, or the whole agent when it is a CLI, and scorers get the same one to exercise what the agent built:
+Each run has a shell, `context.shell`, that runs commands in the run's sandbox: on this machine, in a container, or on a machine you provide. Run the agent's tools through it, or the whole agent when it is a CLI, and scorers get the same one to exercise what the agent built:
 
 ```ts
 async start({ context, transcript }) {
   return {
     async send(message) {
-      // The agent CLI runs in the run's container, or on the host without isolation.
+      // The agent CLI runs in the run's sandbox: here, in a container, or remote.
       const { stdout, exitCode } = await context.shell.exec(['my-agent', '--print', message]);
       ...
     },
@@ -165,34 +165,75 @@ async start({ context, transcript }) {
 - `spawn(command, options)` starts a long-lived process, such as a server: `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Its output is always read, so a process nobody reads never blocks.
 - `home` is the run's private directory, outside the workspace (`/evalkit-home` in a container): for an agent CLI's config and session files. It is not in the workspace snapshot, and is removed with the run.
 - `readFile(path)`, `writeFile(path, content)` and `list(path?)` work on the workspace by relative path, or on the workspace or `home` by absolute path; any other path is an error.
-- Commands run with `$PWD` set to their working directory, and on the host or in a sandbox with `$TMPDIR` (and `TMP`, `TEMP`) set to the run's own directory in `home`, so runs do not share scratch files. Programs that write to `/tmp` by name still share it.
+- Commands run with `$PWD` set to their working directory, and on the host with `$TMPDIR` (and `TMP`, `TEMP`) set to the run's own directory in `home`, so runs do not share scratch files. Programs that write to `/tmp` by name still share it.
 - Commands stop when the run reaches a limit or is cancelled (they default to `context.signal`), and everything the shell started is stopped when the run ends: background children, and processes that left the run's process groups (`setsid`, a daemon), found by a variable every command carries (`EVALKIT_RUN_MARKER`) or by working inside the run's workspace or home.
 
-The project chooses where in `evalkit.config.ts`:
+A sandbox is defined once, with `defineSandbox`, and named where runs should use it:
 
 ```ts
-import { container, defineConfig } from '@leostera/evalkit';
+import { defineConfig, defineSandbox } from '@leostera/evalkit';
 
-export default defineConfig({
-  isolation: container({
-    image: './evals/Dockerfile', // or an image such as 'node:22'
+const node = defineSandbox({
+  id: 'node',
+  kind: 'container',
+  dockerfile: './evals/Dockerfile', // or image: 'node:24'
+  containerOpts: {
     network: 'fixtures', // 'none' (default) | 'fixtures' | 'full'
     env: ['MODEL_API_KEY'], // host variables passed in; nothing else is
-  }),
+  },
+});
+
+export default defineConfig({
+  sandboxes: { node },
+  sandbox: 'node', // runs that name none use this; without it, the host
 });
 ```
 
-| Isolation              | What a run gets                                                                                                                                                                                                                                                                                     |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none()`, the default  | Commands on the host, in the workspace, with the host's environment. Runs can see each other's files and processes.                                                                                                                                                                                 |
-| `container(options)`   | A container per run from `image`, with the candidate workspace at `/workspace` (`context.shell.root`) and the evaluator workspace never mounted. Its own process table, so a `pkill` reaches only that run. Removed after scoring, or kept stopped for a run that did not pass, like its workspace. |
-| `sandboxExec(options)` | macOS only. Each run's commands run under a generated `sandbox-exec` profile: no reading or writing the project, the home directory or other runs, except the run's workspace and `allow`; signals only within the run. For projects that cannot use containers.                                    |
+A scenario can name its own (`defineEval({ ..., sandbox: 'node' })`, a name in `sandboxes` or a sandbox itself), and a matrix can sweep them with an axis named `sandbox` whose values are names in `sandboxes`. A run uses its cell's `sandbox`, then its scenario's, then the config's, then the host.
 
-**Containers** use the `docker` CLI, so Docker Desktop, OrbStack, Colima, Rancher Desktop or podman all work; `runtime: 'podman'` names another compatible command. The image needs `sh`. A Dockerfile path is built once per invocation, tagged by a hash of its directory, and reused while it is unchanged. `mounts: ['/host/path:/container/path']` adds read-only paths. On Linux, commands run as your user so the files they write stay yours. A run whose container cannot start errors, saying why.
+| Kind        | What a run gets                                                                                                                                                                                                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host`      | Commands on this machine, in the workspace, with its environment. Runs can see each other's files and processes. The default.                                                                                                                                                                                       |
+| `container` | A container per run from `dockerfile` or `image`, with the candidate workspace at `/workspace` (`context.shell.root`) and the evaluator workspace never mounted. Its own process table, so a `pkill` reaches only that run. Removed after scoring, or kept stopped for a run that did not pass, like its workspace. |
+| `remote`    | A machine you provide, such as a VM, a cloud sandbox or a Durable Object: you implement starting it, running commands, and moving the workspace in and out.                                                                                                                                                         |
 
-**`sandboxExec({ allow, read, deny, env })`** keeps the agent out of the project, your home directory, other runs and other projects' runs (all of `$TMPDIR/evalkit`). `read` opens read-only holes, for an agent or toolchain installed there (`~/.bun`, `~/.local`, `node_modules`); `allow` opens read-write ones, for caches (`~/.npm`); `deny` closes more paths, such as a fixture's state. Paths starting with `~/` are in your home directory, others relative to the project. `env` scrubs the environment: runs get only `PATH`, `HOME`, `TMPDIR`, `USER`, `LANG`, `TERM` and the variables it names, so pass a run's proxy settings or Git identity in each command's `env`. All of a run's commands share one sandbox: a later command can stop a server an earlier one started, but nothing outside the run.
+The agent is not policed inside its sandbox: it can do anything there, and if it wrecks the workspace, the scenario's checks fail. Scorers run their commands in the same sandbox, so they see what the agent built; the evaluator workspace never leaves this machine.
 
-The manifest records each run's isolation, and its page shows it, so runs from different setups are not compared by mistake. `evalkit tidy` removes kept containers with their workspaces.
+**Containers** use the `docker` CLI, so Docker Desktop, OrbStack, Colima, Rancher Desktop or podman all work; `containerOpts.runtime: 'podman'` names another compatible command. The image needs `sh`. A Dockerfile is built once per invocation, tagged by a hash of its directory, and reused while it is unchanged. `containerOpts.mounts: ['/host/path:/container/path']` adds read-only paths. On Linux, commands run as your user so the files they write stay yours. A run whose container cannot start errors, saying why.
+
+**Remote sandboxes** implement a lifecycle:
+
+```ts
+const remote = defineSandbox({
+  id: 'cloud',
+  kind: 'remote',
+  concurrency: 8, // at most 8 runs in it at once
+  async prepare({ root, signal }) {}, // once per invocation: deploy, warm up
+  async start(run) {
+    const box = await createBox(run.runId);
+    return {
+      shell: box.shell, // exec, spawn, readFile, writeFile, list
+      async mount(workspace) {
+        await box.upload(workspace.root, '/work');
+        return { root: '/work', home: '/home/evalkit' };
+      },
+      async unmount(workspace) {
+        await box.download('/work', workspace.root); // what scorers and the snapshot see
+      },
+      async stop({ keep }) {
+        if (!keep) await box.destroy();
+      },
+    };
+  },
+  async teardown() {}, // once, after the last run
+});
+```
+
+`mount` runs before the agent starts and `unmount` after scoring, before the workspace is snapshotted. A run whose `unmount` fails errors and keeps no snapshot. `fixtures`, returned by `start`, says how the sandbox reaches the project's fixtures when it is not as the host does.
+
+**Concurrency:** `concurrency` caps how many runs are in one sandbox at once, under `--concurrency`. Containers default to the machine's cores; the host and remote sandboxes to no cap.
+
+The manifest records each run's sandbox, and its page shows it, so runs from different setups are not compared by mistake. `evalkit tidy` removes kept containers with their workspaces.
 
 ## Fixtures
 
@@ -211,11 +252,9 @@ export default defineConfig({
 
 Each run finds them in `context.fixtures`, by name, as it reaches them: `context.fixtures.store.url` is `http://localhost:8787` on the host and in a sandbox, and `http://fixtures.store:8787` from a container on the `fixtures` network, which reaches the fixtures and nothing else. With `network: 'full'` it is `http://host.docker.internal:8787`; with `'none'` there are none. The port comes from `ready`, or from `port`. A fixture that exits or is not ready within 60 seconds errors the run with its output, and each run keeps the fixtures' output as `logs/fixtures/<name>.log`. On Linux, a fixture must listen on `0.0.0.0` for containers to reach it.
 
-### Run context and runtime
+### Run context
 
-`context` provides `runId`, `evalId`, `batch` (`{ id, index, size }`, only when the run is one of several [repeats](/docs/manual/scoring-and-evals/#define-and-discover-the-scenario) launched together), `metadata` (including a fresh numeric `randomSeed`), `workspace.root` for candidate-visible files, `evaluatorWorkspace.root` for trusted evaluator data, `data` with the values of the scenario's candidate [datasets](/docs/manual/datasets/) by ID, `signal` and `limits` (see [Limits](#limits)), and optional `parameters` and `runtime`. `{{randomSeed}}` in a `user(...)` message is replaced before `send()` is called. Never put the evaluator workspace path or contents into a model prompt; trusted adapters have access to it, so enforce this boundary yourself.
-
-`runtimes` advertises supported names (`local`, `remote`, `sandbox`) with `{ kind, configuration? }` metadata. A selected runtime is passed to `start()` both as `context.runtime` (its name) and as `runtime` (the declared object). The adapter interprets the declaration; merely declaring `remote` or `sandbox` does not provide a transport or isolation. A run requesting an undeclared runtime fails. Without an explicit choice, a direct runner call passes no selected runtime; CLI matrix execution chooses the first declared runtime in `local`, `remote`, `sandbox` order. `--local` explicitly requests `local`.
+`context` provides `runId`, `evalId`, `batch` (`{ id, index, size }`, only when the run is one of several [repeats](/docs/manual/scoring-and-evals/#define-and-discover-the-scenario) launched together), `metadata` (including a fresh numeric `randomSeed`), `workspace.root` for candidate-visible files, `evaluatorWorkspace.root` for trusted evaluator data, `data` with the values of the scenario's candidate [datasets](/docs/manual/datasets/) by ID, `signal` and `limits` (see [Limits](#limits)), `shell` (see [Sandboxes](#sandboxes)), and optional `parameters`. `{{randomSeed}}` in a `user(...)` message is replaced before `send()` is called. Never put the evaluator workspace path or contents into a model prompt; trusted adapters have access to it, so enforce this boundary yourself.
 
 Matrix axis values and `--param name=json` appear in `context.parameters`; EvalKit does **not** map them to provider settings. If your adapter offers model selection, read (and validate) `context.parameters?.model` and use it when invoking your provider. The [configured-matrix example](https://github.com/leostera/evalkit/blob/main/examples/configured-matrix/agents/case-agent.ts) shows this with a provider-free `style` axis.
 
@@ -252,12 +291,12 @@ If `start()`, `send()`, or `close()` throws, the runner records an error, closes
 
 EvalKit runs four coding agents as they ship, with their own tools, system prompts and context handling. Import them from `@leostera/evalkit` (or `@evalkit/agents` inside this monorepo):
 
-| Adapter             | Runs                                                                                                | Its transcript             |
-| ------------------- | --------------------------------------------------------------------------------------------------- | -------------------------- |
-| `piAgent()`         | `pi --print`                                                                                        | Pi's session file          |
-| `codexAgent()`      | `codex exec --json`, with approvals and Codex's own sandbox off: EvalKit's isolation is the sandbox | Codex's rollout            |
-| `opencodeAgent()`   | `opencode run --standalone --auto`, with a private server per command                               | `opencode session export`  |
-| `claudeCodeAgent()` | `claude --print --dangerously-skip-permissions`                                                     | Claude Code's session file |
+| Adapter             | Runs                                                                                                       | Its transcript             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `piAgent()`         | `pi --print`                                                                                               | Pi's session file          |
+| `codexAgent()`      | `codex exec --json`, with approvals and Codex's own sandbox off: the run's EvalKit sandbox is the boundary | Codex's rollout            |
+| `opencodeAgent()`   | `opencode run --standalone --auto`, with a private server per command                                      | `opencode session export`  |
+| `claudeCodeAgent()` | `claude --print --dangerously-skip-permissions`                                                            | Claude Code's session file |
 
 ```ts
 import { defineEval, piAgent, user } from '@leostera/evalkit';
@@ -278,7 +317,7 @@ Each run is one session: every user message is one invocation of the CLI, throug
 
 Every harness takes these options:
 
-- `command`: the CLI to run (`pi`, `codex`, `opencode`, `claude` by default). With container isolation it must be in the image.
+- `command`: the CLI to run (`pi`, `codex`, `opencode`, `claude` by default). In a container or remote sandbox it must be installed there.
 - `model`: in the CLI's own syntax, or a function of the run's parameters, for a [matrix](/docs/manual/cli-and-matrices/) model axis.
 - `args`: more arguments for every turn.
 - `env`: environment variables for the CLI, such as an API key or proxy settings.
@@ -297,4 +336,4 @@ The harnesses above record the tool calls the agent made from its own session. F
 
 Keep baseline and treatment prompts, model, and other settings fixed; vary only tool or memory access, repeat runs, and include a negative control for irrelevant context. Passing a saved memory dataset to the model tests the value of **injected memory**, not live retrieval. Label the experiment accordingly. `context.evaluatorWorkspace.root` is trusted data: a controlled adapter may read a specific evaluator dataset for a treatment, but only pass the intended content to the model and treat it as model-visible data. Review prompts, reports, and sandboxes for secrets before sharing.
 
-For your own HTTP service or SDK, implement `start`/`send`/`close` with per-run isolation and record the transcript from real responses. `agentsSdk()` in `@evalkit/agents` currently **throws immediately**; [`examples/agents-sdk`](https://github.com/leostera/evalkit/tree/main/examples/agents-sdk) is a sketch, not a runnable remote transport. See [current limitations](/docs/manual/troubleshooting/#current-limitations).
+For your own HTTP service or SDK, implement `start`/`send`/`close` with a separate session per run and record the transcript from real responses. `agentsSdk()` in `@evalkit/agents` currently **throws immediately**; [`examples/agents-sdk`](https://github.com/leostera/evalkit/tree/main/examples/agents-sdk) is a sketch, not a runnable remote transport. See [current limitations](/docs/manual/troubleshooting/#current-limitations).

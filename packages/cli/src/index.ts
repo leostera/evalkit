@@ -7,13 +7,7 @@ import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Effect } from 'effect';
 import { Hono } from 'hono';
-import {
-  agentRuntimes,
-  authoringId,
-  type EvalDefinition,
-  type EvalRegistry,
-  type AgentRuntimeName,
-} from '@evalkit/core';
+import { authoringId, type EvalRegistry } from '@evalkit/core';
 import {
   localReportStore,
   runEval,
@@ -98,7 +92,11 @@ import {
 } from './terminal.js';
 
 import { VERSION } from './version.js';
-import { projectRunOptions, withFixtures } from './run-options.js';
+import {
+  containerRuntimes,
+  projectRunOptions,
+  withRunResources,
+} from './run-options.js';
 import { createProgram } from './program.js';
 import {
   assertSupportedRuntime,
@@ -118,13 +116,6 @@ async function loadRegistry(): Promise<EvalRegistry> {
   return project.registry;
 }
 
-function runtimeFor(evaluation: EvalDefinition): AgentRuntimeName | undefined {
-  for (const runtime of ['local', 'remote', 'sandbox'] as const) {
-    if (agentRuntimes(evaluation.agent)[runtime]) return runtime;
-  }
-  return undefined;
-}
-
 async function runEvals(options: {
   evalIds: string[];
   suiteId?: string;
@@ -134,7 +125,7 @@ async function runEvals(options: {
   const evaluations = options.evalIds.map((id) => registry.get(id));
   if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
   const provenance = await runProvenance(registry);
-  await withFixtures(projectRoot, project?.config, (fixtures) =>
+  await withRunResources(projectRoot, project?.config, (resources) =>
     Effect.runPromise(
       runnerLogs(
         Effect.all(
@@ -147,11 +138,10 @@ async function runEvals(options: {
               Effect.andThen(
                 runEval(evaluation!, {
                   ...projectRunOptions(projectRoot, project?.config),
-                  ...(fixtures ? { fixtures } : {}),
+                  ...resources,
                   report: localReportStore(reportRoot),
                   workspaceRoot: sandboxRoot,
                   suiteId: options.suiteId,
-                  runtime: runtimeFor(evaluation!),
                   concurrency: options.concurrency,
                   ...provenance,
                 }),
@@ -276,12 +266,12 @@ function registerMatrixRoutes(
       runLog.started(name, (body.parameters ?? {}) as object, suiteId);
       void runProvenance(registry)
         .then((provenance) =>
-          withFixtures(projectRoot, project?.config, (fixtures) =>
+          withRunResources(projectRoot, project?.config, (resources) =>
             Effect.runPromise(
               runnerLogs(
                 runMatrix(dashboardMatrix, {
                   ...projectRunOptions(projectRoot, project?.config),
-                  ...(fixtures ? { fixtures } : {}),
+                  ...resources,
                   selection,
                   concurrency: 1,
                   ...(repeat ? { repeat } : {}),
@@ -712,9 +702,7 @@ async function tidyAction(options: { config?: string }): Promise<void> {
         reportRoot,
         sandboxRoot,
         keep: project!.config.keepSandboxes,
-        ...(project!.config.isolation?.kind === 'container'
-          ? { runtime: project!.config.isolation.runtime }
-          : {}),
+        runtimes: containerRuntimes(project!.config),
       }),
     (value) => {
       const keep = project!.config.keepSandboxes ?? 'failed';

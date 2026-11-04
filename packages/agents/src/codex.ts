@@ -11,8 +11,8 @@ export type CodexOptions = HarnessOptions;
 
 /**
  * Codex as the agent under test: `codex exec` with approvals and its own
- * sandbox off (EvalKit's isolation is the sandbox; Codex's cannot nest in
- * `sandboxExec()`), one session per run. Its rollout file becomes the
+ * sandbox off (the run's EvalKit sandbox is the boundary), one session per
+ * run. Its rollout file becomes the
  * run's transcript.
  */
 export function codexAgent(

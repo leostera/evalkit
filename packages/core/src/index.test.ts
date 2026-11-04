@@ -5,7 +5,8 @@ import {
   defineEval,
   defineEvalMatrix,
   defineSuite,
-  agentRuntimes,
+  defineConfig,
+  defineSandbox,
   defineDataset,
   registerEvals,
   judge,
@@ -154,13 +155,54 @@ describe('core definitions', () => {
     expect(() => skip(' ')).toThrow('reason');
   });
 
-  test('defaults agent runtimes to local in-process', () => {
-    expect(agentRuntimes(aut)).toEqual({ local: { kind: 'in-process' } });
+  test('defineSandbox checks its kind, and scenarios name it in the catalog', () => {
+    const node = defineSandbox({
+      id: 'node',
+      kind: 'container',
+      dockerfile: './Dockerfile',
+      containerOpts: { network: 'fixtures', mounts: ['/opt/tools:/tools'] },
+    });
+    expect(node).toMatchObject({
+      id: 'node',
+      kind: 'container',
+      dockerfile: './Dockerfile',
+      network: 'fixtures',
+      env: [],
+      mounts: [{ host: '/opt/tools', path: '/tools' }],
+      runtime: 'docker',
+    });
+    expect(() =>
+      defineSandbox({ id: 'x', kind: 'container' } as never),
+    ).toThrow('exactly one of dockerfile');
+    expect(() =>
+      defineSandbox({
+        id: 'x',
+        kind: 'container',
+        image: 'node:24',
+        containerOpts: { mounts: ['/a:/workspace/b'] },
+      }),
+    ).toThrow('/workspace');
+    expect(() => defineSandbox({ id: 'Bad Id', kind: 'host' })).toThrow('id');
+    expect(() => defineSandbox({ id: 'r', kind: 'remote' } as never)).toThrow(
+      'start(run)',
+    );
+    expect(() => defineConfig({ sandboxes: { other: node } })).toThrow(
+      'name it by its id',
+    );
+    expect(() =>
+      defineConfig({ sandboxes: { node }, sandbox: 'gone' }),
+    ).toThrow('not in sandboxes');
     expect(
       registerEvals([
-        defineEval({ id: 'e', agent: aut, transcript: [], scoring: [] }),
-      ]).catalog()[0]?.agent.runtimes,
-    ).toEqual([{ name: 'local', kind: 'in-process' }]);
+        defineEval({
+          id: 'e',
+          agent: aut,
+          sandbox: node,
+          transcript: [],
+          scoring: [],
+        }),
+      ]).catalog()[0]?.sandbox,
+    ).toBe('node');
   });
 
   test('converts plain values to JSON with paths in errors', () => {

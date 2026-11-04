@@ -30,7 +30,7 @@ test('an incomplete run is omitted, but a corrupt manifest or summary is reporte
     await writeFile(
       join(directory, 'manifest.json'),
       JSON.stringify({
-        schemaVersion: 7,
+        schemaVersion: 8,
         runUri: `evalkit:run:${runId}`,
         evalId: 'echo',
         startedAt: '2026-01-01T00:00:00.000Z',

@@ -80,7 +80,7 @@ const runs = await Effect.runPromise(
   runEval(greetingEval, {
     report: localReportStore('_evalkit-results'),
     workspaceRoot: '/tmp/my-evals', // omit for cleaned-up temporary workspaces
-    runtime: 'local', // only if the agent declares this runtime
+    sandbox: node, // a defineSandbox(...); the host by default
     repeat: 3, // overrides the scenario's repeat
   }),
 );

@@ -23,7 +23,7 @@ const standalone: CatalogEval = {
   name: 'Echo Worker',
   path: 'echo',
   repeat: 1,
-  agent: { kind: 'worker', runtimes: [{ name: 'local', kind: 'bun' }] },
+  agent: { kind: 'worker' },
   datasets: [],
   scorers: [],
 };

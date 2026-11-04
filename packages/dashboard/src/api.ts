@@ -9,7 +9,7 @@ import type {
   EvalCatalogStep,
   LimitReached,
   Limits,
-  RunIsolation,
+  RunSandbox,
   MetricResult,
   RunTranscriptView,
 } from '@evalkit/core';
@@ -37,7 +37,13 @@ export type CatalogEval = EvalSummary &
   Partial<
     Pick<
       EvalCatalogEntry,
-      'datasets' | 'policy' | 'limits' | 'transcript' | 'metadata' | 'definedAt'
+      | 'datasets'
+      | 'policy'
+      | 'limits'
+      | 'sandbox'
+      | 'transcript'
+      | 'metadata'
+      | 'definedAt'
     >
   >;
 
@@ -124,8 +130,8 @@ export type RunSummary = {
   status: 'running' | 'passed' | 'failed' | 'errored' | 'limited' | 'cancelled';
   /** The limits the run had to keep to. */
   limits?: Limits;
-  /** Where its processes ran; absent on the host. */
-  isolation?: RunIsolation;
+  /** The sandbox it ran in: the agent, its fixtures and its checks. */
+  sandbox?: RunSandbox;
   /** The limit a `limited` run hit. */
   limit?: LimitReached;
   /** Cancelled because its process stopped without finishing it. */

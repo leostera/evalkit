@@ -10,7 +10,6 @@ export function fileAgent(options: { firstWrite?: string } = {}) {
       kind: 'in-process',
       name: 'Local file writer',
     },
-    runtimes: { local: { kind: 'in-process' } },
     async start({ context, transcript }) {
       let turn = 0;
       return {

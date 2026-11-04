@@ -65,7 +65,7 @@ test.each([1, 2])(
     expect(runs).toHaveLength(repeat);
     for (const run of runs) {
       const manifest = await readRunManifest(root, run.runId);
-      expect(manifest).toMatchObject({ schemaVersion: 7, source });
+      expect(manifest).toMatchObject({ schemaVersion: 8, source });
       expect(
         JSON.parse(
           await readFile(join(root, run.runId, 'catalog.json'), 'utf8'),

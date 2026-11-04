@@ -23,7 +23,6 @@ test('discovers a configured matrix and records both selected parameter cells', 
       runMatrix(matrix, {
         report: localReportStore(reports),
         workspaceRoot: join(temporaryRoot, 'sandbox'),
-        runtime: 'local',
         concurrency: 2,
       }),
     );

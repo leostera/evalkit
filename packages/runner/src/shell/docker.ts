@@ -35,22 +35,12 @@ export function ensureRuntime(runtime: string): Promise<void> {
       .catch((error: unknown) => {
         runtimes.delete(runtime);
         throw new Error(
-          `Container isolation needs the ${runtime} CLI and a running engine, which did not answer: ${error instanceof Error ? error.message : String(error)}. Install and start Docker Desktop, OrbStack, Colima, Rancher Desktop or podman, or name another docker-compatible command with container({ runtime }).`,
+          `A container sandbox needs the ${runtime} CLI and a running engine, which did not answer: ${error instanceof Error ? error.message : String(error)}. Install and start Docker Desktop, OrbStack, Colima, Rancher Desktop or podman, or name another docker-compatible command with containerOpts.runtime.`,
         );
       });
     runtimes.set(runtime, checked);
   }
   return checked;
-}
-
-/** True for an image that names a Dockerfile (or its directory) rather than an image reference. */
-export function isDockerfile(image: string): boolean {
-  return (
-    image.startsWith('./') ||
-    image.startsWith('../') ||
-    image.startsWith('/') ||
-    /(^|\/)Dockerfile[^/]*$/i.test(image)
-  );
 }
 
 const IGNORED = new Set(['node_modules', '.git', '_evalkit-results']);
@@ -87,10 +77,11 @@ const builds = new Map<string, Promise<string>>();
  */
 export function resolveImage(
   runtime: string,
-  image: string,
+  source: { dockerfile?: string; image?: string },
   projectRoot: string,
 ): Promise<string> {
-  if (!isDockerfile(image)) return Promise.resolve(image);
+  if (source.image !== undefined) return Promise.resolve(source.image);
+  const image = source.dockerfile ?? '';
   const target = path.resolve(projectRoot, image);
   const key = `${runtime}\0${target}`;
   let built = builds.get(key);
@@ -99,7 +90,7 @@ export function resolveImage(
       const info = await stat(target).catch(() => undefined);
       if (!info)
         throw new Error(
-          `container() image ${image} is not an image name or a Dockerfile in the project: ${target} does not exist`,
+          `The Dockerfile ${image} is not in the project: ${target} does not exist`,
         );
       const dockerfile = info.isDirectory()
         ? path.join(target, 'Dockerfile')

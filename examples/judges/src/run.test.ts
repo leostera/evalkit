@@ -25,7 +25,6 @@ test('judges explain why the small model fails, with the judge model the matrix 
         report: localReportStore(reports),
         root: projectRoot,
         workspaceRoot: join(temporaryRoot, 'sandbox'),
-        runtime: 'local',
         judge: config.judge,
       }),
     );

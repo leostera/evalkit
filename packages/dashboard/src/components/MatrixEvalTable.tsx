@@ -10,6 +10,7 @@ import { ConstrainedMatrixTable } from './ConstrainedMatrixTable.js';
 import { agentName } from './agentName.js';
 import { TableMessage } from './DataTable.js';
 import { EvalRow } from './EvalRow.js';
+import { sandboxName } from './sandboxName.js';
 import {
   fixedCellColumns,
   MatrixCellFrame,
@@ -155,8 +156,7 @@ function CartesianMatrixEvalTable({
         evaluation?.path ?? row.id,
         ...row.values,
         agentName(evaluation),
-        evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ??
-          'default',
+        sandboxName(evaluation, row.parameters),
         statusFor(row) ?? 'not run',
       ];
     },
@@ -166,11 +166,7 @@ function CartesianMatrixEvalTable({
     if (key.startsWith('axis:')) return display(row.parameters[key.slice(5)]);
     if (key === 'eval') return evaluation?.name ?? row.id;
     if (key === 'agent') return agentName(evaluation);
-    if (key === 'runtime')
-      return (
-        evaluation?.agent.runtimes.map((runtime) => runtime.name).join(', ') ??
-        'default'
-      );
+    if (key === 'sandbox') return sandboxName(evaluation, row.parameters);
     if (key === 'repeat') return matrix?.repeat ?? evaluation?.repeat ?? 1;
     if (key === 'status') return statusFor(row) ?? 'not run';
     return '';

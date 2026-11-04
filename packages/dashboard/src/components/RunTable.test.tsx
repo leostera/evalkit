@@ -24,7 +24,7 @@ const catalog: CatalogEval[] = [
     name: 'Greeting',
     path: 'greeting',
     repeat: 1,
-    agent: { kind: 'in-process', name: 'Greeter', runtimes: [] },
+    agent: { kind: 'in-process', name: 'Greeter' },
     datasets: [],
     scorers: [],
   },

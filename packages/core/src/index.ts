@@ -2,7 +2,13 @@ import { authorId, type ResourceUri } from './identity.js';
 import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
 import { buildContext, type ModelContext } from '@leostera/atxf';
 import type { TranscriptWriter, TurnResult } from './agent-transcript.js';
-import type { ContainerNetwork, FixtureAddress, Shell } from './isolation.js';
+import type {
+  ContainerNetwork,
+  FixtureAddress,
+  Sandbox,
+  SandboxKind,
+  Shell,
+} from './sandbox.js';
 import {
   parseLimits,
   type Limits,
@@ -74,19 +80,6 @@ export type AutIdentity = {
   id: string;
   version?: string;
 };
-
-export type AgentRuntimeName = 'local' | 'sandbox' | 'remote';
-
-/**
- * A serializable runtime requirement for an AUT. Concrete runtime packages own
- * the interpretation of `kind` and `configuration`.
- */
-export type AgentRuntime = {
-  kind: string;
-  configuration?: JsonObject;
-};
-
-export type AgentRuntimes = Partial<Record<AgentRuntimeName, AgentRuntime>>;
 
 export type { Usage, UsageInput } from './usage.js';
 import { transcriptUsage, type Usage } from './usage.js';
@@ -180,7 +173,6 @@ export type AutContext = {
   metadata: JsonObject;
   /** Run-time parameters supplied by the eval definition or CLI invocation. */
   parameters?: JsonObject;
-  runtime?: AgentRuntimeName;
   /** Values of the scenario's candidate datasets, by dataset ID. */
   data: JsonObject;
   /**
@@ -191,8 +183,8 @@ export type AutContext = {
   /** The limits in force for this run; see `limits` in the config. */
   limits: Limits;
   /**
-   * The run's shell: run the agent and its tools through it, so they run
-   * where the project's `isolation` puts them. Scorers get the same one.
+   * The run's shell, in its sandbox: run the agent and its tools through
+   * it. Scorers get the same one.
    */
   shell: Shell;
   /** The project's fixtures, as this run reaches them, by name. */
@@ -205,11 +197,8 @@ export type AutContext = {
 
 export type AutAdapter<TMessage = string> = {
   readonly identity?: AutIdentity;
-  /** Available execution environments for this AUT. Default: `{ local: { kind: 'in-process' } }`. */
-  readonly runtimes?: AgentRuntimes;
   start(options: {
     context: AutContext;
-    runtime?: AgentRuntime;
     /**
      * Where to record what the agent does, as ATXF. Optional: returning a
      * turn result from `send` is enough for most agents.
@@ -236,20 +225,8 @@ export type AutSession<TMessage = string> = {
   close?(): Promise<void>;
 };
 
-/** Used when an agent declares no runtimes. */
-export const DEFAULT_AGENT_RUNTIMES: AgentRuntimes = {
-  local: { kind: 'in-process' },
-};
-
-/** The runtimes an agent can run in, applying the default. */
-export function agentRuntimes(agent: AutAdapter<any>): AgentRuntimes {
-  return agent.runtimes && Object.keys(agent.runtimes).length
-    ? agent.runtimes
-    : DEFAULT_AGENT_RUNTIMES;
-}
-
 /**
- * Defines an Agent Under Test without coupling it to a runtime or transport.
+ * Defines an Agent Under Test without coupling it to a sandbox or transport.
  * It preserves the adapter's concrete type for application-specific helpers.
  */
 export function defineAgent<const T extends AutAdapter>(agent: T): T {
@@ -660,6 +637,12 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
    * Over the project's `limits`; a matrix cell's and `--limit` come after.
    */
   limits?: LimitsInput;
+  /**
+   * Where its runs happen: a `defineSandbox(...)`, or the name of one in the
+   * config's `sandboxes`. A matrix cell's `sandbox` parameter comes first;
+   * the config's `sandbox` and then this machine after.
+   */
+  sandbox?: Sandbox | string;
   /** Any JSON-convertible object; converted when the eval is defined. */
   metadata?: Record<string, unknown>;
   workspace?: EvalWorkspace;
@@ -927,7 +910,7 @@ export type RunCatalog = {
 export type RunProcess = { pid: number; hostname: string };
 
 export type RunMetadata = {
-  schemaVersion: 7;
+  schemaVersion: 8;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -947,14 +930,22 @@ export type RunMetadata = {
   datasets?: RunDataset[];
   /** The limits in force. */
   limits?: Limits;
-  /** Where its processes ran; absent for runs on the host. */
-  isolation?: RunIsolation;
+  /** The sandbox it ran in. */
+  sandbox?: RunSandbox;
 };
 
-/** A run's isolation as its manifest records it: no host paths, no environment. */
-export type RunIsolation =
-  | { kind: 'container'; image: string; network: ContainerNetwork }
-  | { kind: 'sandbox-exec' };
+/**
+ * A run's sandbox as its manifest records it: no host paths, no
+ * environment. `sandbox-exec` is how some 0.11 runs ran; nothing runs
+ * there now.
+ */
+export type RunSandbox = {
+  id: string;
+  kind: SandboxKind | 'sandbox-exec';
+  image?: string;
+  dockerfile?: string;
+  network?: ContainerNetwork;
+};
 
 export type RunDataset = {
   id: string;
@@ -1091,7 +1082,7 @@ export type RunResult = {
 export * from './identity.js';
 export * from './dataset.js';
 export * from './agent-transcript.js';
-export * from './isolation.js';
+export * from './sandbox.js';
 // Limits, transcripts and usage: types here, helpers in the subpath modules.
 export type * from './limits.js';
 export type * from './transcript.js';
