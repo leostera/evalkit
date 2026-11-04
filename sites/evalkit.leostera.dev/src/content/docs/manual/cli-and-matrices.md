@@ -135,7 +135,7 @@ bun run evalkit run --junit _evalkit-results/junit.xml
 
 `--junit <file>` writes one JUnit test case per scenario and matrix cell, grouped by suite, so CI systems show failures as test results. Upload the file as a test report artifact.
 
-Ctrl+C (or `SIGINT` from CI) cancels a run cleanly: running runs are stopped and saved as `cancelled`, and the summary and JUnit file are still written. A second Ctrl+C exits at once; those runs are shown as cancelled (interrupted) later. Cancelled runs never count as failures and are never shared.
+Ctrl+C, `SIGTERM` (from `timeout`, a CI cancellation or `kill`) or `SIGHUP` cancels a run cleanly: running runs are stopped and saved as `cancelled`, their processes and the fixtures are stopped, and the summary and JUnit file are still written. It exits with 128 plus the signal's number (130, 143, 129). A second signal exits at once, still stopping every process the runs started; those runs are shown as cancelled (interrupted) later. Cancelled runs never count as failures and are never shared.
 
 ## Comparing against a base
 

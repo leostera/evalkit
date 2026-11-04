@@ -67,6 +67,30 @@ async function expectSwept(
   expect(pids.filter(alive)).toEqual([]);
 }
 
+test('exiting without closing the shell still stops what the run started', async () => {
+  const pidFile = path.join(home, 'daemon.pid');
+  const script = path.join(root, 'exits.ts');
+  await writeFile(
+    script,
+    `import { hostShell } from ${JSON.stringify(path.join(import.meta.dir, 'host-shell.ts'))};
+const shell = hostShell({ root: ${JSON.stringify(workspace)}, home: ${JSON.stringify(home)}, signal: new AbortController().signal });
+await shell.exec(${JSON.stringify(escape(pidFile))});
+await new Promise((resolve) => setTimeout(resolve, 200));
+process.exit(143);
+`,
+  );
+  const child = Bun.spawnSync([process.execPath, script]);
+  expect(child.exitCode).toBe(143);
+  const pids = await Promise.all(
+    [pidFile, `${pidFile}.nohup`].map((file) =>
+      readFile(file, 'utf8').then(Number),
+    ),
+  );
+  for (let attempt = 0; attempt < 100 && pids.some(alive); attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(pids.filter(alive)).toEqual([]);
+});
+
 describe('host shell', () => {
   test('stops processes that left the run, and gives it its own TMPDIR', async () => {
     await expectSwept(async () =>

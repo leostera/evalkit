@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { signalExitCode, STOP_SIGNALS, type StopSignal } from './signals.js';
 import { dirname, resolve } from 'node:path';
 import { Effect } from 'effect';
 import {
@@ -341,15 +342,17 @@ export async function runProjectCommand(
     write: values.json ? () => {} : undefined,
   });
   const controller = new AbortController();
-  const onInterrupt = () => {
-    if (controller.signal.aborted) {
-      // Second Ctrl+C: leave now; readers show the runs as interrupted.
-      process.exit(130);
-    }
+  // Ctrl+C, a timeout, a CI cancellation or `kill`: stop the runs, close
+  // their shells and fixtures, then exit. A second signal leaves at once,
+  // and the exit hooks still stop what the runs started.
+  let stoppedBy: StopSignal | undefined;
+  const onStop = (signal: StopSignal) => {
+    if (controller.signal.aborted) process.exit(signalExitCode(signal));
+    stoppedBy = signal;
     controller.abort();
     if (!values.json) reporter.cancelling();
   };
-  process.on('SIGINT', onInterrupt);
+  for (const signal of STOP_SIGNALS) process.on(signal, onStop);
   reporter.start();
   let summary;
   try {
@@ -403,7 +406,7 @@ export async function runProjectCommand(
       ),
     );
   } finally {
-    process.off('SIGINT', onInterrupt);
+    for (const signal of STOP_SIGNALS) process.off(signal, onStop);
   }
   const totals = reporter.finish(performance.now() - started);
   if (values.junit) {
@@ -424,7 +427,7 @@ export async function runProjectCommand(
     if (project.config.share) hint('share', 'to publish');
     console.log('');
   }
-  if (controller.signal.aborted) process.exitCode = 130;
+  if (stoppedBy) process.exitCode = signalExitCode(stoppedBy);
   else if (summary.failed || summary.limited || broken.length)
     process.exitCode = 1;
 }

@@ -18,7 +18,7 @@ import {
   signalExitCode,
   STOP_GRACE_MS,
 } from './local-process.js';
-import { killRunProcesses, runEnvironment } from './run-marker.js';
+import { killRunProcesses, runEnvironment, trackRun } from './run-marker.js';
 import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /**
@@ -185,6 +185,7 @@ export async function sandboxShell(options: {
     );
   const script = await supervisorScript();
   const { env: runEnv, markerEnv, marker } = runEnvironment(options.home);
+  trackRun(marker, [options.root, options.home]);
   const baseEnv = { ...sandboxEnv(options.isolation.env), ...runEnv };
   const profile = sandboxProfile({
     workspace: real(options.root),

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { exitOnStopSignals } from './signals.js';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, relative, resolve } from 'node:path';
@@ -590,6 +591,8 @@ async function devAction(options: {
   open: boolean;
 }): Promise<void> {
   await useProject(options.config);
+  // Runs started from the dashboard stop with it, however it is stopped.
+  exitOnStopSignals();
   await serveDashboard({ port: options.port, open: options.open });
 }
 /** `run` is undefined unless `--run` or `--no-run` was given. */

@@ -5,7 +5,7 @@ import {
   ProcessTracker,
   startLocalProcess,
 } from './local-process.js';
-import { killRunProcesses, runEnvironment } from './run-marker.js';
+import { killRunProcesses, runEnvironment, trackRun } from './run-marker.js';
 import { insideWorkspace, shellFiles } from './workspace-files.js';
 
 /** A string runs with `sh -c`; an array runs as it is. */
@@ -39,6 +39,7 @@ export function hostShell(options: HostShellOptions): ClosableShell {
   const tracker = new ProcessTracker();
   const groups = new Set<number>();
   const { env: runEnv, markerEnv, marker } = runEnvironment(options.home);
+  trackRun(marker, [options.root, options.home]);
   const start = (
     command: string | readonly string[],
     commandOptions: ShellOptions = {},

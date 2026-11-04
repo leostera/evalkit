@@ -4,6 +4,13 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-11-04
+
+### Fixed
+
+- **`SIGTERM` and `SIGHUP` stop runs cleanly.** `evalkit run` treated only Ctrl+C as a cancellation; a `timeout`, a CI cancellation or `kill` ended it without stopping the fixtures or the processes its runs had started. Now every one of these signals cancels the runs, stops their processes and the fixtures, and exits with 128 plus the signal's number. `evalkit dev` stops what its runs started too.
+- **A hard exit still stops a run's processes.** If EvalKit exits before a run closes (a second signal, a crash), it stops every process carrying the run's marker or working inside its directories, as closing the run does.
+
 ## [0.11.2] - 2026-11-04
 
 ### Fixed
