@@ -755,10 +755,11 @@ async function upgradeAction(options: {
     options.dryRun ? 'Checking results' : 'Upgrading results',
     () => upgradeReports(reportRoot, { dryRun: options.dryRun }),
     (value) =>
-      `${plural(value.transcripts, 'run')} ${options.dryRun ? 'to upgrade' : 'upgraded'}`,
+      // Every older run ends at the current version: `sandboxes` counts them all.
+      `${plural(value.sandboxes, 'run')} ${options.dryRun ? 'to upgrade' : 'upgraded'}`,
   );
   console.log('');
-  if (!report.upgraded && !report.transcripts && !report.failed.length)
+  if (!report.sandboxes && !report.failed.length)
     console.log(`  ${cyan('✓')} Every run is already in the current format.`);
   if (report.upgraded) {
     const into = `${plural(report.upgraded, 'run')} with trials into ${plural(report.runs, 'run')}`;
@@ -778,7 +779,13 @@ async function upgradeAction(options: {
         ? `  ${cyan('◆')} Would convert ${plural(report.transcripts, 'trajectory', 'trajectories')} to ATXF transcripts.`
         : `  ${cyan('✓')} Converted ${plural(report.transcripts, 'trajectory', 'trajectories')} to ATXF transcripts.`,
     );
-  if (options.dryRun && (report.upgraded || report.transcripts))
+  if (report.sandboxes)
+    console.log(
+      options.dryRun
+        ? `  ${cyan('◆')} Would record the sandbox of ${plural(report.sandboxes, 'run')} (isolation becomes sandbox).`
+        : `  ${cyan('✓')} Recorded the sandbox of ${plural(report.sandboxes, 'run')} (isolation became sandbox).`,
+    );
+  if (options.dryRun && report.sandboxes)
     console.log(`  ${dim('Nothing was changed.')}`);
   if (report.failed.length) {
     console.log(

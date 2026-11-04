@@ -327,3 +327,49 @@ test('run workspaces live outside the project unless sandboxDir puts them inside
     sandboxLocation({ root, config: { sandboxDir: '/scratch/evals' } }),
   ).toEqual({ path: '/scratch/evals', inside: false });
 });
+
+test('evalkit upgrade says how many 0.11 runs now record their sandbox', async () => {
+  const root = await project();
+  await writeFile(join(root, 'evalkit.config.js'), 'export default {};');
+  const run = join(
+    root,
+    '_evalkit-results',
+    '0197f17c-4d89-7f81-9d42-6c497e6f6b30',
+  );
+  await mkdir(run, { recursive: true });
+  await writeFile(
+    join(run, 'manifest.json'),
+    JSON.stringify({
+      schemaVersion: 7,
+      runUri: 'evalkit:run:0197f17c-4d89-7f81-9d42-6c497e6f6b30',
+      evalId: 'e',
+      startedAt: '2026-11-04T10:00:00.000Z',
+      isolation: { kind: 'container', image: 'node:24', network: 'none' },
+    }),
+  );
+  await writeFile(join(run, 'summary.json'), '{}');
+  const upgrade = async (...args: string[]) => {
+    const child = Bun.spawn(
+      ['bun', resolve(import.meta.dir, 'index.ts'), 'upgrade', ...args],
+      {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, NO_COLOR: '1' },
+      },
+    );
+    const [out] = await Promise.all([
+      new Response(child.stdout).text(),
+      child.exited,
+    ]);
+    return out;
+  };
+  expect(await upgrade('--dry-run')).toContain(
+    'Would record the sandbox of 1 run',
+  );
+  const out = await upgrade();
+  expect(out).toContain('1 run upgraded');
+  expect(out).toContain('Recorded the sandbox of 1 run');
+  expect(out).not.toContain('already in the current format');
+  expect(await upgrade()).toContain('already in the current format');
+}, 30_000);
