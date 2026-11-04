@@ -1,9 +1,14 @@
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { CodeProvider } from './Code.js';
 import { Markdown, looksLikeMarkdown } from './Markdown.js';
 
 const html = (text: string) =>
-  renderToStaticMarkup(<Markdown>{text}</Markdown>);
+  renderToStaticMarkup(
+    <CodeProvider>
+      <Markdown>{text}</Markdown>
+    </CodeProvider>,
+  );
 
 test('renders GitHub-flavoured Markdown, keeping single newlines', () => {
   const out = html(
@@ -12,7 +17,10 @@ test('renders GitHub-flavoured Markdown, keeping single newlines', () => {
   expect(out).toContain('<h2>Done</h2>');
   expect(out).toContain('<strong>built</strong>');
   expect(out).toContain('<code>tested</code>');
-  expect(out).toContain('<pre><code class="language-sh">riot test');
+  // A fenced block is a `Code`, by its language (plain until the highlighter loads).
+  expect(out).toContain(
+    'data-language="bash"><pre><code>riot test</code></pre>',
+  );
   expect(out).toContain('<td>1</td>');
   expect(out).toContain('BUILD: x<br/>');
 });

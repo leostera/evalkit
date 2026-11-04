@@ -183,10 +183,6 @@ export function RunPage({
                 ) : null}
               </Link>
             ))}
-            <p className="mt-2 hidden px-2 text-xs text-kumo-subtle lg:block">
-              <kbd className="font-mono">[</kbd>{' '}
-              <kbd className="font-mono">]</kbd> previous and next section
-            </p>
           </nav>
         </aside>
         <div className="run-body flex min-w-0 flex-col gap-3 lg:min-h-0">

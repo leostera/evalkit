@@ -16,6 +16,7 @@ import type {
   RunSummary,
   SuiteSummary,
 } from './api.js';
+import { CodeProvider } from './components/Code.js';
 
 /** `basename` is the mount path of a static snapshot, e.g. `/share`. */
 export function App({
@@ -30,9 +31,11 @@ export function App({
 }) {
   if (share && !share.data) return <ShareHome share={share} />;
   return (
-    <BrowserRouter basename={basename}>
-      <Dashboard api={api} share={share} basename={basename} />
-    </BrowserRouter>
+    <CodeProvider>
+      <BrowserRouter basename={basename}>
+        <Dashboard api={api} share={share} basename={basename} />
+      </BrowserRouter>
+    </CodeProvider>
   );
 }
 

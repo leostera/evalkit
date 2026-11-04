@@ -38,6 +38,7 @@ import {
   type TrajectoryTurn,
   type TrajectoryView,
 } from './trajectory-view.js';
+import { Code } from './Code.js';
 
 type Mode = 'conversation' | 'events';
 
@@ -830,11 +831,7 @@ function MarkdownProse({ children }: { children: string }) {
 function Json({ value }: { value: unknown }) {
   const text =
     typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-  return (
-    <pre className="max-h-96 overflow-auto rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap text-kumo-default">
-      {text}
-    </pre>
-  );
+  return <Code code={text} wrap className="max-h-96" />;
 }
 
 /** `article: "plans", limit: 3`, cut to fit one line. */

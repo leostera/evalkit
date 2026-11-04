@@ -2,6 +2,7 @@ import { cn } from '@cloudflare/kumo';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
+import { Code } from './Code.js';
 
 /**
  * Typography for rendered messages, scoped to this wrapper: compact, like
@@ -25,8 +26,7 @@ const prose = cn(
   '[&_strong]:font-semibold [&_strong]:text-kumo-strong',
   // Inline code, then code blocks (whose code must not look inline).
   '[&_code]:rounded [&_code]:bg-kumo-elevated [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-[12px]',
-  '[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-kumo-elevated [&_pre]:px-3 [&_pre]:py-2 [&_pre]:leading-normal',
-  '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
+  '[&_.code]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-xs',
   '[&_table]:my-2 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:border-collapse [&_table]:text-[12px]',
   '[&_th]:border [&_th]:border-kumo-hairline [&_th]:bg-kumo-elevated [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-medium',
   '[&_td]:border [&_td]:border-kumo-hairline [&_td]:px-2 [&_td]:py-1 [&_td]:align-top',
@@ -41,7 +41,30 @@ export function looksLikeMarkdown(text: string): boolean {
   return /[`*_#>|[\]~]|^\s*([-+]|\d+\.)\s/m.test(text);
 }
 
+/** The text of a Markdown syntax tree node. */
+type TreeNode = { type: string; value?: string; children?: TreeNode[] };
+const treeText = (node: TreeNode | undefined): string =>
+  node?.type === 'text'
+    ? (node.value ?? '')
+    : (node?.children ?? []).map(treeText).join('');
+
 const components: Components = {
+  // A fenced block, highlighted by its language (```ts): the same `Code` as everywhere.
+  pre: ({ node }) => {
+    const code = node?.children[0] as
+      (TreeNode & { properties?: { className?: unknown } }) | undefined;
+    const classes = code?.properties?.className;
+    const lang = (Array.isArray(classes) ? classes : [])
+      .map(String)
+      .find((name) => name.startsWith('language-'))
+      ?.slice('language-'.length);
+    return (
+      <Code
+        code={treeText(code).replace(/\n$/, '')}
+        {...(lang ? { lang } : {})}
+      />
+    );
+  },
   // Agent output is untrusted: links open elsewhere and send no referrer.
   a: ({ href, title, children }) => (
     <a

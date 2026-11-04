@@ -43,6 +43,7 @@ import { formatScore } from './run-columns.js';
 import { rowLinkProps } from './row-link.js';
 import { outcomeFill, outcomeLabel, outcomeTint } from './status-colors.js';
 import { Breadcrumbs } from '@cloudflare/kumo';
+import { Code } from './Code.js';
 
 type Data = {
   catalog: CatalogEval[];
@@ -543,9 +544,12 @@ function JudgePrompt({
           />
         ) : null}
       </figcaption>
-      <pre className="max-h-[28rem] overflow-auto rounded-md border border-kumo-hairline bg-kumo-elevated px-3 py-2 font-mono text-xs whitespace-pre-wrap">
-        {mode === 'run' ? (sent ?? 'Loading…') : scorer.prompt}
-      </pre>
+      <Code
+        code={mode === 'run' ? (sent ?? 'Loading…') : scorer.prompt}
+        lang="markdown"
+        wrap
+        className="max-h-[28rem] border border-kumo-hairline"
+      />
       <p className="text-xs text-kumo-subtle">
         The judge agent receives this prompt and decides how to call its model.
         Placeholders are filled from each run.

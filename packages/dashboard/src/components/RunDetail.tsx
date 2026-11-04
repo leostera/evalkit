@@ -19,6 +19,7 @@ import { CommitLabel } from './RunTable.js';
 import { verdictEntries, VerdictList } from './RunVerdicts.js';
 import { Trajectory } from './Trajectory.js';
 import { verdictStatus } from './Verdict.js';
+import { Code } from './Code.js';
 
 /**
  * A run's transcript and events, loaded once per run and again when it
@@ -595,13 +596,15 @@ export function DatasetsList({ detail }: { detail: RunDetailData }) {
 
 export function RawReport({ detail }: { detail: RunDetailData }) {
   return (
-    <pre className="raw-report overflow-x-auto rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs">
-      {JSON.stringify(
+    <Code
+      code={JSON.stringify(
         { manifest: detail.manifest, summary: detail.summary },
         null,
         2,
       )}
-    </pre>
+      lang="json"
+      className="raw-report"
+    />
   );
 }
 

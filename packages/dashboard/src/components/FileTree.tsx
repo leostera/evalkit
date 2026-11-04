@@ -6,6 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ErrorBanner } from './ErrorBanner.js';
+import { Code } from './Code.js';
 
 export type FileTreeEntry = {
   path: string;
@@ -279,9 +280,11 @@ function FilePreview({
           </p>
         ) : (
           <>
-            <pre className="p-3 font-mono text-xs leading-relaxed whitespace-pre text-kumo-default">
-              {current.preview.text}
-            </pre>
+            <Code
+              code={current.preview.text}
+              path={path}
+              className="rounded-none bg-transparent"
+            />
             {current.preview.truncated ? (
               <p className="px-3 pb-3 text-xs text-kumo-subtle">
                 Showing the first {formatBytes(PREVIEW_BYTES)}.

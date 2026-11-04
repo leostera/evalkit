@@ -14,6 +14,7 @@ import { logsHref } from './links.js';
 import { RunFiles } from './run-files.js';
 import { formatDuration } from './run-columns.js';
 import { trajectoryView } from './trajectory-view.js';
+import { Code } from './Code.js';
 
 /** A score or checkpoint result, whatever was saved of it. */
 export type VerdictResult = {
@@ -345,9 +346,11 @@ const preClass =
 
 function Text({ value }: { value: unknown }) {
   return (
-    <pre className={preClass}>
-      {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-    </pre>
+    <Code
+      code={typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+      wrap
+      className="max-h-80 border border-kumo-hairline"
+    />
   );
 }
 
