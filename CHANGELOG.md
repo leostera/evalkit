@@ -4,6 +4,8 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-04
+
 Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, stop at the limits you declare, and can run in a container of their own.
 
 ### Breaking: runs record an ATXF transcript

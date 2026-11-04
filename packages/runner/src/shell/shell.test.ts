@@ -66,7 +66,7 @@ describe('host shell', () => {
       });
       const slow = shell.exec('sleep 30');
       setTimeout(() => run.abort(), 50);
-      expect((await slow).signal).toBe('SIGTERM');
+      expect((await slow).exitCode).toBe(143);
     } finally {
       await shell.close();
     }
@@ -84,7 +84,7 @@ describe('host shell', () => {
       while (!server.stdout().includes('ready'))
         await new Promise((resolve) => setTimeout(resolve, 10));
       await server.kill();
-      expect((await server.wait()).signal).toBe('SIGTERM');
+      expect((await server.wait()).exitCode).toBe(143);
       expect(server.stdout()).toBe('ready\n');
     } finally {
       await shell.close();
@@ -171,7 +171,7 @@ describe.if(process.platform === 'darwin')('sandbox-exec shell', () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       const pid = server.stdout().trim();
       expect((await shell.exec(`kill ${pid}`)).exitCode).toBe(0);
-      expect((await server.wait()).signal).toBe('SIGTERM');
+      expect((await server.wait()).exitCode).toBe(143);
     } finally {
       await shell.close();
       outside.kill();
