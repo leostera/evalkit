@@ -16,7 +16,7 @@ Three changes to what an agent adapter gives EvalKit and gets from it, made toge
 2. **Limits are declared by the eval and enforced by EvalKit.** `limits: { steps, tokens, time }` in the config, a scenario, a matrix cell or on the command line. The agent sees them as `context.limits`; EvalKit counts from the transcript and stops a run that goes over. A run that hits a limit ends as **limited**, not errored, and is still graded by scorers that support partial work.
 3. **Runs can be isolated.** `isolation: container({ image, network })` runs each run's processes in their own container, with the candidate workspace mounted and the evaluator workspace not. Adapters and graders get the run's processes through `context.shell`, which lives for the whole session. Shared fixtures start once per invocation and are reachable from each run's container.
 
-This is report schema version 7. EvalKit is at major version 0, and results from older versions are not converted: they are listed as from an older EvalKit and can be re-run.
+This is report schema version 7. `evalkit upgrade` converts existing results to it, each old trajectory into an ATXF transcript that keeps the old events as its native records, and the share server does the same for stored and incoming uploads, so no result is lost.
 
 ## Motivation
 
@@ -41,7 +41,7 @@ Running a real project's evals on 0.10 (7 scenarios in which a coding agent buil
 ## Non-goals
 
 - Defending against agents that try to escape a container. Isolation stops accidents and keeps runs independent; it is not a security boundary against hostile code.
-- Converting reports from schema version 6 or earlier. Re-run them.
+- Recovering what old trajectories never recorded. A converted transcript has what the old events had: no reasoning, no instructions, no tools.
 - Branching evaluation sessions. ATXF transcripts are trees, and EvalKit keeps whatever the agent records, but scripted transcripts only append to the active path.
 - Cost in money. Usage stays tokens; EvalKit still infers nothing an adapter does not report.
 - Remote sandboxes (a hosted container service). The isolation interface should allow one later.
@@ -249,13 +249,32 @@ The trajectory renders the transcript's active path: user messages, assistant me
 
 ## Data migration and compatibility
 
-- No converter. Report schema version 7 readers ignore runs with older schema versions, and the dashboard and `evalkit compare` show how many were skipped, with "re-run them with EvalKit 0.11". The share server does the same for stored runs from older versions.
-- `evalkit upgrade` keeps converting versions 2 to 5 to 6, so it can still tidy older results, and says that version 6 runs need re-running.
-- Every adapter and every scorer that reads `ctx.trajectory` changes. The CHANGELOG lists each removed name with its replacement.
+`evalkit upgrade` converts results to schema version 7 in place: versions 2 to 5 go through version 6 as today ([RFD0008](RFD0008-runs-without-trials.md)), then each version 6 run is converted as below. Until a project is upgraded, version 7 readers hide older runs and show how many there are, with "run `evalkit upgrade`", as 0.9 does for runs from before it.
+
+### Converting a trajectory
+
+`trajectory.jsonl` splits into `transcript.atxf.jsonl` and `run-events.jsonl`. The conversion is a pure function of the old run directory, tested on fixtures of every event kind and as a property (any valid version 6 trajectory converts to a transcript that `@leostera/atxf` validates):
+
+- **Header.** `source.agent` is the manifest's agent ID, `source.format` is `evalkit-trajectory-v6`. `fidelity` says what the old format had: `topology: 'linear'`, `instructions: 'none'`, `tools: 'none'`, `reasoning: 'none'`, `usage: 'per-response'` (or `'none'` when no turn reported usage), `turns: true`, `ids: 'synthetic'`, `native: 'all'`.
+- **Messages.** An AUT `message` becomes a `message` record with its role. String content becomes a text block; any other JSON content becomes a text block of its JSON, with the original value in `ext.evalkit.content`.
+- **Tool calls.** Consecutive `tool-call` events of a turn become `tool_call` blocks (`kind: 'function'`) on one assistant message: the assistant message just before them in the same turn when there is one, a new empty one otherwise. Each `tool-result` becomes a `role: 'tool'` message for its call ID, as a child of that assistant message.
+- **Turns.** `turn-started` and `turn-completed` become `turn` records with `phase: 'start'` and `'end'` and the same `turnId`. A turn's `latencyMs` goes in `ext.evalkit`.
+- **Usage.** A `turn-completed` event's usage moves to the turn's last assistant message, converted to ATXF's buckets: `cacheRead` is the old `cachedInputTokens`, `input` is `inputTokens - cachedInputTokens`, `output` is `outputTokens`. A turn with no assistant message gets a `usage` record instead. Its `model` becomes the message's model.
+- **The rest.** `started`, `completed` (with its `output`) and AUT `error` events become `custom` records in the `evalkit` namespace, so nothing is dropped.
+- **Native records.** Every ATXF record carries the old events it came from in `native`, so the old trajectory can be rebuilt exactly. A converted transcript is lossless; it only lacks what the old format never had.
+- **Run events.** Every `source: 'runner'` event goes to `run-events.jsonl` in order, with `at` set to the ID of the last transcript record derived from an AUT event before it.
+- **References.** A checkpoint's `matchedToolCall: { eventIndex, id }` becomes the ID of the assistant message holding the call and the call's ID. Judge results' `events` become `judge.transcript`, converted the same way with the judge agent as `source.agent`.
+- **Metrics.** `tokens` and `judge tokens` are recomputed from the converted transcripts and must equal the saved values; the converter fails the run's conversion if they do not, and leaves the run untouched.
+
+Upgrading is idempotent and per run: a run that fails to convert is left at version 6 and reported, and the rest go on. The share server converts stored runs when it upgrades (`POST /api/v1/upgrade`) and runs uploaded by older CLIs as they arrive, as it does for version 5.
+
+### Code
+
+Every adapter and every scorer that reads `ctx.trajectory` changes. The CHANGELOG lists each removed name with its replacement.
 
 ## Rollout
 
-1. The transcript: schema version 7, the writer, helpers, the scorer and judge API, the dashboard. The examples and the starter move to it.
+1. The transcript: schema version 7, the writer, helpers, the scorer and judge API, the dashboard, and the `evalkit upgrade` and share-server conversion. The examples and the starter move to it.
 2. Limits: resolution, counting, enforcement, the `limited` status and its counting, the CLI and dashboard.
 3. Isolation: `context.shell` on the host first (the default), then `container`, then `fixtures`, then `sandboxExec`.
 4. Release 0.11.0 with all three.
@@ -284,6 +303,8 @@ Each step lands with tests: unit tests for the writer, the helpers and limit res
 - The real project above, whose `sandbox-exec` profile and per-session shell are the model for `sandboxExec` and `context.shell`.
 
 ## Unresolved questions
+
+- An old turn that reported only `totalTokens` has no input or output split, and ATXF requires both. The proposal records `input: 0, output: 0, total: <total>` with `ext.evalkit.totalOnly: true`; ATXF may want `total` to be allowed alone instead.
 
 - Should the `tokens` limit count cache reads? They are cheap and dominate long coding sessions. The proposal counts the total; counting `input + output` may be the better default.
 - Should EvalKit write transcripts with integrity hashes and a seal at the end of each run, so the share server can verify uploads? Cheap to write; the question is whether verifying is worth requiring.
