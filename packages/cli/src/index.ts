@@ -97,6 +97,7 @@ import {
 } from './terminal.js';
 
 import { VERSION } from './version.js';
+import { projectRunOptions, withFixtures } from './run-options.js';
 import { createProgram } from './program.js';
 import {
   assertSupportedRuntime,
@@ -132,38 +133,38 @@ async function runEvals(options: {
   const evaluations = options.evalIds.map((id) => registry.get(id));
   if (evaluations.some((e) => !e)) throw new Error('Unknown eval');
   const provenance = await runProvenance(registry);
-  await Effect.runPromise(
-    runnerLogs(
-      Effect.all(
-        evaluations.map((evaluation) => {
-          const name = evaluation!.name ?? authoringId(evaluation!);
-          const started = performance.now();
-          return Effect.sync(() =>
-            runLog.started(name, {}, options.suiteId),
-          ).pipe(
-            Effect.andThen(
-              runEval(evaluation!, {
-                report: localReportStore(reportRoot),
-                workspaceRoot: sandboxRoot,
-                keepWorkspaces: project?.config?.keepSandboxes,
-                artifactExclude: project?.config?.artifacts?.exclude,
-                attachmentLimits: project?.config?.artifacts?.attachments,
-                judge: project?.config?.judge,
-                suiteId: options.suiteId,
-                runtime: runtimeFor(evaluation!),
-                concurrency: options.concurrency,
-                ...provenance,
-              }),
-            ),
-            Effect.tap((result) =>
-              runLog.finished(name, {}, result, performance.now() - started),
-            ),
-            Effect.tapError((error) =>
-              Effect.sync(() => runLog.failed(name, error)),
-            ),
-          );
-        }),
-        { concurrency: options.concurrency },
+  await withFixtures(projectRoot, project?.config, (fixtures) =>
+    Effect.runPromise(
+      runnerLogs(
+        Effect.all(
+          evaluations.map((evaluation) => {
+            const name = evaluation!.name ?? authoringId(evaluation!);
+            const started = performance.now();
+            return Effect.sync(() =>
+              runLog.started(name, {}, options.suiteId),
+            ).pipe(
+              Effect.andThen(
+                runEval(evaluation!, {
+                  ...projectRunOptions(projectRoot, project?.config),
+                  ...(fixtures ? { fixtures } : {}),
+                  report: localReportStore(reportRoot),
+                  workspaceRoot: sandboxRoot,
+                  suiteId: options.suiteId,
+                  runtime: runtimeFor(evaluation!),
+                  concurrency: options.concurrency,
+                  ...provenance,
+                }),
+              ),
+              Effect.tap((result) =>
+                runLog.finished(name, {}, result, performance.now() - started),
+              ),
+              Effect.tapError((error) =>
+                Effect.sync(() => runLog.failed(name, error)),
+              ),
+            );
+          }),
+          { concurrency: options.concurrency },
+        ),
       ),
     ),
   );
@@ -274,23 +275,23 @@ function registerMatrixRoutes(
       runLog.started(name, (body.parameters ?? {}) as object, suiteId);
       void runProvenance(registry)
         .then((provenance) =>
-          Effect.runPromise(
-            runnerLogs(
-              runMatrix(dashboardMatrix, {
-                selection,
-                concurrency: 1,
-                ...(repeat ? { repeat } : {}),
-                ...(suiteId ? { suiteId } : {}),
-                report: localReportStore(reportRoot),
-                workspaceRoot: sandboxRoot,
-                keepWorkspaces: project?.config?.keepSandboxes,
-                artifactExclude: project?.config?.artifacts?.exclude,
-                attachmentLimits: project?.config?.artifacts?.attachments,
-                judge: project?.config?.judge,
-                ...provenance,
-                onResult: (cell, result) =>
-                  runLog.cell(cell, result, performance.now() - started),
-              }),
+          withFixtures(projectRoot, project?.config, (fixtures) =>
+            Effect.runPromise(
+              runnerLogs(
+                runMatrix(dashboardMatrix, {
+                  ...projectRunOptions(projectRoot, project?.config),
+                  ...(fixtures ? { fixtures } : {}),
+                  selection,
+                  concurrency: 1,
+                  ...(repeat ? { repeat } : {}),
+                  ...(suiteId ? { suiteId } : {}),
+                  report: localReportStore(reportRoot),
+                  workspaceRoot: sandboxRoot,
+                  ...provenance,
+                  onResult: (cell, result) =>
+                    runLog.cell(cell, result, performance.now() - started),
+                }),
+              ),
             ),
           ),
         )
@@ -708,6 +709,9 @@ async function tidyAction(options: { config?: string }): Promise<void> {
         reportRoot,
         sandboxRoot,
         keep: project!.config.keepSandboxes,
+        ...(project!.config.isolation?.kind === 'container'
+          ? { runtime: project!.config.isolation.runtime }
+          : {}),
       }),
     (value) => {
       const keep = project!.config.keepSandboxes ?? 'failed';

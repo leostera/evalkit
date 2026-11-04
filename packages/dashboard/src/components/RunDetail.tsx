@@ -63,6 +63,20 @@ const EMPTY_SESSION: RunTranscriptView = {
   runEvents: [],
 };
 
+/** Where a run's processes ran, in a few words. */
+export function isolationLabel(
+  isolation: NonNullable<RunSummary['isolation']>,
+): string {
+  if (isolation.kind === 'sandbox-exec') return 'sandbox-exec';
+  const network =
+    isolation.network === 'full'
+      ? 'full network'
+      : isolation.network === 'fixtures'
+        ? 'fixtures only'
+        : 'no network';
+  return `container ${isolation.image} · ${network}`;
+}
+
 /** The question the verdicts answer, by how the run ended. */
 export function verdictTitle(run: RunSummary, detail?: RunDetailData): string {
   if (run.status === 'running') return 'How it is scoring';
@@ -161,6 +175,11 @@ export function RunFacts({
             </Link>,
           ],
         ] as Array<[string, ReactNode]>)
+      : []),
+    ...(run.isolation
+      ? ([['Isolation', isolationLabel(run.isolation)]] as Array<
+          [string, ReactNode]
+        >)
       : []),
     ['Commit', <CommitLabel key="commit" source={run.source} />],
     [

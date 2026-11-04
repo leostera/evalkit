@@ -251,10 +251,10 @@ This changes what `tokens` means: before 0.11 it included cache reads. `evalkit 
 - `sandboxExec({ allow })` runs each run's processes under a generated `sandbox-exec` profile: reads and writes inside the run's workspace and `allow`, signals only within the sandbox, and one long-lived sandboxed shell per run. It exists for macOS projects that cannot use containers and has the same `context.shell` interface.
 - `context.shell`:
   - `exec(command: string | string[], { cwd?, env?, signal?, timeoutMs? }) → { stdout, stderr, exitCode }`.
-  - `spawn(command, options) → { pid, stdout, stderr, wait(), kill(signal?) }`.
+  - `spawn(command, options) → { pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Output is always read and the last megabyte kept, so a server nobody reads never blocks on a full pipe.
   - `readFile`, `writeFile`, `list`, relative to `/workspace`.
   - One shell per run, shared by the adapter and the run's scorers. Processes it spawned are killed when the run ends.
-- `fixtures: Record<name, { start, ready?, stop? }>` in config. EvalKit starts each fixture before the first run that needs it and stops it after the last run of the invocation. `ready` is a URL polled until it answers, or a command that must exit 0. Fixture output is attached to every run that ran while it was up, as `logs/fixtures/<name>.log`. Fixtures run on the host, reachable from containers through the `fixtures` network.
+- `fixtures: Record<name, { start, ready?, stop?, port? }>` in config. `port` is taken from `ready` when that is a URL; containers need it to reach the fixture. Each run gets `context.fixtures: Record<name, { url }>`, the address as that run reaches it: `localhost` on the host and in a sandbox, `fixtures.<name>` on the fixtures network, `host.docker.internal` with `network: 'full'`. EvalKit starts each fixture before the first run that needs it and stops it after the last run of the invocation. `ready` is a URL polled until it answers, or a command that must exit 0. Fixture output is attached to every run that ran while it was up, as `logs/fixtures/<name>.log`. Fixtures run on the host, reachable from containers through the `fixtures` network.
 
 ### Dashboard
 
@@ -316,6 +316,11 @@ Each step lands with tests: unit tests for the writer, the helpers and limit res
 - The real project above, whose `sandbox-exec` profile and per-session shell are the model for `sandboxExec` and `context.shell`.
 
 ## Decisions
+
+- **Fixtures reach containers through a proxy.** A Docker `--internal` network cannot reach the host, so each fixture gets a small proxy container (busybox `nc`, one process per connection) on both the default network and the internal one, with the alias `fixtures.<name>`, forwarding to the host's port.
+- **One supervisor per sandboxed run.** Each `sandbox-exec` invocation is its own sandbox, so a later command could not signal a server an earlier one started. The run's commands are children of one sandboxed supervisor instead, which they reach over a line protocol.
+- **Each command leads its own process group**, so the run can stop a command's children with it. The terminal's Ctrl+C no longer reaches them; the runner stops them on cancellation, and kills every group still alive when the process exits.
+- **The manifest records the isolation** (`{ kind, image, network }`, no host paths or environment), so runs from different setups are told apart.
 
 - **Cache reads are their own numbers.** `tokens` and the `tokens` limit count uncached input, cache writes and output; `cached tokens` and `cache hit rate` report the rest (see Usage).
 - **A step is an assistant message**, one model call, which is what agents call a step. Turns stay visible in the trajectory.

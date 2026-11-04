@@ -24,6 +24,8 @@ import {
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
+  type Isolation,
+  none,
   type EntryRecord,
   type JsonValue,
   type LimitReached,
@@ -54,6 +56,7 @@ import {
 } from '@evalkit/core/limits';
 import { uncachedTokens } from '@evalkit/core/usage';
 import { RunTranscript } from './run-transcript.js';
+import { openRunShell, type FixtureSet, type RunShell } from './shell/index.js';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createRunWorkspace, type RunWorkspace } from './workspace.js';
 import {
@@ -87,6 +90,11 @@ export {
 export * from './local-report-reader.js';
 export { runMatrix, type MatrixSummary } from './matrix.js';
 export { upgradeReports, type UpgradeReport } from './upgrade.js';
+export {
+  fixtureSet,
+  removeRunContainer,
+  type FixtureSet,
+} from './shell/index.js';
 
 export type RunEvalOptions = {
   report: ReportStore;
@@ -97,6 +105,10 @@ export type RunEvalOptions = {
   repeat?: number;
   /** Parameters made available to the AUT, and to judges, for this invocation. */
   parameters?: JsonObject;
+  /** Where each run's processes run, through `context.shell`. Default `none()`: on the host. */
+  isolation?: Isolation;
+  /** The project's fixtures, shared by an invocation's runs; started by the first run. */
+  fixtures?: FixtureSet;
   /** The agent for judges that name none (`judge` in evalkit.config.ts). */
   judge?: AutAdapter;
   /** Matrix provenance recorded in every run's manifest. */
@@ -363,6 +375,17 @@ async function runOnce(
       workspaceIgnore,
       ...(prepared.length ? { datasets: runDatasets(prepared) } : {}),
       ...(Object.keys(limits).length ? { limits } : {}),
+      ...(options.isolation?.kind === 'container'
+        ? {
+            isolation: {
+              kind: 'container' as const,
+              image: options.isolation.image,
+              network: options.isolation.network,
+            },
+          }
+        : options.isolation?.kind === 'sandbox-exec'
+          ? { isolation: { kind: 'sandbox-exec' as const } }
+          : {}),
     }),
     { catalog: options.catalog },
   );
@@ -464,6 +487,7 @@ async function runOnce(
   };
 
   let workspace: RunWorkspace | undefined;
+  let runShell: RunShell | undefined;
   let context: AutContext | undefined;
   let primaryError: unknown;
   let closeError: unknown;
@@ -520,10 +544,46 @@ async function runOnce(
       ).pipe(Effect.provideService(Scope.Scope, workspaceScope)),
     );
     const runWorkspace = workspace;
+    // Opened after the workspace, so it closes first: a container goes before its mount.
+    runShell = await runBoundary(
+      Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () =>
+            openRunShell({
+              isolation: options.isolation ?? none(),
+              runId,
+              root: runWorkspace.artifacts.candidate.root,
+              projectRoot: options.root ?? process.cwd(),
+              signal: runSignal,
+              ...(options.fixtures ? { fixtures: options.fixtures } : {}),
+            }),
+          catch: (cause) =>
+            new AutExecutionError({
+              cause,
+              message: `Could not set up the run's ${isolationLabel(options.isolation)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+            }),
+        }),
+        (opened) =>
+          Effect.promise(() =>
+            opened
+              .close({
+                keep: keepWorkspace(
+                  options.keepWorkspaces,
+                  scoring?.passed === true,
+                ),
+              })
+              .catch((error: unknown) => {
+                cleanupError ??= error;
+              }),
+          ),
+      ).pipe(Effect.provideService(Scope.Scope, workspaceScope)),
+    );
     const runContext: AutContext = {
       ...baseContext,
       signal: runSignal,
       limits,
+      shell: runShell.shell,
+      fixtures: runShell.fixtures,
       data: candidateData,
       workspace: runWorkspace.artifacts.candidate,
       evaluatorWorkspace: runWorkspace.artifacts.evaluator,
@@ -737,6 +797,12 @@ async function runOnce(
           ? 'passed'
           : 'failed';
 
+  // Fixture output while this run was up, beside the agent's own logs.
+  if (options.fixtures?.started)
+    for (const log of options.fixtures.logs())
+      await attachments
+        .attach(`logs/fixtures/${log.name}.log`, log.content)
+        .catch(() => undefined);
   const error = primaryError ? recordError(primaryError) : undefined;
   const attached = await attachments.close();
   const endedAt = now().toISOString();
@@ -781,6 +847,12 @@ function datasetValues(
 }
 
 /** Persistent workspaces of runs that did not pass are kept for debugging by default. */
+function isolationLabel(isolation: Isolation | undefined): string {
+  if (isolation?.kind === 'container') return 'container';
+  if (isolation?.kind === 'sandbox-exec') return 'sandbox';
+  return 'shell';
+}
+
 function keepWorkspace(
   policy: KeepSandboxes = 'failed',
   passed: boolean,

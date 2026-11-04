@@ -4,7 +4,7 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
-Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, and stop at the limits you declare.
+Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, stop at the limits you declare, and can run in a container of their own.
 
 ### Breaking: runs record an ATXF transcript
 
@@ -23,6 +23,16 @@ Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcrip
 - **`context.signal` and `context.limits`** are new on the run context: pass the signal to model calls and tool processes so they stop with the run.
 - **`policy.timeoutMs` is gone**; it was never enforced. Use `limits: { time }`. A scenario that still sets it fails with a message saying so.
 - **`--max-tokens`, `--turn-budget` and `--chat-timeout-ms` are gone.** They only set unenforced parameters; use `--limit`, or `--param` for a value your adapter reads.
+
+### Added: isolation and fixtures
+
+- **`context.shell`** runs a run's commands: `exec`, `spawn` for long-lived processes, and `readFile`, `writeFile` and `list` on the workspace. Adapters and scorers share it, commands stop at a limit, and everything it started is stopped when the run ends, background children included. Without isolation it runs on the host, as adapters did before.
+- **`isolation: container({ image, network })`** gives each run its own container through the `docker` CLI (Docker Desktop, OrbStack, Colima, Rancher Desktop or podman): the candidate workspace at `/workspace`, the evaluator workspace never mounted, its own process table so a `pkill` reaches only that run, and `network: 'none'` by default. A Dockerfile is built once per invocation and reused while unchanged. Containers of runs that did not pass are kept, stopped, with their workspaces, and `evalkit tidy` removes them.
+- **`isolation: sandboxExec({ allow })`** confines runs on macOS without containers: no reading or writing the project, the home directory or other runs, and signals only within the run.
+- **`fixtures`** in the config start services on the host before the first run and stop them after the last. Runs find them in `context.fixtures`; a container on `network: 'fixtures'` reaches them as `fixtures.<name>` and nothing else. Their output is attached to each run.
+- The manifest records each run's isolation, and the run page shows it.
+- `piAgent()` runs Pi through `context.shell`, so it runs in the container with container isolation.
+- Dashboard runs now apply the config's `limits`, as `evalkit run` does.
 
 ### Migrating from 0.10
 

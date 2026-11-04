@@ -36,6 +36,7 @@ import {
 } from './project.js';
 import { createRunReporter, runReport, totalsLine } from './run-reporter.js';
 import { junitReport } from './junit.js';
+import { projectRunOptions, withFixtures } from './run-options.js';
 import { detectPackageManager, evalkitCommand } from './package-manager.js';
 import { VERSION } from './version.js';
 
@@ -267,6 +268,9 @@ export async function runProjectCommand(
     repeat: repeat ?? 'scenario',
     // The project's limits and --limit; a scenario's and a cell's come between.
     limits: { config: configLimits, cli: parsed.limits },
+    // Where the runs' processes run, and the fixtures they reach.
+    isolation: project.config.isolation ?? { kind: 'none' },
+    fixtures: Object.keys(project.config.fixtures ?? {}),
     // What each scenario checks, before anything runs.
     scoring: Object.fromEntries(
       registry
@@ -349,53 +353,53 @@ export async function runProjectCommand(
   reporter.start();
   let summary;
   try {
-    summary = await Effect.runPromise(
-      runnerLogs(
-        runMatrix(matrix, {
-          selection,
-          concurrency:
-            parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
-          ...(repeat ? { repeat } : {}),
-          ...(suiteId ? { suiteId } : {}),
-          suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
-          ...(values.local ? { runtime: 'local' as const } : {}),
-          ...(source ? { source } : {}),
-          catalog: runCatalog(registry, project.root),
-          report: localReportStore(reportDir),
-          workspaceRoot: sandboxDir,
-          keepWorkspaces: project.config.keepSandboxes,
-          artifactExclude: project.config.artifacts?.exclude,
-          attachmentLimits: project.config.artifacts?.attachments,
-          judge: project.config.judge,
-          signal: controller.signal,
-          limits: {
-            base: configLimits,
-            override: parsed.limits,
-          },
-          onUpdate: (run, update) => reporter.onUpdate(run, update),
-          onResult: (cell, results) => {
-            for (const result of results) {
-              const report = runReport(
-                cell,
-                result,
-                suiteFor(authoringId(cell.eval)),
-              );
-              if (values.json)
-                console.log(
-                  JSON.stringify({
-                    cell: {
-                      key: cell.key,
-                      eval: authoringId(cell.eval),
-                      parameters: cell.parameters,
-                    },
-                    outcome: report.outcome,
-                    result,
-                  }),
+    summary = await withFixtures(project.root, project.config, (fixtures) =>
+      Effect.runPromise(
+        runnerLogs(
+          runMatrix(matrix, {
+            ...projectRunOptions(project.root, project.config),
+            ...(fixtures ? { fixtures } : {}),
+            selection,
+            concurrency:
+              parsed.concurrency ?? project.config.execution?.concurrency ?? 4,
+            ...(repeat ? { repeat } : {}),
+            ...(suiteId ? { suiteId } : {}),
+            suiteFor: (cell) => suiteFor(authoringId(cell.eval)),
+            ...(values.local ? { runtime: 'local' as const } : {}),
+            ...(source ? { source } : {}),
+            catalog: runCatalog(registry, project.root),
+            report: localReportStore(reportDir),
+            workspaceRoot: sandboxDir,
+            signal: controller.signal,
+            limits: {
+              base: configLimits,
+              override: parsed.limits,
+            },
+            onUpdate: (run, update) => reporter.onUpdate(run, update),
+            onResult: (cell, results) => {
+              for (const result of results) {
+                const report = runReport(
+                  cell,
+                  result,
+                  suiteFor(authoringId(cell.eval)),
                 );
-              reporter.onRun(report);
-            }
-          },
-        }),
+                if (values.json)
+                  console.log(
+                    JSON.stringify({
+                      cell: {
+                        key: cell.key,
+                        eval: authoringId(cell.eval),
+                        parameters: cell.parameters,
+                      },
+                      outcome: report.outcome,
+                      result,
+                    }),
+                  );
+                reporter.onRun(report);
+              }
+            },
+          }),
+        ),
       ),
     );
   } finally {

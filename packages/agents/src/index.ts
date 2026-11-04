@@ -36,27 +36,15 @@ export function piAgent(options: PiAutOptions = {}): AutAdapter {
       return {
         async send(message: string) {
           const turnId = transcript.turn('start');
-          const process = Bun.spawn(
-            [
-              command,
-              '--print',
-              '--no-session',
-              '--no-tools',
-              ...(options.args ?? []),
-              message,
-            ],
-            {
-              cwd: context.workspace.root,
-              stdout: 'pipe',
-              stderr: 'pipe',
-              // A limit or cancellation stops Pi too.
-              signal: context.signal,
-            },
-          );
-          const [stdout, stderr, exitCode] = await Promise.all([
-            new Response(process.stdout).text(),
-            new Response(process.stderr).text(),
-            process.exited,
+          // Through the run's shell, so Pi runs where the project's isolation
+          // puts it; a limit or cancellation stops it.
+          const { stdout, stderr, exitCode } = await context.shell.exec([
+            command,
+            '--print',
+            '--no-session',
+            '--no-tools',
+            ...(options.args ?? []),
+            message,
           ]);
           if (exitCode !== 0) {
             transcript.turn('end', {

@@ -145,6 +145,70 @@ A matrix can sweep a limit, as an axis named `limits.steps` (`defineEvalMatrix({
 
 Steps and tokens are checked as each record is written, time by a timer. When a run reaches a limit, EvalKit records a `limit-reached` event and aborts `context.signal`; a turn in progress gets 10 seconds to stop, and whatever it writes in that time is kept. The run ends **limited**: scorers that support partial runs grade what the agent left, the others are listed as not run, and the run counts as a failure in CI and JUnit. Pass `context.signal` to model calls and tool processes so they stop at once; `context.limits` holds the limits in force.
 
+## Isolation
+
+Each run has a shell, `context.shell`, that runs commands where the project's isolation puts them. Run the agent's tools through it, or the whole agent when it is a CLI, and scorers get the same one to exercise what the agent built:
+
+```ts
+async start({ context, transcript }) {
+  return {
+    async send(message) {
+      // The agent CLI runs in the run's container, or on the host without isolation.
+      const { stdout, exitCode } = await context.shell.exec(['my-agent', '--print', message]);
+      ...
+    },
+  };
+}
+```
+
+- `exec(command, { cwd?, env?, input?, timeoutMs?, signal? })` runs a command to its end and resolves to `{ stdout, stderr, exitCode, signal?, timedOut? }`. A string runs with `sh -c`; an array runs as it is. A command that cannot start exits 127, a timeout 124.
+- `spawn(command, options)` starts a long-lived process, such as a server: `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Its output is always read, so a process nobody reads never blocks.
+- `readFile(path)`, `writeFile(path, content)` and `list(path?)` work on the workspace, by relative path; a path that leaves it is an error.
+- Commands stop when the run reaches a limit or is cancelled (they default to `context.signal`), and everything the shell started is stopped when the run ends, background children included.
+
+The project chooses where in `evalkit.config.ts`:
+
+```ts
+import { container, defineConfig } from '@leostera/evalkit';
+
+export default defineConfig({
+  isolation: container({
+    image: './evals/Dockerfile', // or an image such as 'node:22'
+    network: 'fixtures', // 'none' (default) | 'fixtures' | 'full'
+    env: ['MODEL_API_KEY'], // host variables passed in; nothing else is
+  }),
+});
+```
+
+| Isolation              | What a run gets                                                                                                                                                                                                                                                                                     |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none()`, the default  | Commands on the host, in the workspace, with the host's environment. Runs can see each other's files and processes.                                                                                                                                                                                 |
+| `container(options)`   | A container per run from `image`, with the candidate workspace at `/workspace` (`context.shell.root`) and the evaluator workspace never mounted. Its own process table, so a `pkill` reaches only that run. Removed after scoring, or kept stopped for a run that did not pass, like its workspace. |
+| `sandboxExec(options)` | macOS only. Each run's commands run under a generated `sandbox-exec` profile: no reading or writing the project, the home directory or other runs, except the run's workspace and `allow`; signals only within the run. For projects that cannot use containers.                                    |
+
+**Containers** use the `docker` CLI, so Docker Desktop, OrbStack, Colima, Rancher Desktop or podman all work; `runtime: 'podman'` names another compatible command. The image needs `sh`. A Dockerfile path is built once per invocation, tagged by a hash of its directory, and reused while it is unchanged. `mounts: ['/host/path:/container/path']` adds read-only paths. On Linux, commands run as your user so the files they write stay yours. A run whose container cannot start errors, saying why.
+
+**`sandboxExec({ allow })`** keeps the agent out of the project and your home directory, so an agent installed there (in `~/.bun` or `~/.local`) needs its directory in `allow`.
+
+The manifest records each run's isolation, and its page shows it, so runs from different setups are not compared by mistake. `evalkit tidy` removes kept containers with their workspaces.
+
+## Fixtures
+
+Fixtures are services runs reach, such as a fake store or API. They run on the host, start before the first run of an invocation, and stop after its last:
+
+```ts
+export default defineConfig({
+  fixtures: {
+    store: {
+      start: 'bun run fixtures/store.ts', // in the project root
+      ready: 'http://localhost:8787/health', // polled until it answers; or a command that must exit 0
+    },
+  },
+});
+```
+
+Each run finds them in `context.fixtures`, by name, as it reaches them: `context.fixtures.store.url` is `http://localhost:8787` on the host and in a sandbox, and `http://fixtures.store:8787` from a container on the `fixtures` network, which reaches the fixtures and nothing else. With `network: 'full'` it is `http://host.docker.internal:8787`; with `'none'` there are none. The port comes from `ready`, or from `port`. A fixture that exits or is not ready within 60 seconds errors the run with its output, and each run keeps the fixtures' output as `logs/fixtures/<name>.log`. On Linux, a fixture must listen on `0.0.0.0` for containers to reach it.
+
 ### Run context and runtime
 
 `context` provides `runId`, `evalId`, `batch` (`{ id, index, size }`, only when the run is one of several [repeats](/docs/manual/scoring-and-evals/#define-and-discover-the-scenario) launched together), `metadata` (including a fresh numeric `randomSeed`), `workspace.root` for candidate-visible files, `evaluatorWorkspace.root` for trusted evaluator data, `data` with the values of the scenario's candidate [datasets](/docs/manual/datasets/) by ID, `signal` and `limits` (see [Limits](#limits)), and optional `parameters` and `runtime`. `{{randomSeed}}` in a `user(...)` message is replaced before `send()` is called. Never put the evaluator workspace path or contents into a model prompt; trusted adapters have access to it, so enforce this boundary yourself.
@@ -182,7 +246,7 @@ If `start()`, `send()`, or `close()` throws, the runner records an error, closes
 
 ## Built-in and custom integrations
 
-`piAgent({ command?, args? })` (from `@evalkit/agents` inside this monorepo, or `@leostera/evalkit` from npm in standalone projects) invokes the local `pi` command in the candidate workspace. For **each** `send()`, it runs `pi --print --no-session --no-tools ...args <message>`, emits the trimmed stdout as an assistant message, and reports a nonzero exit as an error. It neither maintains a Pi conversation across messages nor reads `context.parameters` for a model. Configure Pi separately; use `args` for explicit non-secret CLI arguments. See the [starter Pi adapter](https://github.com/leostera/evalkit/blob/main/examples/starter/agents/pi-agent.ts).
+`piAgent({ command?, args? })` (from `@evalkit/agents` inside this monorepo, or `@leostera/evalkit` from npm in standalone projects) invokes the local `pi` command in the candidate workspace. For **each** `send()`, it runs `pi --print --no-session --no-tools ...args <message>`, emits the trimmed stdout as an assistant message, and reports a nonzero exit as an error. It runs through `context.shell`, so with container isolation Pi must be in the image. It neither maintains a Pi conversation across messages nor reads `context.parameters` for a model. Configure Pi separately; use `args` for explicit non-secret CLI arguments. See the [starter Pi adapter](https://github.com/leostera/evalkit/blob/main/examples/starter/agents/pi-agent.ts).
 
 ### Evaluating tool-assisted agents
 

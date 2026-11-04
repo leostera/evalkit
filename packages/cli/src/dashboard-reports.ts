@@ -9,6 +9,9 @@ import type {
   JsonObject,
   RunSource,
   RunStatus,
+  LimitReached,
+  Limits,
+  RunIsolation,
 } from '@evalkit/core';
 import { REPORT_SCHEMA_VERSION } from '@evalkit/core';
 import {
@@ -51,6 +54,12 @@ export type LocalRun = {
   datasets?: RunDatasetDigest[];
   /** Each metric's value; one the run did not measure has none. */
   metrics?: RunMetric[];
+  /** The limits the run had to keep to. */
+  limits?: Limits;
+  /** The limit a `limited` run reached. */
+  limit?: LimitReached;
+  /** Where its processes ran; absent on the host. */
+  isolation?: RunIsolation;
 };
 
 export type RunScorer = {
@@ -251,6 +260,7 @@ export function createDashboardReportReader(root: string) {
         : {}),
       status: summary ? summary.status : interrupted ? 'cancelled' : 'running',
       ...(manifest.limits ? { limits: manifest.limits } : {}),
+      ...(manifest.isolation ? { isolation: manifest.isolation } : {}),
       ...(summary?.limit ? { limit: summary.limit } : {}),
       ...(interrupted ? { interrupted: true as const } : {}),
       startedAt: manifest.startedAt,

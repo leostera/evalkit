@@ -88,12 +88,13 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
 - `defineAgent(adapter: AutAdapter)`  
   Checks an adapter and records where it is defined. See [Agents under test](/docs/manual/agents/).
 - `piAgent({ command?, args? })`  
-  A ready-made adapter that runs `pi --print --no-session --no-tools [args] <message>` in the run's workspace for each user message. It needs Bun, and Pi gets no tools or memory between turns.
+  A ready-made adapter that runs `pi --print --no-session --no-tools [args] <message>` through `context.shell` for each user message. Pi gets no tools or memory between turns.
 - `agentRuntimes(adapter): AgentRuntimes`  
   The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
 - `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  
   Used when an adapter declares no runtimes.
-  An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, transcript, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage?, model? }`, instead of writing to the transcript. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files). `context.signal` aborts when the run hits a limit or is cancelled, and `context.limits` holds the limits in force.
+
+An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, transcript, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage?, model? }`, instead of writing to the transcript. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files). `context.signal` aborts when the run hits a limit or is cancelled, `context.limits` holds the limits in force, `context.shell` runs commands where the project's [isolation](#isolation-and-fixtures) puts them, and `context.fixtures` has the fixtures' addresses.
 
 `transcript` is a `TranscriptWriter`, which records what the agent did as an ATXF transcript. Each method appends one record and returns its ID:
 
@@ -107,6 +108,24 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
   Any other ATXF tree record; or the records of a transcript ATXF converted from your agent's own session format, not imported before.
 - `subagent(transcript)`  
   Keeps a sub-agent's transcript with the run. Its steps and tokens count toward the limits.
+
+## Isolation and fixtures
+
+- `none()`, `container({ image, network?, runtime?, env?, mounts? })`, `sandboxExec({ allow? })`  
+  Where each run's processes run, for `isolation` in `evalkit.config.ts`: the host (the default), a container per run (`network`: `'none'`, `'fixtures'` or `'full'`; `image` an image name or a Dockerfile path), or macOS `sandbox-exec`. See [Isolation](/docs/manual/agents/#isolation).
+
+`context.shell`, a `Shell`, runs commands there, for adapters and scorers alike:
+
+- `exec(command, { cwd?, env?, input?, timeoutMs?, signal? }): Promise<ShellResult>`  
+  `{ stdout, stderr, exitCode, signal?, timedOut? }`. A string runs with `sh -c`, an array as it is. A signal exits 128 plus its number, a timeout 124, a command that cannot start 127.
+- `spawn(command, options): ShellProcess`  
+  `{ pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`; output is always read, keeping the last megabyte.
+- `readFile(path)`, `writeFile(path, content)`, `list(path?)`  
+  Files in the workspace, by relative path; `list` marks directories with a trailing `/`.
+- `isolation`, `root`  
+  The isolation's kind, and the workspace as commands see it: its host path, or `/workspace`.
+
+`fixtures` in the config is `Record<name, Fixture>`: `{ start, ready?, stop?, port? }`. Each run gets `context.fixtures`, `Record<name, { url }>`, as it reaches them. See [Fixtures](/docs/manual/agents/#fixtures).
 
 ## Datasets
 
@@ -151,7 +170,7 @@ Helpers that read the agent's transcript, for scorers and metrics. Each takes th
 - `resourceUri(kind, uuid)`, `parseResourceUri(uri, kind?)`, `resourceUuid(value, kind?)`, `resourceUriSchema(kind)`  
   Build and parse the `evalkit:run:<uuid>` URIs in manifests (kinds `run`, `artifact`).
 
-Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `RunEventSchema`, `TranscriptSchema`, `LimitsSchema`, `LimitReachedSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 7. `TranscriptSchema` checks a value with ATXF's validator.
+Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `RunEventSchema`, `TranscriptSchema`, `LimitsSchema`, `LimitReachedSchema`, `RunIsolationSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 7. `TranscriptSchema` checks a value with ATXF's validator.
 
 ## Running and reading results (`@leostera/evalkit/runner`)
 
@@ -173,6 +192,10 @@ Every report file has an [Effect Schema](https://effect.website/docs/schema/intr
   List or read a static dataset's files without running any project code; computed datasets give `undefined`.
 - `runWorkspacePath(sandboxDir, runId): string`  
   Where a run's kept workspace lives.
+- `fixtureSet(fixtures, { root }): FixtureSet`  
+  The project's fixtures for one invocation, to pass as `fixtures` to `runEval` or `runMatrix`: started by the first run, `stop()` when done. `logs()` returns their output.
+- `removeRunContainer(runId, runtime?): Promise<boolean>`  
+  Removes a run's kept container, as `evalkit tidy` does.
 - `AutExecutionError`, `DatasetError`, `ReportError`, `ScoringError`, `CheckpointExecutionError`, `CancelledError`  
   The Effect tagged errors `runEval` can fail with, told apart by `_tag`.
 

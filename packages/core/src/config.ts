@@ -1,4 +1,5 @@
 import type { AutAdapter, EvalDefinition, EvalRegistry } from './index.js';
+import type { Fixture, Isolation } from './isolation.js';
 import type { LimitsInput } from './limits.js';
 import type { EvalMatrixDefinition } from './matrix.js';
 
@@ -23,6 +24,18 @@ export type EvalkitConfig = {
    * `--limit` override these, kind by kind.
    */
   limits?: LimitsInput;
+  /**
+   * Where each run's processes run: `none()` (the default, on the host),
+   * `container({ image, network })` or `sandboxExec({ allow })`. Adapters
+   * and scorers run commands through `context.shell`, which puts them there.
+   */
+  isolation?: Isolation;
+  /**
+   * Services runs reach, by name: started on the host before the first run
+   * that needs them and stopped after the invocation's last. Each run finds
+   * them in `context.fixtures`.
+   */
+  fixtures?: Readonly<Record<string, Fixture>>;
   reportDir?: string;
   /** The candidate files saved with each run's results. */
   artifacts?: {

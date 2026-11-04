@@ -2,6 +2,7 @@ import { authorId, type ResourceUri } from './identity.js';
 import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
 import { buildContext, type ModelContext } from '@leostera/atxf';
 import type { TranscriptWriter, TurnResult } from './agent-transcript.js';
+import type { ContainerNetwork, FixtureAddress, Shell } from './isolation.js';
 import {
   parseLimits,
   type Limits,
@@ -189,6 +190,13 @@ export type AutContext = {
   signal: AbortSignal;
   /** The limits in force for this run; see `limits` in the config. */
   limits: Limits;
+  /**
+   * The run's shell: run the agent and its tools through it, so they run
+   * where the project's `isolation` puts them. Scorers get the same one.
+   */
+  shell: Shell;
+  /** The project's fixtures, as this run reaches them, by name. */
+  fixtures: Readonly<Record<string, FixtureAddress>>;
   /** Contains only resources visible to the AUT/model. */
   workspace: CandidateWorkspace;
   /** Private evaluator capability for trusted AUT adapters; never expose this to the model. */
@@ -939,7 +947,14 @@ export type RunMetadata = {
   datasets?: RunDataset[];
   /** The limits in force. */
   limits?: Limits;
+  /** Where its processes ran; absent for runs on the host. */
+  isolation?: RunIsolation;
 };
+
+/** A run's isolation as its manifest records it: no host paths, no environment. */
+export type RunIsolation =
+  | { kind: 'container'; image: string; network: ContainerNetwork }
+  | { kind: 'sandbox-exec' };
 
 export type RunDataset = {
   id: string;
@@ -1076,6 +1091,7 @@ export type RunResult = {
 export * from './identity.js';
 export * from './dataset.js';
 export * from './agent-transcript.js';
+export * from './isolation.js';
 // Limits, transcripts and usage: types here, helpers in the subpath modules.
 export type * from './limits.js';
 export type * from './transcript.js';

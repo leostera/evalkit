@@ -9,6 +9,7 @@ import type {
   EvalCatalogStep,
   LimitReached,
   Limits,
+  RunIsolation,
   MetricResult,
   RunTranscriptView,
 } from '@evalkit/core';
@@ -123,6 +124,8 @@ export type RunSummary = {
   status: 'running' | 'passed' | 'failed' | 'errored' | 'limited' | 'cancelled';
   /** The limits the run had to keep to. */
   limits?: Limits;
+  /** Where its processes ran; absent on the host. */
+  isolation?: RunIsolation;
   /** The limit a `limited` run hit. */
   limit?: LimitReached;
   /** Cancelled because its process stopped without finishing it. */

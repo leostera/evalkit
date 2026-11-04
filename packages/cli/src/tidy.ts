@@ -5,7 +5,7 @@ import {
   type EvalRegistry,
   type KeepSandboxes,
 } from '@evalkit/core';
-import { runWorkspacePath } from '@evalkit/runner';
+import { removeRunContainer, runWorkspacePath } from '@evalkit/runner';
 import {
   ARCHIVE_MARKER,
   createDashboardReportReader,
@@ -78,8 +78,8 @@ export async function tidyReports(options: {
 }
 
 /**
- * Remove the run workspaces `keep` would not have kept: those of passed runs
- * by default. Unfinished runs are never touched, so a run in progress keeps
+ * Remove the run workspaces `keep` would not have kept, and their kept
+ * containers: those of passed runs by default. Unfinished runs are never touched, so a run in progress keeps
  * its workspace; workspaces without a report are left alone.
  */
 export async function tidySandboxes(options: {
@@ -87,6 +87,8 @@ export async function tidySandboxes(options: {
   reportRoot: string;
   sandboxRoot: string;
   keep?: KeepSandboxes;
+  /** The container runtime for runs that ran in a container. Default `docker`. */
+  runtime?: string;
 }): Promise<{ removed: number }> {
   const keep = options.keep ?? 'failed';
   if (keep === 'all') return { removed: 0 };
@@ -98,6 +100,9 @@ export async function tidySandboxes(options: {
     const workspace = runWorkspacePath(options.sandboxRoot, run.id);
     if (!(await stat(workspace).catch(() => undefined))) continue;
     await rm(workspace, { recursive: true, force: true });
+    // A container kept with the workspace goes with it.
+    if (run.isolation?.kind === 'container')
+      await removeRunContainer(run.id, options.runtime);
     removed += 1;
   }
   return { removed };
