@@ -19,7 +19,7 @@ export const notesBuilder = defineAgent({
         if (model === 'tiny')
           return {
             reply: 'I could not get the service to build.',
-            usage: { inputTokens: 1800, outputTokens: 90 },
+            usage: { input: 1800, output: 90 },
           };
         const saves = [
           ['a', 'first draft'],
@@ -47,7 +47,7 @@ export const notesBuilder = defineAgent({
               result: { ok: true },
             },
           ],
-          usage: { inputTokens: 2400, outputTokens: 640 },
+          usage: { input: 2400, output: 640 },
         };
       },
     };

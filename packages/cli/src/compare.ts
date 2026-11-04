@@ -70,7 +70,13 @@ export type Comparison = {
   counts: Record<UnitChange, number>;
 };
 
-const FINISHED = new Set<LocalRun['status']>(['passed', 'failed', 'errored']);
+/** Runs that ended on their own; a limited run is a finished failure. */
+const FINISHED = new Set<LocalRun['status']>([
+  'passed',
+  'failed',
+  'limited',
+  'errored',
+]);
 
 function unitKey(run: ComparedRun): string {
   return `${run.evalId}\0${canonicalParameters(run.parameters ?? {})}`;

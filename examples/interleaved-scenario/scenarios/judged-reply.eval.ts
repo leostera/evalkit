@@ -20,7 +20,7 @@ const localJudge = defineAgent({
               ? 'The reply says it wrote 2112.'
               : 'The reply never mentions 2112.',
           }),
-          usage: { inputTokens: prompt.length, outputTokens: 12 },
+          usage: { input: prompt.length, output: 12 },
           // A matrix axis such as judgeModel can choose a real judge's model.
           model: String(context.parameters?.judgeModel ?? 'local-rules'),
         };

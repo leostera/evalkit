@@ -42,13 +42,13 @@ describe('dashboard HTTP API', () => {
       baseUrl: 'https://evalkit.example',
       fetch: async (input) => {
         expect(input.toString()).toBe(
-          'https://evalkit.example/v1/runs/a%2Fb/events',
+          'https://evalkit.example/v1/runs/a%2Fb/transcript',
         );
         return new Response('', { status: 404 });
       },
     });
 
-    await expect(api.getRunEvents('a/b')).rejects.toThrow(
+    await expect(api.getRunTranscript('a/b')).rejects.toThrow(
       'Dashboard request failed: 404',
     );
   });

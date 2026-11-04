@@ -32,17 +32,10 @@ export function piAgent(options: PiAutOptions = {}): AutAdapter {
       id: 'pi-agent',
     },
     runtimes: { local: { kind: 'process', configuration: { command } } },
-    async start({ context, onEvent }) {
-      await onEvent({ kind: 'started', timestamp: new Date().toISOString() });
-      let turn = 0;
+    async start({ context, transcript }) {
       return {
         async send(message: string) {
-          turn += 1;
-          await onEvent({
-            kind: 'turn-started',
-            turn,
-            timestamp: new Date().toISOString(),
-          });
+          const turnId = transcript.turn('start');
           const process = Bun.spawn(
             [
               command,
@@ -52,32 +45,29 @@ export function piAgent(options: PiAutOptions = {}): AutAdapter {
               ...(options.args ?? []),
               message,
             ],
-            { cwd: context.workspace.root, stdout: 'pipe', stderr: 'pipe' },
+            {
+              cwd: context.workspace.root,
+              stdout: 'pipe',
+              stderr: 'pipe',
+              // A limit or cancellation stops Pi too.
+              signal: context.signal,
+            },
           );
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(process.stdout).text(),
             new Response(process.stderr).text(),
             process.exited,
           ]);
-          if (exitCode !== 0)
+          if (exitCode !== 0) {
+            transcript.turn('end', {
+              turnId,
+              outcome: 'failed',
+              error: { message: stderr.trim() || `exit ${exitCode}` },
+            });
             throw new Error(`Pi exited with ${exitCode}: ${stderr.trim()}`);
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
-            content: stdout.trim(),
-            timestamp: new Date().toISOString(),
-          });
-          await onEvent({
-            kind: 'turn-completed',
-            turn,
-            timestamp: new Date().toISOString(),
-          });
-        },
-        async close() {
-          await onEvent({
-            kind: 'completed',
-            timestamp: new Date().toISOString(),
-          });
+          }
+          transcript.assistant({ content: stdout.trim() });
+          transcript.turn('end', { turnId, outcome: 'succeeded' });
         },
       };
     },

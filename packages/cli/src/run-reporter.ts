@@ -4,11 +4,11 @@ import type {
   EvalMatrixCell,
   RunResult,
   ScoreResult,
-  TrajectoryEvent,
 } from '@evalkit/core';
 import { authoringId, passMark } from '@evalkit/core';
+import { formatLimit } from '@evalkit/core/limits';
 import { firstLine } from './dashboard-reports.js';
-import type { RunRef } from '@evalkit/runner';
+import type { RunRef, RunUpdate } from '@evalkit/runner';
 import {
   bold,
   cyan,
@@ -20,8 +20,8 @@ import {
   yellow,
 } from './terminal.js';
 
-/** How one finished run ended; a run that errored counts as failed. */
-export type RunOutcome = 'passed' | 'failed' | 'cancelled';
+/** How one finished run ended; a run that errored counts as failed, one stopped at a limit as limited. */
+export type RunOutcome = 'passed' | 'failed' | 'limited' | 'cancelled';
 
 /** One finished run, as the CLI prints and counts it. */
 export type RunReport = {
@@ -43,6 +43,7 @@ export type RunReport = {
 export type RunTotals = {
   passed: number;
   failed: number;
+  limited: number;
   cancelled: number;
   runs: number;
   scenarios: number;
@@ -51,6 +52,7 @@ export type RunTotals = {
 
 export function runOutcome(result: RunResult): RunOutcome {
   if (result.status === 'cancelled') return 'cancelled';
+  if (result.status === 'limited') return 'limited';
   return result.status === 'passed' ? 'passed' : 'failed';
 }
 
@@ -186,16 +188,33 @@ export function runLine(scenario: RunReport): string {
       ? green('✓')
       : scenario.outcome === 'cancelled'
         ? yellow('◌')
-        : red('✗');
+        : scenario.outcome === 'limited'
+          ? yellow('✗')
+          : red('✗');
   const parameters = parameterLabel(scenario.parameters);
   const batch = scenario.result.batch;
   const position = batch ? dim(` #${batch.index + 1}/${batch.size}`) : '';
   const details = [
-    ...(scenario.outcome === 'failed' ? scenario.reasons : []),
+    ...(scenario.outcome === 'limited' ? [limitReason(scenario.result)] : []),
+    ...(scenario.outcome === 'failed' || scenario.outcome === 'limited'
+      ? scenario.reasons
+      : []),
     ...(scenario.outcome === 'cancelled' ? ['cancelled'] : []),
     ...scenario.skipped.map((name) => `${name} skipped`),
   ];
   return `  ${mark} ${bold(scenario.label)}${parameters ? ` ${dim(parameters)}` : ''}${position}${details.length ? `   ${dim(details.join(' · '))}` : ''}`;
+}
+
+/** `limited: 41 of 40 steps · score 0.40 (graded what it left)`. */
+export function limitReason(result: RunResult): string {
+  const limit = result.limit;
+  if (!limit) return 'limited';
+  const used =
+    limit.limit === 'time'
+      ? `${formatLimit('time', Math.round(limit.used / 1000) * 1000)} of ${formatLimit('time', limit.value)}`
+      : `${limit.used.toLocaleString('en-US')} of ${formatLimit(limit.limit, limit.value)}`;
+  const overall = result.scoring?.overall;
+  return `limited: ${used}${overall === undefined || !result.scoring?.results.length ? '' : ` · score ${overall.toFixed(2)} (graded what it left)`}`;
 }
 
 type Activity = { label: string; startedAt: number; doing?: string };
@@ -258,8 +277,21 @@ export function createRunReporter(options: {
         timer.unref?.();
       }
     },
-    onEvent(run: RunRef, event: TrajectoryEvent) {
-      if (event.source === 'runner' && event.kind === 'run-started') {
+    onUpdate(run: RunRef, update: RunUpdate) {
+      if (update.kind === 'record') {
+        const activity = running.get(run.runId);
+        const call =
+          update.record.type === 'message' && update.record.role === 'assistant'
+            ? update.record.content
+                .filter((block) => block.type === 'tool_call')
+                .at(-1)
+            : undefined;
+        if (activity && call?.type === 'tool_call')
+          activity.doing = `tool ${call.name}`;
+        return;
+      }
+      const event = update.event;
+      if (event.kind === 'run-started') {
         running.set(run.runId, {
           label: options.labelFor(run),
           startedAt: now(),
@@ -268,16 +300,13 @@ export function createRunReporter(options: {
       }
       const activity = running.get(run.runId);
       if (!activity) return;
-      if (
-        event.source === 'runner' &&
-        (event.kind === 'run-completed' || event.kind === 'error')
-      ) {
+      if (event.kind === 'run-completed' || event.kind === 'error')
         running.delete(run.runId);
-      } else if (event.source === 'aut' && event.kind === 'tool-call')
-        activity.doing = `tool ${event.name}`;
-      else if (event.source === 'runner' && event.kind === 'scorer-started')
+      else if (event.kind === 'limit-reached')
+        activity.doing = `stopping at its ${event.limit} limit`;
+      else if (event.kind === 'scorer-started')
         activity.doing = `scoring ${event.scorer}`;
-      else if (event.source === 'runner' && event.kind === 'checkpoint-started')
+      else if (event.kind === 'checkpoint-started')
         activity.doing = `check ${event.name}`;
     },
     onRun(scenario: RunReport) {
@@ -302,6 +331,7 @@ export function createRunReporter(options: {
       const totals: RunTotals = {
         passed: scenarios.filter((s) => s.outcome === 'passed').length,
         failed: scenarios.filter((s) => s.outcome === 'failed').length,
+        limited: scenarios.filter((s) => s.outcome === 'limited').length,
         cancelled: scenarios.filter((s) => s.outcome === 'cancelled').length,
         runs: scenarios.length,
         scenarios: new Set(
@@ -319,6 +349,7 @@ export function totalsLine(totals: RunTotals): string {
   const parts = [
     green(`${totals.passed} passed`),
     totals.failed ? red(`${totals.failed} failed`) : '',
+    totals.limited ? yellow(`${totals.limited} limited`) : '',
     totals.cancelled ? yellow(`${totals.cancelled} cancelled`) : '',
   ].filter(Boolean);
   const coverage =

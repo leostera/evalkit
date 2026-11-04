@@ -48,7 +48,7 @@ afterAll(async () => {
 test('uploads are stored in R2, indexed in the Durable Object, and served', async () => {
   const id = crypto.randomUUID();
   const summary = {
-    snapshotVersion: 2,
+    snapshotVersion: 3,
     id,
     evalId: 'greeting',
     status: 'passed',
@@ -98,7 +98,14 @@ test('uploads are stored in R2, indexed in the Durable Object, and served', asyn
     'http://share.test/api/v1/upgrade',
     { method: 'POST' },
   );
-  expect(await upgrade.json()).toEqual({ upgraded: 0, runs: 0, remaining: 0 });
+  expect(await upgrade.json()).toEqual({
+    upgraded: 0,
+    runs: 0,
+    transcripts: 0,
+    failed: 0,
+    remaining: 0,
+    failures: [],
+  });
 
   const redirect = await miniflare.dispatchFetch(`http://share.test/${REPO}`, {
     redirect: 'manual',

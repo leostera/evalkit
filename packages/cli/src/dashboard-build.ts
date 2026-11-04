@@ -283,7 +283,7 @@ export function directorySink(root: string): SnapshotSink {
 
 /**
  * One run's snapshot, shared by `evalkit build` (files on disk) and
- * `evalkit share` (an upload bundle): `detail.json`, `events.json`,
+ * `evalkit share` (an upload bundle): `detail.json`, `transcript.json`,
  * `artifacts.json` and `workspace.json`, the candidate files under
  * `workspace/`, and attachments under `attachments/` (both left out with
  * `workspaceFiles: false`; they stay listed). Evaluator workspaces are never
@@ -297,7 +297,7 @@ export async function snapshotRun(
 ): Promise<{ files: number }> {
   const detail = await reports.runDetail(runId);
   await sink.json('detail.json', detail);
-  await sink.json('events.json', { events: await reports.trajectory(runId) });
+  await sink.json('transcript.json', await reports.transcript(runId));
   await sink.json('artifacts.json', {
     artifacts: await reports.listArtifacts(runId),
   });

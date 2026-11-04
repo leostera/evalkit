@@ -7,7 +7,7 @@ A scenario (`defineEval`) joins an [AUT adapter](/docs/manual/agents/), an order
 
 ## Write a reusable predicate
 
-`predicate(name, callback)` is a deterministic scoring rule that works both between turns and after the session closes. The same `judge(name, { rubric })` descriptor works in either position; a separate [judge agent](#judges) grades it. The callback receives `{ context, output, data, trajectory, artifacts, turn? }`: the same per-run context given to the adapter, the content of the last assistant message, the values of all the scenario's datasets by ID, a read-only array of AUT and runner events, candidate/evaluator workspace roots, and the most recent completed turn if available. It can be async, read files, and use the effective matrix parameters.
+`predicate(name, callback)` is a deterministic scoring rule that works both between turns and after the session closes. The same `judge(name, { rubric })` descriptor works in either position; a separate [judge agent](#judges) grades it. The callback receives `{ context, output, data, transcript, subagents, runEvents, artifacts, turn? }`: the same per-run context given to the adapter, the content of the last assistant message, the values of all the scenario's datasets by ID, the agent's [transcript](/docs/manual/agents/#the-transcript) and those of its sub-agents, EvalKit's own events (steps, checkpoints, scorers), candidate/evaluator workspace roots, and the most recent completed turn if available. It can be async, read files, and use the effective matrix parameters.
 
 ```ts
 // judges/greeting.ts
@@ -22,7 +22,25 @@ export const greetingIsReturned = predicate(
 );
 ```
 
-Use `output` for the final reply and `data` for expected answers kept in an [evaluator dataset](/docs/manual/datasets/#who-sees-what). For anything else, filter `trajectory.events` by `source` and `kind`: runner-generated step and scorer events also appear there. To score files, read `artifacts.candidate.root` or `artifacts.evaluator.root` with `node:fs/promises`. The full [starter judge](https://github.com/leostera/evalkit/blob/main/examples/starter/judges/greeting.ts) is a runnable example.
+Use `output` for the final reply and `data` for expected answers kept in an [evaluator dataset](/docs/manual/datasets/#who-sees-what). For what the agent did, read the transcript with the helpers:
+
+```ts
+import {
+  lastReply,
+  messages,
+  predicate,
+  toolCalls,
+  usage,
+} from '@leostera/evalkit';
+
+export const readTheDocs = predicate('read the docs before answering', (ctx) =>
+  toolCalls(ctx, 'read_file').some((call) =>
+    String(call.arguments.path).startsWith('docs/'),
+  ),
+);
+```
+
+`messages(ctx, role?)` gives each message's `role` and `text`; `toolCalls(ctx, name?)` each call's `name`, `arguments` and `result`; `lastReply(ctx)` the last reply's text; `usage(ctx)` the summed usage; `modelContext(ctx)` what the model saw at the end, compactions applied. For anything else, `transcript` is the full [ATXF](https://atxf.leostera.dev) transcript. To score files, read `artifacts.candidate.root` or `artifacts.evaluator.root` with `node:fs/promises`. The full [starter judge](https://github.com/leostera/evalkit/blob/main/examples/starter/judges/greeting.ts) is a runnable example.
 
 ## Define and discover the scenario
 
@@ -56,11 +74,11 @@ user(
 );
 ```
 
-The trajectory records the message each run was actually sent; the scenario page shows that the message is computed. `metadata` on the eval is included in the run context, along with the seed. `repeat` starts that many independent runs each time the scenario runs (default one), as one batch; `--repeat` and config `execution.repeat` override it. Each run is complete on its own, with its own sandbox, seed, trajectory and scores, and the dashboard, scoreboard, Compare and JUnit count runs. `policy.timeoutMs` exists in the type but **does not enforce a deadline**. If you import the eval into an explicit suite, register it through that suite only; otherwise its default export is enough for discovery.
+The transcript records the message each run was actually sent; the scenario page shows that the message is computed. `metadata` on the eval is included in the run context, along with the seed. `repeat` starts that many independent runs each time the scenario runs (default one), as one batch; `--repeat` and config `execution.repeat` override it. Each run is complete on its own, with its own sandbox, seed, transcript and scores, and the dashboard, scoreboard, Compare and JUnit count runs. `limits` caps a run's steps, tokens and time; see [Limits](/docs/manual/agents/#limits). If you import the eval into an explicit suite, register it through that suite only; otherwise its default export is enough for discovery.
 
 ### Intermediate checkpoints
 
-Use `predicate(name, callback)` between user steps for deterministic assertions against the live workspace or the just-completed turn. It receives `{ context, output, data, trajectory, artifacts, checkpoints, turn? }`; `turn` is always present at an inline checkpoint, but is optional in the shared callback type because final scoring can run without a user turn. Its `lastAssistantText`, `assistantMessages`, `toolCalls`, and `events` describe the turn as recorded, including a reply or tool calls returned from `send()`. In final scoring, `turn` refers to the last completed user turn (if any), while `trajectory` contains the whole run. Multiple inline rules after one user step inspect the same turn. An inline rule before the first user step is invalid.
+Use `predicate(name, callback)` between user steps for deterministic assertions against the live workspace or the just-completed turn. It receives `{ context, output, data, transcript, artifacts, checkpoints, turn? }`; `turn` is always present at an inline checkpoint, but is optional in the shared callback type because final scoring can run without a user turn. Its `lastAssistantText`, `assistantMessages`, `toolCalls`, and `records` describe the turn as recorded, including a reply or tool calls returned from `send()`. In final scoring, `turn` refers to the last completed user turn (if any), while `transcript` holds the whole run, and at a checkpoint everything up to it. Multiple inline rules after one user step inspect the same turn. An inline rule before the first user step is invalid.
 
 Final scoring runs after the session closes, so a checkpoint is the place to inspect live state (a container, a server) and put what it saw in `evidence` for final scorers to read, instead of sharing it through module-level variables. Look its result up with `checkpoint(rule)`, passing the checkpoint itself rather than its name, so renaming it cannot break the lookup, and its `evidence` keeps the type the predicate returned:
 
@@ -130,11 +148,11 @@ const evaluation = defineEval({
 });
 ```
 
-The runnable [interleaved scenario project](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) contains two default-exported evals, a local AUT that emits tool events, and a report integration test. From `examples/interleaved-scenario`, run `bun run evalkit run write-revise` for the completed revision or `bun run evalkit run failfast-file` for an **intentional nonzero exit** when the first file check fails.
+The runnable [interleaved scenario project](https://github.com/leostera/evalkit/tree/main/examples/interleaved-scenario) contains two default-exported evals, a local AUT that records tool calls, and a report integration test. From `examples/interleaved-scenario`, run `bun run evalkit run write-revise` for the completed revision or `bun run evalkit run failfast-file` for an **intentional nonzero exit** when the first file check fails.
 
-For a missing file to count as a **failed assertion** rather than an execution error, catch only `ENOENT` inside the callback and return `false`; let unexpected I/O errors propagate. `expectToolCall` matches an emitted AUT `tool-call` in the current turn, by exact name and (when supplied) exact JSON arguments; it neither invokes the tool nor proves that the file was written. An adapter must emit tool events for this assertion to pass.
+For a missing file to count as a **failed assertion** rather than an execution error, catch only `ENOENT` inside the callback and return `false`; let unexpected I/O errors propagate. `expectToolCall` matches a tool call the agent recorded in the current turn, by exact name and (when supplied) exact JSON arguments; it neither invokes the tool nor proves that the file was written. An adapter must record its tool calls for this assertion to pass.
 
-A predicate can return `true`/`false`, a numeric score in `[0, 1]`, or a score object as below in **either** position. A failed inline assertion persists as a checkpoint failure and keeps the run from passing even if later rules pass. With `policy.failfast: true`, the runner skips remaining authored steps, closes the session, and attempts final scoring and reporting; without it, later steps run. A throwing/invalid inline rule is an execution error and stops regardless of `failfast`. After failfast, only final rules declared with `{ supportsPartial: true }` run. `scoring.overall` still averages **final** predicate and judge values, never checkpoints. See [Results and reports](/docs/manual/results/) for checkpoint status and the report format. Checkpoints do not enforce `policy.timeoutMs` or process-wide egress/cancellation guards.
+A predicate can return `true`/`false`, a numeric score in `[0, 1]`, or a score object as below in **either** position. A failed inline assertion persists as a checkpoint failure and keeps the run from passing even if later rules pass. With `policy.failfast: true`, the runner skips remaining authored steps, closes the session, and attempts final scoring and reporting; without it, later steps run. A throwing/invalid inline rule is an execution error and stops regardless of `failfast`. After failfast, only final rules declared with `{ supportsPartial: true }` run. `scoring.overall` still averages **final** predicate and judge values, never checkpoints. See [Results and reports](/docs/manual/results/) for checkpoint status and the report format. Checkpoints run within the run's `time` limit; they do not add egress guards.
 
 ### Judges
 
@@ -142,14 +160,14 @@ A predicate can return `true`/`false`, a numeric score in `[0, 1]`, or a score o
 
 ```ts
 // judges/correctness.ts
-import { choices, judge } from '@leostera/evalkit';
+import { choices, judge, messages } from '@leostera/evalkit';
 
 export const correctness = judge('correctness', {
   description: 'Is the answer factually correct and useful?',
   rubric:
     "Is the assistant's response factually correct and useful for what the user asked?",
   inputs: {
-    question: ({ trajectory }) => firstUserMessage(trajectory),
+    question: (ctx) => messages(ctx, 'user')[0]?.text ?? null,
     expected: ({ data }) => data.expectations?.answer ?? null,
     reply: ({ output }) => output ?? null,
   },
@@ -211,7 +229,7 @@ export default defineConfig({
 });
 ```
 
-Each judge result saves the prompt it saw, its reply, its conversation, its usage, the model it reported, and the pass mark applied. The run page shows them when you open a verdict, and a **Judging** section totals what judging cost, apart from the agent's own tokens. The built-in `judge tokens` metric is that total, so the scoreboard can compare it. A reply EvalKit still cannot read after asking twice is a scorer error, never a pass. Every judge session is new, runs in the evaluator workspace, and its events stay inside its result. EvalKit does not enforce judge timeouts. The [judges example](https://github.com/leostera/evalkit/tree/main/examples/judges) runs choices, criteria and predicate judges without model credentials.
+Each judge result saves the prompt it saw, its reply, its conversation, its usage, the model it reported, and the pass mark applied. The run page shows them when you open a verdict, and a **Judging** section totals what judging cost, apart from the agent's own tokens. The built-in `judge tokens` metric is that total, so the scoreboard can compare it. A reply EvalKit still cannot read after asking twice is a scorer error, never a pass. Every judge session is new, runs in the evaluator workspace, and keeps its own ATXF transcript inside its result. Judges do not count toward the agent's limits. The [judges example](https://github.com/leostera/evalkit/tree/main/examples/judges) runs choices, criteria and predicate judges without model credentials.
 
 ### Score return values
 
@@ -307,14 +325,11 @@ Such a grader cannot be re-run on a saved run: the state it reads lived while th
 Scores decide pass or fail; **metrics** measure. A metric is a number recorded for every run, such as tokens, retries, mistakes or web searches, and it never affects whether the run passes. List them in `metrics`:
 
 ```ts
-import { defineEval, metric, user } from '@leostera/evalkit';
+import { defineEval, metric, toolCalls, user } from '@leostera/evalkit';
 
 const webSearches = metric(
   'web searches',
-  ({ trajectory }) =>
-    trajectory.events.filter(
-      (event) => event.kind === 'tool-call' && event.name === 'web_search',
-    ).length,
+  (ctx) => toolCalls(ctx, 'web_search').length,
   { better: 'lower' },
 );
 
@@ -329,16 +344,20 @@ export default defineEval({
 
 A metric receives the same context as a final scorer and runs after the scorers. Return `undefined` when there is nothing to measure; a thrown error is recorded on that metric and the others still run. `unit` labels the value (`ms` formats as a duration) and `better: 'lower' | 'higher'` says which direction is an improvement.
 
-EvalKit also records four **built-in metrics** for every run. Their names are the type `BuiltInMetricName`, and reusing one for a scenario metric is a type error and a definition error.
+EvalKit also records **built-in metrics** for every run. Their names are the type `BuiltInMetricName`, and reusing one for a scenario metric is a type error and a definition error. Sub-agents' transcripts count toward all but `judge tokens`.
 
-| Name           | Unit   | What it counts                                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent time`   | ms     | From the run's first recorded event to its last one before final scoring: the agent's turns and the checkpoints between them.                                                                                                                                                                                                                                                                     |
-| `tokens`       | tokens | The sum over turns of `inputTokens + outputTokens` from each `turn-completed` event's `usage`, or the turn's `totalTokens` when it reports neither. **Cached input counts**: `inputTokens` is every input token the model read, from a cache or not (`cachedInputTokens` says how many were cached, for information). Not recorded when no turn reported usage, so it is never a misleading zero. |
-| `tool calls`   | —      | The agent's `tool-call` events.                                                                                                                                                                                                                                                                                                                                                                   |
-| `judge tokens` | tokens | The tokens the run's judges reported, counted as `tokens` is. Kept apart from the agent's tokens. Not recorded when no judge reported usage.                                                                                                                                                                                                                                                      |
+| Name             | Unit   | What it counts                                                                                                                       |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent time`     | ms     | From the run's first record or event to its last one before final scoring: the agent's turns and the checkpoints between them.       |
+| `tokens`         | tokens | Uncached input, cache writes and output, summed over the transcript. Cache reads are left out, so a cached prompt does not dominate. |
+| `cached tokens`  | tokens | Input tokens read from a prompt cache.                                                                                               |
+| `output tokens`  | tokens | Generated tokens, reasoning included.                                                                                                |
+| `cache hit rate` | —      | The share of input tokens read from a cache, from 0 to 1.                                                                            |
+| `steps`          | —      | Assistant messages, one per model call. A tool call and the reply after it are two steps.                                            |
+| `tool calls`     | —      | Tool calls in the transcript.                                                                                                        |
+| `judge tokens`   | tokens | The tokens the run's judges used, counted as `tokens` is. Kept apart from the agent's tokens. Not recorded when no judge did.        |
 
-Tokens are only what the adapter reports; EvalKit does not count them itself. See [reporting usage](/docs/manual/agents/#reporting-token-usage).
+The token metrics are not recorded when nothing reported usage, so they are never a misleading zero. Tokens are only what the adapter reports; EvalKit does not count them itself. See [reporting usage](/docs/manual/agents/#reporting-token-usage).
 
 Each run's metrics are saved in `scoring.json` and shown on its page, and the scoreboard has a column per metric with its mean over the last 10 runs, coloured from green to red when `better` is set.
 
@@ -346,6 +365,6 @@ A metric a run did not record, because it predates the metric, its agent reporte
 
 ### Partial execution and errors
 
-If dataset setup or the adapter fails, the run is `errored`. By default, scorers are skipped after a primary execution error. `predicate(name, fn, { supportsPartial: true })` can inspect a partial trajectory **if the run context and workspace were created**; this does not make the failed execution pass. A session close error is also recorded. A scoring failure, on the other hand, makes the run `failed`, with `scoring.passed: false`. For a CI gate, use the CLI exit status or count the runs that passed; see [Results and reports](/docs/manual/results/#understanding-status-and-scores).
+If dataset setup or the adapter fails, the run is `errored`. By default, scorers are skipped after a primary execution error. `predicate(name, fn, { supportsPartial: true })` can inspect a partial transcript **if the run context and workspace were created**; this does not make the failed execution pass. A session close error is also recorded. A run that reaches a [limit](/docs/manual/agents/#limits) ends `limited`: only scorers with `supportsPartial` grade it, and it counts as a failure. A scoring failure, on the other hand, makes the run `failed`, with `scoring.passed: false`. For a CI gate, use the CLI exit status or count the runs that passed; see [Results and reports](/docs/manual/results/#understanding-status-and-scores).
 
 `agent(...)` is still declared but **not executable**; inserting it into a transcript fails execution. The executable transcript steps are `user(...)`, `predicate(...)`, `judge(...)`, and `expectToolCall(...)`. Both `predicate(...)` and `judge(...)` also work in final `scoring`. A judge rule with no `agent` and no project `judge` is rejected before the run starts rather than silently passing.

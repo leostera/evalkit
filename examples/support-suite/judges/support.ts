@@ -1,4 +1,4 @@
-import { metric, predicate, skip } from '@evalkit/core';
+import { metric, predicate, skip, toolCalls } from '@evalkit/core';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -16,16 +16,10 @@ export const mentions = (...phrases: string[]) =>
 
 /** The agent read the article the answer belongs to. Without one, nothing to check. */
 export const cites = (article?: string) =>
-  predicate(`cites ${article ?? 'no article'}`, ({ trajectory }) => {
+  predicate(`cites ${article ?? 'no article'}`, (context) => {
     if (!article) return skip('no article answers this question');
-    return trajectory.events.some(
-      (event) =>
-        event.kind === 'tool-call' &&
-        event.name === 'read_article' &&
-        typeof event.arguments === 'object' &&
-        event.arguments !== null &&
-        !Array.isArray(event.arguments) &&
-        event.arguments.article === article,
+    return toolCalls(context, 'read_article').some(
+      (call) => call.arguments.article === article,
     );
   });
 

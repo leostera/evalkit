@@ -33,7 +33,7 @@ export type Pivot = {
   cells: Record<string, Record<string, PivotCell>>;
 };
 
-const FINISHED = new Set(['passed', 'failed', 'errored']);
+const FINISHED = new Set(['passed', 'failed', 'errored', 'limited']);
 const ALL = '\0all';
 
 function valueKey(value: unknown): string {

@@ -4,16 +4,16 @@ import {
   JsonValueSchema,
   RunManifestSchema,
   RunScoringSchema,
+  RunEventSchema,
   RunSummarySchema,
-  TrajectoryEventSchema,
 } from './schema.js';
-import { parseTrajectoryJsonl } from './trajectory.js';
-import type { TrajectoryEvent } from './index.js';
+import { parseRunEventsJsonl } from './run-events.js';
+import type { RunEvent } from './index.js';
 
 const runUri = 'evalkit:run:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const runManifest = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   runUri,
   evalId: 'cron-trigger',
   startedAt: '2026-01-01T00:00:00Z',
@@ -51,49 +51,24 @@ const runSummary = {
   },
   artifacts: [{ path: 'candidate/src/index.ts', kind: 'file', size: 100 }],
 };
-const events: TrajectoryEvent[] = [
+const events: RunEvent[] = [
+  { kind: 'run-started', timestamp: '2026-01-01T00:00:00Z', at: null },
   {
-    source: 'runner',
-    kind: 'run-started',
-    timestamp: '2026-01-01T00:00:00Z',
-  },
-  {
-    source: 'aut',
-    kind: 'turn-completed',
-    timestamp: '2026-01-01T00:00:01Z',
-    turn: 1,
-    latencyMs: 17,
-    usage: { inputTokens: 8, outputTokens: 3, totalTokens: 11 },
-  },
-  {
-    source: 'aut',
-    kind: 'tool-call',
-    timestamp: '2026-01-01T00:00:02Z',
-    id: 'call-1',
-    name: 'write_file',
-    arguments: { path: 'src/index.ts', contents: 'export default {}' },
-  },
-  {
-    source: 'aut',
-    kind: 'completed',
+    kind: 'limit-reached',
+    limit: 'steps',
+    value: 40,
+    used: 41,
     timestamp: '2026-01-01T00:00:03Z',
-    output: {
-      configuration: { model: { id: 'test/model' } },
-      agent: { messages: [] },
-    },
+    at: 'r7',
   },
   {
-    source: 'runner',
     kind: 'scorer-completed',
     timestamp: '2026-01-01T00:00:04Z',
     scorer: 'gate',
     value: 0,
+    at: 'r7',
   },
-  {
-    source: 'runner',
-    kind: 'run-completed',
-    timestamp: '2026-01-01T00:00:10Z',
-  },
+  { kind: 'run-completed', timestamp: '2026-01-01T00:00:10Z', at: 'r7' },
 ];
 
 describe('provider-neutral persisted report contract', () => {
@@ -118,7 +93,7 @@ describe('provider-neutral persisted report contract', () => {
     expect(() =>
       Schema.decodeUnknownSync(RunManifestSchema)({
         ...runManifest,
-        schemaVersion: 5,
+        schemaVersion: 6,
       }),
     ).toThrow();
     expect(() =>
@@ -145,23 +120,37 @@ describe('provider-neutral persisted report contract', () => {
     ).toThrow();
   });
 
-  test('decodes both AUT and runner JSONL events without discarding generic output', () => {
-    const parsed = parseTrajectoryJsonl(
+  test("decodes EvalKit's run events, each placed in the transcript by `at`", () => {
+    const parsed = parseRunEventsJsonl(
       events.map((event) => JSON.stringify(event)).join('\n') + '\n',
     );
-    expect(parsed).toHaveLength(events.length);
-    expect(parsed[3]).toEqual(events[3]);
+    expect(parsed).toEqual(events);
     for (const event of events)
-      expect(Schema.decodeUnknownSync(TrajectoryEventSchema)(event)).toEqual(
-        event,
-      );
+      expect(Schema.decodeUnknownSync(RunEventSchema)(event)).toEqual(event);
     expect(() =>
-      parseTrajectoryJsonl(JSON.stringify(events[0]) + '\n{'),
+      parseRunEventsJsonl(JSON.stringify(events[0]) + '\n{'),
     ).toThrow('line 2');
+    // Agent events are not run events any more: they live in the transcript.
     expect(() =>
-      parseTrajectoryJsonl(
-        JSON.stringify(events[0]) + '\n{"source":"aut","kind":"nope"}',
+      parseRunEventsJsonl(
+        JSON.stringify({
+          kind: 'tool-call',
+          id: 'c',
+          name: 'ls',
+          timestamp: 'x',
+          at: null,
+        }),
       ),
-    ).toThrow('line 2');
+    ).toThrow('line 1');
+  });
+
+  test('a limited run records the limits it ran under', () => {
+    expect(
+      Schema.decodeUnknownSync(RunManifestSchema)({
+        ...runManifest,
+        status: 'limited',
+        limits: { steps: 40, time: 1_200_000 },
+      }).limits,
+    ).toEqual({ steps: 40, time: 1_200_000 });
   });
 });

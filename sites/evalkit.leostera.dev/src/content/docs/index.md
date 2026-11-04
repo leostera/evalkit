@@ -59,9 +59,9 @@ Learn more: [Project structure and discovery](/docs/manual/project-structure/) �
 
 ## Connect an agent
 
-The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each run, EvalKit starts a fresh session, sends the user messages, and records events the adapter emits. Scorers inspect that trajectory and the resulting files.
+The **Agent Under Test (AUT)** is the assistant, service, or program being measured—not the judge that grades it. An adapter connects that system to EvalKit. For each run, EvalKit starts a fresh session, sends the user messages, and records what the agent did as a transcript. Scorers inspect that transcript and the resulting files.
 
-An adapter implements `start()`, returning a session with `send(message)`. `send()` resolves when the turn finishes and may return the reply; EvalKit records it. Return `{ reply, toolCalls, usage }` to record tool calls and token usage too, or call `onEvent` to stream events as they happen.
+An adapter implements `start()`, returning a session with `send(message)`. `send()` resolves when the turn finishes and may return the reply; EvalKit records it. Return `{ reply, toolCalls, usage }` to record tool calls and token usage too, or write each step to the `transcript` as it happens.
 
 ```ts
 // agents/greeting-agent.ts
@@ -109,7 +109,7 @@ Learn more: [Datasets](/docs/manual/datasets/).
 
 ## Score a run
 
-A reusable `predicate(...)` is an executable judge. It runs after the session closes, with the final reply as `output`, the dataset values as `data`, and the full trajectory and files. A numeric score passes only at `1` unless you give `passAt`; return `skip(reason)` when a check does not apply.
+A reusable `predicate(...)` is an executable judge. It runs after the session closes, with the final reply as `output`, the dataset values as `data`, and the full transcript and files. A numeric score passes only at `1` unless you give `passAt`; return `skip(reason)` when a check does not apply.
 
 ```ts
 // judges/matches-greeting.ts
@@ -134,7 +134,7 @@ Learn more: [Scorers and evals](/docs/manual/scoring-and-evals/).
 
 ## Read results
 
-Keep scenario definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`: its `summary.json` says whether it passed, and beside it are `trajectory.jsonl`, `scoring.json`, and the candidate artifacts.
+Keep scenario definitions in Git. Results are **local files**, not automatically committed or shared. Each run lives in `_evalkit-results/<run-id>/`: its `summary.json` says whether it passed, and beside it are `transcript.atxf.jsonl` (what the agent did, in [ATXF](https://atxf.leostera.dev)), `scoring.json`, and the candidate artifacts.
 
 ```sh
 RUN="_evalkit-results/<run-id>"

@@ -14,8 +14,8 @@ export const rulesJudge = defineAgent({
       async send(prompt: string) {
         const reply = section(prompt, 'reply');
         const usage = {
-          inputTokens: Math.ceil(prompt.length / 4),
-          outputTokens: 40,
+          input: Math.ceil(prompt.length / 4),
+          output: 40,
         };
         // A choices judge: "Answer with one of A, B, C …"
         if (prompt.includes('Answer with one of')) {

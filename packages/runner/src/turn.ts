@@ -1,69 +1,62 @@
 import {
   canonicalParameters,
-  type AutEvent,
+  toJson,
+  type AssistantMessage,
+  type EntryRecord,
   type JsonValue,
-  type TrajectoryEvent,
   type TurnView,
 } from '@evalkit/core';
+import {
+  callsIn,
+  contentText,
+  isTreeRecord,
+  toolResultValue,
+} from '@evalkit/core/transcript';
 
-type AutTrajectoryEvent = AutEvent & { source: 'aut' };
-
-/** Freeze the observation window at send() completion, before checkpoint events arrive. */
+/** Freeze one turn's records at send() completion, before checkpoint events arrive. */
 export function turnView(
-  events: readonly TrajectoryEvent[],
-  start: number,
-  end: number,
+  records: readonly EntryRecord[],
   userStepIndex: number,
 ): TurnView {
-  const window = events.slice(start, end);
-  const autEvents = window.filter(
-    (event): event is AutTrajectoryEvent => event.source === 'aut',
+  const tree = records.filter(isTreeRecord);
+  const assistantMessages = tree.filter(
+    (record): record is AssistantMessage =>
+      record.type === 'message' && record.role === 'assistant',
   );
-  const assistantMessages = autEvents.filter(
-    (
-      event,
-    ): event is Extract<AutEvent, { kind: 'message' }> & {
-      role: 'assistant';
-      source: 'aut';
-    } => event.kind === 'message' && event.role === 'assistant',
-  );
-  const calls = window.flatMap((event, index) =>
-    event.source === 'aut' && event.kind === 'tool-call'
-      ? [{ event, eventIndex: start + index }]
-      : [],
-  );
-  const results = autEvents.filter(
-    (
-      event,
-    ): event is Extract<AutEvent, { kind: 'tool-result' }> & {
-      source: 'aut';
-    } => event.kind === 'tool-result',
-  );
+  const calls = callsIn(tree);
+  const resultCount = new Map<string, number>();
+  for (const record of tree)
+    if (record.type === 'message' && record.role === 'tool')
+      resultCount.set(
+        record.toolCallId,
+        (resultCount.get(record.toolCallId) ?? 0) + 1,
+      );
+  const last = assistantMessages.at(-1);
+  const lastText = last ? contentText(last.content) : undefined;
   return {
     userStepIndex,
-    events: autEvents,
+    records: tree,
     assistantMessages,
-    toolCalls: calls.map(({ event, eventIndex }) => {
-      const matches = results.filter((result) => result.id === event.id);
+    toolCalls: calls.map(({ message, call, result }) => {
       const ambiguous =
-        calls.filter((call) => call.event.id === event.id).length !== 1 ||
-        matches.length > 1;
+        calls.filter((entry) => entry.call.id === call.id).length !== 1 ||
+        (resultCount.get(call.id) ?? 0) > 1;
       return {
-        eventIndex,
-        id: event.id,
-        name: event.name,
-        arguments: event.arguments,
+        messageId: message.id,
+        id: call.id,
+        name: call.name,
+        arguments: toJson(call.arguments ?? {}, 'tool arguments'),
         resultObservation: ambiguous
           ? ('ambiguous' as const)
-          : matches.length
+          : result
             ? ('observed' as const)
             : ('absent' as const),
-        ...(!ambiguous && matches.length ? { result: matches[0]!.result } : {}),
+        ...(!ambiguous && result
+          ? { result: toJson(toolResultValue(result), 'tool result') }
+          : {}),
       };
     }),
-    ...(typeof assistantMessages.at(-1)?.content === 'string'
-      ? { lastAssistantText: assistantMessages.at(-1)!.content as string }
-      : {}),
+    ...(lastText ? { lastAssistantText: lastText } : {}),
   };
 }
 

@@ -7,10 +7,14 @@
     "./canonical-json": "./src/canonical-json.ts",
     "./glob": "./src/glob.ts",
     "./judge": "./src/judge.ts",
+    "./limits": "./src/limits.ts",
+    "./run-events": "./src/run-events.ts",
+    "./transcript": "./src/transcript.ts",
     "./upgrade": "./src/upgrade.ts",
     "./usage": "./src/usage.ts"
   },
   "dependencies": {
+    "@leostera/atxf": "0.1.1",
     "effect": "^3.19.0"
   },
   "scripts": {

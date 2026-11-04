@@ -135,7 +135,7 @@ export function scoreboardRows(
       .slice(0, HISTORY);
     const latest = newest[0]!;
     const finished = newest.filter((run) =>
-      ['passed', 'failed', 'errored'].includes(run.status),
+      ['passed', 'failed', 'errored', 'limited'].includes(run.status),
     );
     const scored = finished.filter((run) => run.score !== undefined);
     return {
@@ -550,12 +550,19 @@ function History({ runs }: { runs: readonly RunSummary[] }) {
   );
 }
 
-const TALLY: Outcome[] = ['passed', 'failed', 'errored', 'running', 'not-run'];
+const TALLY: Outcome[] = [
+  'passed',
+  'failed',
+  'errored',
+  'limited',
+  'running',
+  'not-run',
+];
 
 /** How many rows are in each state, as big numbers. */
 function Tally({ rows }: { rows: readonly ScoreboardRow[] }) {
   return (
-    <div className="tally grid grid-cols-2 gap-2 sm:grid-cols-5">
+    <div className="tally grid grid-cols-2 gap-2 sm:grid-cols-6">
       {TALLY.map((outcome) => {
         const count = rows.filter((row) => row.outcome === outcome).length;
         return (

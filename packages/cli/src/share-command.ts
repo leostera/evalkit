@@ -134,10 +134,10 @@ export async function runBundle(options: {
   const files: BundleFile[] = [];
   const encode = (value: unknown) =>
     new TextEncoder().encode(`${JSON.stringify(value)}\n`);
-  // Version 2: one run is one execution (RFD0008); older servers reject it.
+  // Version 3: an ATXF transcript in transcript.json (RFD0009); older servers reject it.
   files.push({
     path: 'run.json',
-    data: encode({ snapshotVersion: 2, ...options.run }),
+    data: encode({ snapshotVersion: 3, ...options.run }),
   });
   // Each run saves the catalog it ran with.
   const saved = await readFile(

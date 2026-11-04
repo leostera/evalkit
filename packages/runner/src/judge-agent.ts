@@ -1,21 +1,17 @@
 import { Effect } from 'effect';
-import * as Schema from 'effect/Schema';
 import {
-  JsonValueSchema,
-  TrajectoryEventSchema,
-  normalizeAutEvent,
-  turnResultEvents,
   type AutAdapter,
   type AutContext,
-  type AutEvent,
   type AutSession,
   type JudgeRule,
   type JudgeRunInfo,
   type JsonValue,
+  type MessageRecord,
   type ScoringContext,
-  type TrajectoryEvent,
-  type Usage,
+  type Transcript,
 } from '@evalkit/core';
+import { activePath, contentText, modelName } from '@evalkit/core/transcript';
+import { transcriptUsage } from '@evalkit/core/usage';
 import {
   answerInstruction,
   judgeInputNames,
@@ -25,6 +21,7 @@ import {
   type JudgeReading,
 } from '@evalkit/core/judge';
 import { RuleExecutionError } from './errors.js';
+import { RunTranscript } from './run-transcript.js';
 import type { JudgedScore } from './score.js';
 
 const failure = (name: string, cause: unknown) =>
@@ -40,7 +37,7 @@ const MAX_PART = 4000;
 /**
  * Drives one judge agent session for one assessment: builds the prompt from
  * the rule, sends it, reads the answer in the rule's format, and asks once
- * more if it cannot. Its events stay out of the AUT trajectory.
+ * more if it cannot. Its session is its own transcript, never the agent's.
  */
 export function runJudgeAgent(
   rule: JudgeRule,
@@ -54,6 +51,8 @@ export function runJudgeAgent(
       cause instanceof RuleExecutionError ? cause : failure(rule.name, cause),
   });
 }
+
+let judgeSessions = 0;
 
 async function judgeOnce(
   rule: JudgeRule,
@@ -69,7 +68,17 @@ async function judgeOnce(
     inputs,
     values,
   });
-  const events: AutEvent[] = [];
+  const now = () => new Date();
+  const transcript = new RunTranscript({
+    id: `${input.context.runId}-judge-${++judgeSessions}`,
+    agent: {
+      id: agent.identity?.id ?? 'judge',
+      ...(agent.identity?.version ? { version: agent.identity.version } : {}),
+    },
+    runId: input.context.runId,
+    scenarioId: input.context.evalId,
+    now,
+  });
   const context: AutContext = {
     ...input.context,
     // Judges see every dataset value and work in evaluator space, not the candidate's mutable workspace.
@@ -81,16 +90,7 @@ async function judgeOnce(
     context,
     // A judge's files are the run's attachments too.
     attach: input.attach,
-    onEvent: (event) => {
-      const observed = Schema.decodeUnknownSync(TrajectoryEventSchema)({
-        ...normalizeAutEvent(event, () => new Date()),
-        source: 'aut',
-      });
-      if (observed.source !== 'aut')
-        throw new Error('Invalid judge event source');
-      const { source: _, ...validated } = observed;
-      events.push(validated);
-    },
+    transcript: transcript.writer(),
   });
   let reading: JudgeReading | undefined;
   let reply: JsonValue | undefined;
@@ -100,11 +100,12 @@ async function judgeOnce(
     let problem = '';
     while (attempts < 2 && !reading) {
       attempts += 1;
-      const from = events.length;
+      const from = transcript.length;
+      transcript.scriptUser(message);
       const result = await session.send(message);
-      if (result !== undefined)
-        events.push(...turnResultEvents(result, attempts, () => new Date()));
-      reply = replyIn(events.slice(from));
+      if (result !== undefined) transcript.writeTurnResult(result, attempts);
+      transcript.endTurn();
+      reply = replyIn(transcript.since(from));
       if (reply === undefined) {
         problem = 'it did not reply';
       } else {
@@ -124,22 +125,31 @@ async function judgeOnce(
   } finally {
     await session.close?.();
   }
-  const recorded = Schema.decodeUnknownSync(JsonValueSchema)(events);
+  transcript.seal();
+  const problems = transcript.problems();
+  if (problems.length)
+    throw new Error(
+      `Judge ${rule.name}'s transcript is not valid ATXF: ${problems.slice(0, 3).join('; ')}`,
+    );
+  const recorded: Transcript = transcript.transcript;
   const model = lastOf(
-    events,
-    (event) => event.kind === 'turn-completed' && event.model,
+    recorded.records,
+    (record) =>
+      record.type === 'message' &&
+      record.role === 'assistant' &&
+      record.model !== undefined,
   );
-  const usage = totalUsage(events);
+  const usage = transcriptUsage(recorded);
   const judge: JudgeRunInfo = {
     ...(agent.identity ? { agent: agent.identity } : {}),
-    ...(model?.kind === 'turn-completed' && model.model
-      ? { model: model.model }
+    ...(model?.type === 'message' && model.role === 'assistant' && model.model
+      ? { model: modelName(model.model)! }
       : {}),
     ...(usage ? { usage } : {}),
     prompt,
     ...(reply !== undefined ? { reply } : {}),
     ...(attempts > 1 ? { attempts } : {}),
-    events: recorded as JsonValue[],
+    transcript: recorded,
   };
   return { value: { ...reading, judge } };
 }
@@ -152,7 +162,7 @@ async function inputValues(
 ): Promise<Record<string, string>> {
   if (!rule.inputs)
     return {
-      conversation: conversationText(input.trajectory.events, placement),
+      conversation: conversationText(input.transcript, placement),
       reply: text(input.output),
     };
   const values: Record<string, string> = {};
@@ -161,60 +171,56 @@ async function inputValues(
   return values;
 }
 
-/** The run's conversation as plain lines, for a judge to read: this turn at a checkpoint, else all of it. */
+/**
+ * The agent's conversation as plain lines, for a judge to read: this turn
+ * (from the last user message) at a checkpoint, else all of it.
+ */
 export function conversationText(
-  events: readonly TrajectoryEvent[],
+  transcript: Transcript,
   placement: 'transcript' | 'scoring',
 ): string {
-  let start = 0;
-  if (placement === 'transcript')
-    events.forEach((event, index) => {
-      if (event.kind === 'transcript-step-started' && 'message' in event)
-        start = index;
+  let path = activePath(transcript);
+  if (placement === 'transcript') {
+    let start = 0;
+    path.forEach((record, index) => {
+      if (record.type === 'message' && record.role === 'user') start = index;
     });
+    path = path.slice(start);
+  }
   const lines: string[] = [];
-  for (const event of events.slice(start)) {
-    if (event.kind === 'transcript-step-started' && 'message' in event)
-      lines.push(`User: ${cut(text(event.message as JsonValue))}`);
-    else if (event.source !== 'aut') continue;
-    else if (event.kind === 'message')
-      lines.push(`${capitalize(event.role)}: ${cut(text(event.content))}`);
-    else if (event.kind === 'tool-call')
-      lines.push(`Tool call ${event.name}: ${cut(text(event.arguments))}`);
-    else if (event.kind === 'tool-result')
+  for (const record of path) {
+    if (record.type !== 'message') continue;
+    if (record.role === 'tool')
       lines.push(
-        `Tool result ${event.name ?? event.id}: ${cut(text(event.result))}`,
+        `Tool result ${record.toolName ?? record.toolCallId}: ${cut(contentText(record.content))}`,
+      );
+    else if (record.role === 'assistant') {
+      const said = contentText(record.content);
+      if (said) lines.push(`Assistant: ${cut(said)}`);
+      for (const block of record.content)
+        if (block.type === 'tool_call')
+          lines.push(
+            `Tool call ${block.name}: ${cut(block.input ?? JSON.stringify(block.arguments ?? {}, null, 2))}`,
+          );
+    } else
+      lines.push(
+        `${capitalize(record.role)}: ${cut(contentText(record.content))}`,
       );
   }
   return lines.join('\n') || '(nothing happened)';
 }
 
-/** The judge's answer in one attempt's events: its final output, else its last reply. */
-function replyIn(events: readonly AutEvent[]): JsonValue | undefined {
-  const completed = lastOf(
-    events,
-    (event) => event.kind === 'completed' && event.output !== undefined,
-  );
-  if (completed?.kind === 'completed') return completed.output;
+/** The judge's answer in one attempt: the text of its last reply. */
+function replyIn(
+  records: readonly Transcript['records'][number][],
+): JsonValue | undefined {
   const assistant = lastOf(
-    events,
-    (event) => event.kind === 'message' && event.role === 'assistant',
-  );
-  return assistant?.kind === 'message' ? assistant.content : undefined;
-}
-
-function totalUsage(events: readonly AutEvent[]): Usage | undefined {
-  let total: Usage | undefined;
-  for (const event of events) {
-    if (event.kind !== 'turn-completed' || !event.usage) continue;
-    total ??= {};
-    for (const [key, tokens] of Object.entries(event.usage) as [
-      keyof Usage,
-      number | undefined,
-    ][])
-      if (tokens !== undefined) total[key] = (total[key] ?? 0) + tokens;
-  }
-  return total;
+    records,
+    (record) => record.type === 'message' && record.role === 'assistant',
+  ) as (MessageRecord & { role: 'assistant' }) | undefined;
+  if (!assistant) return undefined;
+  const said = contentText(assistant.content);
+  return said || undefined;
 }
 
 function text(value: JsonValue | undefined): string {

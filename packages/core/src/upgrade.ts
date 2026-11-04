@@ -1,14 +1,17 @@
 /**
- * Pure conversions from results written before report schema version 6,
- * where a run held trials, to version 6, where each trial is a run (RFD0008).
- * Shared by `evalkit upgrade` and the share server, so both upgrade the same
- * way. No dependencies: the share server's Worker bundles this file.
+ * Pure conversions of results written by older EvalKits: from before report
+ * schema version 6, where a run held trials, to version 6, where each trial
+ * is a run (RFD0008), and from version 6 to 7, where the agent's trajectory
+ * is an ATXF transcript (RFD0009, in `upgrade-transcript.ts`). Shared by
+ * `evalkit upgrade` and the share server, so both upgrade the same way. No
+ * runtime dependencies: the share server's Worker bundles this file.
  */
+export * from './upgrade-transcript.js';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonRecord = { [key: string]: Json };
 
-/** Report schema versions `evalkit upgrade` converts. */
+/** Report schema versions `evalkit upgrade` converts to version 6 first. */
 export const UPGRADABLE_SCHEMA_VERSIONS: readonly number[] = [2, 3, 4, 5];
 
 const isRecord = (value: unknown): value is JsonRecord =>
@@ -145,6 +148,10 @@ export function assertNoRemovedOptions(definition: {
   if ('judge' in definition)
     throw new Error(
       `Eval ${String(definition.id)} sets judge, which moved to each rule: judge(name, { agent, rubric }), or judge in evalkit.config.ts for every judge (EvalKit 0.10)`,
+    );
+  if (isRecord(definition.policy) && 'timeoutMs' in definition.policy)
+    throw new Error(
+      `Eval ${String(definition.id)} sets policy.timeoutMs, which was replaced by limits: { time: ${JSON.stringify(definition.policy.timeoutMs)} }, enforced since EvalKit 0.11`,
     );
   if (isRecord(definition.policy) && 'trials' in definition.policy)
     throw new Error(

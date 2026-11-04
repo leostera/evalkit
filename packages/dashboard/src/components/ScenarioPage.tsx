@@ -1,3 +1,4 @@
+import { formatLimit, LIMIT_KINDS } from '@evalkit/core/limits';
 import { ComparePivot } from './ComparePivot.js';
 import { Button, LayerCard, Table } from '@cloudflare/kumo';
 import { PlayIcon } from '@phosphor-icons/react';
@@ -207,8 +208,17 @@ function ScenarioDefinition({
             ),
           ],
           ['Runs per launch', scenario.repeat ?? 1],
-          ...(policy?.timeoutMs !== undefined
-            ? ([['Timeout', `${policy.timeoutMs / 1000}s`]] as const)
+          ...(scenario.limits && Object.keys(scenario.limits).length
+            ? ([
+                [
+                  'Limits',
+                  LIMIT_KINDS.flatMap((kind) =>
+                    scenario.limits?.[kind] === undefined
+                      ? []
+                      : [formatLimit(kind, scenario.limits[kind])],
+                  ).join(' · '),
+                ],
+              ] as const)
             : []),
           ...(policy?.failfast
             ? ([['Failfast', 'stops at the first failed checkpoint']] as const)

@@ -1,6 +1,7 @@
 import * as Schema from 'effect/Schema';
 import { resourceUriSchema } from './identity.js';
-import type { JsonValue, TrajectoryEvent } from './index.js';
+import type { JsonValue, RunEvent } from './index.js';
+import type { Transcript } from './transcript.js';
 
 /** Runtime schemas for serialized EvalKit report and API boundaries. */
 export const RunStatusSchema = Schema.Literal(
@@ -9,10 +10,11 @@ export const RunStatusSchema = Schema.Literal(
   'failed',
   'errored',
   'cancelled',
+  'limited',
 );
 
 /** The report schema version this EvalKit writes and reads. */
-export const REPORT_SCHEMA_VERSION = 6;
+export const REPORT_SCHEMA_VERSION = 7;
 
 export const RecordedErrorSchema = Schema.Struct({
   name: Schema.String,
@@ -78,8 +80,20 @@ export const RunDatasetSchema = Schema.Struct({
   digest: Schema.String,
 });
 
+export const LimitsSchema = Schema.Struct({
+  steps: Schema.optional(Schema.Number),
+  tokens: Schema.optional(Schema.Number),
+  time: Schema.optional(Schema.Number),
+});
+
+export const LimitReachedSchema = Schema.Struct({
+  limit: Schema.Literal('steps', 'tokens', 'time'),
+  value: Schema.Number,
+  used: Schema.Number,
+});
+
 export const RunMetadataSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(6),
+  schemaVersion: Schema.Literal(7),
   runUri: resourceUriSchema('run'),
   evalId: Schema.String,
   suiteId: Schema.optional(Schema.String),
@@ -95,6 +109,7 @@ export const RunMetadataSchema = Schema.Struct({
   /** The effective snapshot ignore patterns: the project's, then the scenario's. */
   workspaceIgnore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   datasets: Schema.optional(Schema.mutable(Schema.Array(RunDatasetSchema))),
+  limits: Schema.optional(LimitsSchema),
 });
 
 /** On-disk manifests include a lifecycle status. */
@@ -103,12 +118,39 @@ export const RunManifestSchema = Schema.Struct({
   status: Schema.optional(RunStatusSchema),
 });
 
+/** ATXF usage: disjoint buckets, `input` without cached tokens. */
 export const UsageSchema = Schema.Struct({
-  inputTokens: Schema.optional(Schema.Number),
-  outputTokens: Schema.optional(Schema.Number),
-  cachedInputTokens: Schema.optional(Schema.Number),
-  totalTokens: Schema.optional(Schema.Number),
+  input: Schema.Number,
+  output: Schema.Number,
+  cacheRead: Schema.optional(Schema.Number),
+  cacheWrite: Schema.optional(Schema.Number),
+  reasoning: Schema.optional(Schema.Number),
+  total: Schema.optional(Schema.Number),
+  cost: Schema.optional(
+    Schema.Struct({
+      currency: Schema.optional(Schema.String),
+      input: Schema.optional(Schema.Number),
+      output: Schema.optional(Schema.Number),
+      cacheRead: Schema.optional(Schema.Number),
+      cacheWrite: Schema.optional(Schema.Number),
+      total: Schema.Number,
+    }),
+  ),
 });
+
+/**
+ * An ATXF transcript in JSON (`{ header, records }`). Its records are checked
+ * by the ATXF validator where they are written, not here.
+ */
+export const TranscriptSchema = Schema.declare(
+  (value: unknown): value is Transcript =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { header?: { type?: unknown } }).header === 'object' &&
+    (value as { header: { type?: unknown } }).header?.type === 'transcript' &&
+    Array.isArray((value as { records?: unknown }).records),
+  { identifier: 'Transcript' },
+);
 
 export const JudgeRunInfoSchema = Schema.Struct({
   agent: Schema.optional(
@@ -124,7 +166,8 @@ export const JudgeRunInfoSchema = Schema.Struct({
   prompt: Schema.optional(Schema.String),
   reply: Schema.optional(JsonValueSchema),
   attempts: Schema.optional(Schema.Number),
-  events: Schema.optional(Schema.mutable(Schema.Array(JsonValueSchema))),
+  /** The judge's own session, an ATXF transcript (checked when written). */
+  transcript: Schema.optional(TranscriptSchema),
 });
 
 const CriterionResultSchema = Schema.Union(
@@ -180,7 +223,7 @@ export const CheckpointResultSchema = Schema.Struct({
   durationMs: Schema.optional(Schema.Number),
   error: Schema.optional(RecordedErrorSchema),
   matchedToolCall: Schema.optional(
-    Schema.Struct({ eventIndex: Schema.Number, id: Schema.String }),
+    Schema.Struct({ messageId: Schema.String, id: Schema.String }),
   ),
 });
 export const MetricResultSchema = Schema.Struct({
@@ -221,147 +264,91 @@ export const RunSummarySchema = Schema.Struct({
     Schema.mutable(Schema.Array(AttachmentEntrySchema)),
   ),
   error: Schema.optional(RecordedErrorSchema),
+  limit: Schema.optional(LimitReachedSchema),
 });
 
-const autEvent = {
-  started: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('started'),
-    timestamp: Schema.String,
-  }),
-  message: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('message'),
-    role: Schema.Literal('system', 'user', 'assistant', 'tool'),
-    content: JsonValueSchema,
-    timestamp: Schema.String,
-  }),
-  toolCall: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('tool-call'),
-    id: Schema.String,
-    name: Schema.String,
-    arguments: JsonValueSchema,
-    timestamp: Schema.String,
-  }),
-  toolResult: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('tool-result'),
-    id: Schema.String,
-    name: Schema.optional(Schema.String),
-    result: JsonValueSchema,
-    timestamp: Schema.String,
-  }),
-  turnStarted: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('turn-started'),
-    turn: Schema.Number,
-    timestamp: Schema.String,
-  }),
-  turnCompleted: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('turn-completed'),
-    turn: Schema.Number,
-    timestamp: Schema.String,
-    latencyMs: Schema.optional(Schema.Number),
-    usage: Schema.optional(UsageSchema),
-    model: Schema.optional(Schema.String),
-  }),
-  completed: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('completed'),
-    output: Schema.optional(JsonValueSchema),
-    timestamp: Schema.String,
-  }),
-  error: Schema.Struct({
-    source: Schema.Literal('aut'),
-    kind: Schema.Literal('error'),
-    error: RecordedErrorSchema,
-    timestamp: Schema.String,
-  }),
+const runEventFields = {
+  /** The transcript record it happened after; null before the first. */
+  at: Schema.NullOr(Schema.String),
+  timestamp: Schema.String,
 };
+
 const runnerEvent = {
   runStarted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('run-started'),
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   stepStarted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('transcript-step-started'),
     step: Schema.Number,
     message: Schema.optional(Schema.String),
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   stepCompleted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('transcript-step-completed'),
     step: Schema.Number,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   stepSkipped: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('transcript-step-skipped'),
     step: Schema.Number,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   checkpointStarted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('checkpoint-started'),
     step: Schema.Number,
     name: Schema.String,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   checkpointCompleted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('checkpoint-completed'),
     step: Schema.Number,
     status: Schema.Literal('passed', 'failed', 'skipped'),
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   checkpointError: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('checkpoint-error'),
     step: Schema.Number,
     error: RecordedErrorSchema,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   scorerStarted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('scorer-started'),
     scorer: Schema.String,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   scorerCompleted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('scorer-completed'),
     scorer: Schema.String,
     value: Schema.optional(Schema.Number),
     skipped: Schema.optional(Schema.Literal(true)),
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   scorerFailed: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('scorer-failed'),
     scorer: Schema.String,
     error: RecordedErrorSchema,
-    timestamp: Schema.String,
+    ...runEventFields,
+  }),
+  limitReached: Schema.Struct({
+    kind: Schema.Literal('limit-reached'),
+    ...LimitReachedSchema.fields,
+    ...runEventFields,
   }),
   runCompleted: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('run-completed'),
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
   error: Schema.Struct({
-    source: Schema.Literal('runner'),
     kind: Schema.Literal('error'),
     error: RecordedErrorSchema,
-    timestamp: Schema.String,
+    ...runEventFields,
   }),
 };
 
-export const TrajectoryEventSchema: Schema.Schema<TrajectoryEvent> =
-  Schema.Union(...Object.values(autEvent), ...Object.values(runnerEvent));
+export const RunEventSchema: Schema.Schema<RunEvent> = Schema.Union(
+  ...Object.values(runnerEvent),
+);
 
 export const ApiErrorSchema = Schema.Struct({
   error: Schema.String,

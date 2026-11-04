@@ -1,4 +1,4 @@
-import { choices, criteria, judge, predicate } from '@evalkit/core';
+import { choices, criteria, judge, messages, predicate } from '@evalkit/core';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -15,12 +15,7 @@ export const correctness = (question: 'purge' | 'ttl') =>
       "Is the assistant's response factually correct and useful for what the user asked?",
     inputs: {
       // The first message the scenario sent the agent.
-      question: ({ trajectory }) => {
-        for (const event of trajectory.events)
-          if (event.kind === 'transcript-step-started' && event.message)
-            return event.message;
-        return null;
-      },
+      question: (context) => messages(context, 'user')[0]?.text ?? null,
       expected: ({ data }) => {
         const expected = data.expectations;
         return typeof expected === 'object' &&

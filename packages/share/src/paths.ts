@@ -1,6 +1,7 @@
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const RUN_JSON = /^(detail|events|artifacts|workspace)\.json$/;
+const RUN_JSON = /^(detail|transcript|artifacts|workspace)\.json$/;
+const V2_RUN_JSON = /^(detail|events|artifacts|workspace)\.json$/;
 const RUN_FILE = /^(?:workspace|attachments)\/(.+)$/;
 const LEGACY_TRIAL_JSON =
   /^trials\/([^/]+)\/(detail|events|artifacts|workspace)\.json$/;
@@ -21,12 +22,17 @@ export function safeSegment(segment: string): boolean {
 }
 
 /**
- * The only files a run bundle may contain (snapshot format version 2, from
- * `evalkit build`, for one run): its JSON, candidate workspace files and
- * attachments. Never evaluator workspaces.
+ * The only files a run bundle may contain (snapshot format version 3, from
+ * `evalkit share`, for one run): its JSON, candidate workspace files and
+ * attachments. Never evaluator workspaces. Version 2 (EvalKit 0.9 and
+ * 0.10) has `events.json` where version 3 has `transcript.json`.
  */
-export function allowedRunPath(path: string): boolean {
-  if (path === 'run.json' || path === 'catalog.json' || RUN_JSON.test(path))
+export function allowedRunPath(path: string, version: 2 | 3 = 3): boolean {
+  if (
+    path === 'run.json' ||
+    path === 'catalog.json' ||
+    (version === 3 ? RUN_JSON : V2_RUN_JSON).test(path)
+  )
     return true;
   const file = RUN_FILE.exec(path);
   return Boolean(file && file[1]!.split('/').every(safeSegment));

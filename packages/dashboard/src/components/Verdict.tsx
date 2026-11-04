@@ -4,7 +4,8 @@ import {
   passMark,
   type JudgeAnswer,
 } from '@evalkit/core/judge';
-import { turnTokens } from '@evalkit/core/usage';
+import type { Transcript } from '@evalkit/core';
+import { uncachedTokens } from '@evalkit/core/usage';
 import { useContext, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogScorer, VerdictDetail } from '../api.js';
@@ -12,6 +13,7 @@ import { tableLinkClass } from './DataTable.js';
 import { logsHref } from './links.js';
 import { RunFiles } from './run-files.js';
 import { formatDuration } from './run-columns.js';
+import { trajectoryView } from './trajectory-view.js';
 
 /** A score or checkpoint result, whatever was saved of it. */
 export type VerdictResult = {
@@ -93,7 +95,7 @@ export function VerdictPanel({
   scorer?: CatalogScorer;
 }) {
   const judge = result.judge;
-  const tokens = judge?.usage ? turnTokens(judge.usage) : undefined;
+  const tokens = judge?.usage ? uncachedTokens(judge.usage) : undefined;
   const facts = [
     judge?.model,
     tokens === undefined ? undefined : `${tokens.toLocaleString()} tokens`,
@@ -298,12 +300,12 @@ function VerdictSources({ result }: { result: VerdictResult }) {
           },
         ]
       : []),
-    ...(judge?.events?.length
+    ...(judge?.transcript?.records.length
       ? [
           {
             value: 'conversation',
             label: 'Judge conversation',
-            body: <JudgeConversation events={judge.events} />,
+            body: <JudgeConversation transcript={judge.transcript} />,
           },
         ]
       : []),
@@ -422,28 +424,34 @@ function JsonNode({
   );
 }
 
-/** What the judge agent did, in order: its tool calls, results and replies. */
-function JudgeConversation({ events }: { events: unknown[] }) {
+/** What the judge agent did, in order: its prompts, tool calls, results and replies. */
+function JudgeConversation({ transcript }: { transcript: Transcript }) {
+  const view = trajectoryView(transcript);
+  const lines = [...view.preamble, ...view.turns.flatMap((turn) => turn.items)]
+    .map((item) => {
+      switch (item.type) {
+        case 'user':
+          return `user: ${item.text}`;
+        case 'assistant':
+          return `assistant${item.model ? ` (${item.model})` : ''}: ${item.text}`;
+        case 'reasoning':
+          return `reasoning: ${item.text}`;
+        case 'tool':
+          return `tool call ${item.name} ${text(item.arguments ?? {})}${item.result ? `\n→ ${text(item.result.value)}` : ''}`;
+        case 'message':
+          return `${item.role}: ${item.content}`;
+        default:
+          return undefined;
+      }
+    })
+    .filter((line): line is string => line !== undefined);
   return (
     <ol className="flex flex-col gap-1.5 text-xs">
-      {events.map((event, index) => {
-        const entry = event as Record<string, unknown>;
-        const line =
-          entry.kind === 'message'
-            ? `${String(entry.role)}: ${text(entry.content)}`
-            : entry.kind === 'tool-call'
-              ? `tool call ${String(entry.name)} ${text(entry.arguments)}`
-              : entry.kind === 'tool-result'
-                ? `tool result ${String(entry.name ?? entry.id)}: ${text(entry.result)}`
-                : entry.kind === 'turn-completed'
-                  ? `turn ${String(entry.turn)} done${entry.model ? ` · ${String(entry.model)}` : ''}`
-                  : String(entry.kind);
-        return (
-          <li key={index} className={`${preClass} max-h-48`}>
-            {line}
-          </li>
-        );
-      })}
+      {lines.map((line, index) => (
+        <li key={index} className={`${preClass} max-h-48`}>
+          {line}
+        </li>
+      ))}
     </ol>
   );
 }

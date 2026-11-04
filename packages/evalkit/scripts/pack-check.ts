@@ -106,7 +106,7 @@ async function checkInstalledPackage(archive: string): Promise<string> {
   await writeFile(
     join(projectRoot, 'scenarios/hello.eval.ts'),
     `
-import { defineAgent, defineEval, predicate, user } from '@leostera/evalkit';
+import { defineAgent, defineEval, lastReply, predicate, user } from '@leostera/evalkit';
 import { localReportStore } from '@leostera/evalkit/runner';
 void localReportStore;
 export default defineEval({
@@ -114,19 +114,17 @@ export default defineEval({
   agent: defineAgent({
     identity: { id: 'hello-agent', kind: 'local' },
     runtimes: { local: { kind: 'in-process' } },
-    async start({ onEvent }) {
+    async start({ transcript }) {
       return {
         async send(message: string) {
-          await onEvent({ kind: 'message', role: 'assistant', content: message, timestamp: new Date().toISOString() });
+          transcript.assistant({ content: message, usage: { input: 3, output: 1 } });
         },
         async close() {},
       };
     },
   }),
   transcript: [user('hello')],
-  scoring: [predicate('echoes', ({ trajectory }) => Number(trajectory.events.some(
-    (event) => event.kind === 'message' && event.role === 'assistant' && event.content === 'hello',
-  )))],
+  scoring: [predicate('echoes', (context) => lastReply(context) === 'hello')],
 });
 `,
   );

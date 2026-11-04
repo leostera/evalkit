@@ -68,7 +68,7 @@ function run(
   } = {},
 ) {
   return {
-    snapshotVersion: 2,
+    snapshotVersion: 3,
     id: overrides.id ?? crypto.randomUUID(),
     evalId: 'greeting',
     status: overrides.status ?? 'passed',
@@ -440,11 +440,15 @@ test('run bundle paths are limited to the snapshot format', () => {
     'run.json',
     'catalog.json',
     'detail.json',
-    'events.json',
+    'transcript.json',
     'workspace/deep/file.txt',
     'attachments/logs/agent.log',
   ])
     expect([path, allowedRunPath(path)]).toEqual([path, true]);
+  // Version 2 (EvalKit 0.9 and 0.10) has events.json, converted on arrival.
+  expect(allowedRunPath('events.json')).toBe(false);
+  expect(allowedRunPath('events.json', 2)).toBe(true);
+  expect(allowedRunPath('transcript.json', 2)).toBe(false);
   for (const path of [
     'summary.json',
     'trials.json',
@@ -499,14 +503,15 @@ test('an upload from an older CLI becomes one run per finished trial', async () 
   // The cancelled trial is not a shareable run.
   expect(runs.map((entry) => entry.id).sort()).toEqual([a, b].sort());
   expect(runs.find((entry) => entry.id === b)).toMatchObject({
-    snapshotVersion: 2,
+    snapshotVersion: 3,
     status: 'failed',
     batch: { id: oldRun, index: 1, size: 3 },
   });
-  const events = (await (
-    await request(`${data}/runs/${a}/events.json`)
-  ).json()) as { events: { kind: string }[] };
-  expect(events.events[0]!.kind).toBe('run-started');
+  const session = (await (
+    await request(`${data}/runs/${a}/transcript.json`)
+  ).json()) as { transcript: unknown; runEvents: { kind: string }[] };
+  expect(session.runEvents[0]!.kind).toBe('run-started');
+  expect(session.transcript).toMatchObject({ header: { atxf: '0.1', id: a } });
   expect(
     await (await request(`${data}/runs/${a}/workspace/main.ml`)).text(),
   ).toBe('()');
@@ -552,7 +557,14 @@ test('upgrade converts stored runs from before 0.9, a bounded number at a time',
   expect(await rest.json()).toMatchObject({ upgraded: 1, remaining: 0 });
   expect(
     await (await request('/api/v1/upgrade', { method: 'POST' })).json(),
-  ).toEqual({ upgraded: 0, runs: 0, remaining: 0 });
+  ).toEqual({
+    upgraded: 0,
+    runs: 0,
+    transcripts: 0,
+    failed: 0,
+    remaining: 0,
+    failures: [],
+  });
   expect(
     events.filter((event) => event.event === 'share.upgrade'),
   ).toHaveLength(3);
@@ -601,4 +613,157 @@ test('server errors are logged once and answered without details', async () => {
       error: 'disk full',
     },
   ]);
+});
+
+test('runs from EvalKit 0.9 and 0.10 get an ATXF transcript: on upload, on read, and by upgrade', async () => {
+  const { request, files, index } = await server();
+  const v2 = (id: string) => ({ ...run({ id }), snapshotVersion: 2 });
+  const trajectory = {
+    events: [
+      {
+        source: 'runner',
+        kind: 'run-started',
+        timestamp: '2026-10-28T10:00:00.000Z',
+      },
+      {
+        source: 'runner',
+        kind: 'transcript-step-started',
+        step: 0,
+        message: 'hi',
+        timestamp: '2026-10-28T10:00:00.000Z',
+      },
+      {
+        source: 'aut',
+        kind: 'message',
+        role: 'assistant',
+        content: 'Hello!',
+        timestamp: '2026-10-28T10:00:01.000Z',
+      },
+      {
+        source: 'aut',
+        kind: 'turn-completed',
+        turn: 1,
+        usage: { inputTokens: 1000, cachedInputTokens: 800, outputTokens: 50 },
+        timestamp: '2026-10-28T10:00:01.000Z',
+      },
+      {
+        source: 'runner',
+        kind: 'run-completed',
+        timestamp: '2026-10-28T10:00:02.000Z',
+      },
+    ],
+  };
+  const detail = {
+    scores: [],
+    checkpoints: [],
+    metrics: [
+      {
+        name: 'tokens',
+        value: 1050,
+        unit: 'tokens',
+        better: 'lower',
+        builtIn: true,
+      },
+    ],
+    manifest: {
+      schemaVersion: 6,
+      evalId: 'greeting',
+      startedAt: '2026-10-28T10:00:00.000Z',
+    },
+    summary: { status: 'passed' },
+  };
+  const tokens = (value: { metrics?: { name: string; value?: number }[] }) =>
+    value.metrics?.find((metric) => metric.name === 'tokens')?.value;
+  const data = `/api/v1/repos/${REPO}/-/${SHA_A}/data`;
+
+  // An upload from a 0.10 CLI is stored as version 3.
+  const uploaded = crypto.randomUUID();
+  const created = await upload(
+    request,
+    await encodeBundle([
+      {
+        path: 'run.json',
+        data: json({ ...v2(uploaded), metrics: detail.metrics }),
+      },
+      { path: 'detail.json', data: json(detail) },
+      { path: 'events.json', data: json(trajectory) },
+    ]),
+  );
+  expect(created.status).toBe(201);
+  const runs = (await (await request(`${data}/runs.json`)).json()) as {
+    runs: {
+      id: string;
+      snapshotVersion: number;
+      metrics?: { name: string; value?: number }[];
+    }[];
+  };
+  expect(runs.runs[0]).toMatchObject({ id: uploaded, snapshotVersion: 3 });
+  // Tokens no longer count the 800 read from the cache.
+  expect(tokens(runs.runs[0]!)).toBe(250);
+  const session = (await (
+    await request(`${data}/runs/${uploaded}/transcript.json`)
+  ).json()) as {
+    transcript: { records: { type: string; role?: string }[] };
+  };
+  expect(session.transcript.records.map((record) => record.role)).toEqual([
+    'user',
+    'assistant',
+  ]);
+
+  // One stored by an older server is converted as it is read, then by upgrade.
+  const stored = crypto.randomUUID();
+  const base = `repos/${REPO}/commits/${SHA_A}/runs/${stored}`;
+  await files.put(`${base}/run.json`, json(v2(stored)));
+  await files.put(`${base}/detail.json`, json(detail));
+  await files.put(`${base}/events.json`, json(trajectory));
+  const { snapshotVersion: _v, ...summary } = v2(stored);
+  await index.recordRun({
+    id: stored,
+    evalId: 'greeting',
+    status: 'passed',
+    startedAt: summary.startedAt,
+    source: { ...summary.source, ref: 'main' },
+    repoKey: REPO,
+    summary: v2(stored),
+  });
+  const read = async (name: string) =>
+    (await request(`${data}/runs/${stored}/${name}`)).text();
+  const before = {
+    transcript: await read('transcript.json'),
+    detail: await read('detail.json'),
+  };
+  expect(tokens(JSON.parse(before.detail))).toBe(250);
+  expect(
+    await (await request('/api/v1/upgrade', { method: 'POST' })).json(),
+  ).toMatchObject({
+    transcripts: 1,
+    failed: 0,
+    remaining: 0,
+  });
+  // The same files as before, so a cached copy stays right.
+  expect(await read('transcript.json')).toBe(before.transcript);
+  expect(await read('detail.json')).toBe(before.detail);
+  const left: string[] = [];
+  for await (const key of files.list(`${base}/`))
+    left.push(key.slice(base.length + 1));
+  expect(left.sort()).toEqual(['detail.json', 'run.json', 'transcript.json']);
+
+  // One whose tokens do not add up is refused on upload.
+  const broken = crypto.randomUUID();
+  const refused = await upload(
+    request,
+    await encodeBundle([
+      { path: 'run.json', data: json(v2(broken)) },
+      {
+        path: 'detail.json',
+        data: json({
+          ...detail,
+          metrics: [{ ...detail.metrics[0], value: 9 }],
+        }),
+      },
+      { path: 'events.json', data: json(trajectory) },
+    ]),
+  );
+  expect(refused.status).toBe(400);
+  expect(await refused.text()).toContain('could not be converted');
 });

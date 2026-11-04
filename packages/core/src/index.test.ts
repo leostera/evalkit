@@ -13,7 +13,6 @@ import {
   criteria,
   skip,
   toJson,
-  turnResultEvents,
   predicate,
   user,
 } from './index';
@@ -174,29 +173,6 @@ describe('core definitions', () => {
     expect(() => toJson(cycle, 'row')).toThrow('row.self: cycle is not JSON');
     expect(() => toJson({ n: Number.NaN })).toThrow('value.n: NaN is not JSON');
     expect(() => toJson({ f: () => 1 })).toThrow('function is not JSON');
-  });
-
-  test('records returned turn results as events', () => {
-    const now = () => new Date('2026-01-01T00:00:00.000Z');
-    expect(
-      turnResultEvents(
-        {
-          reply: { text: 'done' },
-          toolCalls: [{ name: 'lookup', arguments: { id: 1 }, result: 'ok' }],
-          usage: { totalTokens: 3 },
-        },
-        2,
-        now,
-      ).map((event) => event.kind),
-    ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
-    expect(turnResultEvents('hi', 1, now)).toEqual([
-      {
-        kind: 'message',
-        role: 'assistant',
-        content: 'hi',
-        timestamp: '2026-01-01T00:00:00.000Z',
-      },
-    ]);
   });
 
   test('preserves declarative evaluation values', () => {

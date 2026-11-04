@@ -5,6 +5,7 @@ import {
   type JsonValue,
 } from './index.js';
 import { canonicalParameters } from './canonical-json.js';
+import { LIMIT_PARAMETER_PREFIX, parseLimits } from './limits.js';
 
 export { canonicalParameters };
 
@@ -33,6 +34,15 @@ export type EvalMatrixDefinition = {
   cases?: readonly JsonObject[];
   /** Partial patterns over declared dimensions; matching cells are never run. */
   exclude?: readonly JsonObject[];
+  /**
+   * Limits to compare, as axes: `{ steps: [40, 80] }`. Each becomes the axis
+   * `limits.steps`, so cells show it and `-a limits.steps=80` selects it.
+   */
+  limits?: Readonly<{
+    steps?: readonly number[];
+    tokens?: readonly number[];
+    time?: readonly (number | string)[];
+  }>;
 };
 export type EvalMatrix = EvalMatrixDefinition & {
   kind: 'matrix';
@@ -41,6 +51,26 @@ export type EvalMatrix = EvalMatrixDefinition & {
 };
 
 const COUNT_BUDGET = 100_000;
+
+/** The matrix's parameters with its `limits` as `limits.<kind>` axes. */
+function withLimitAxes(
+  definition: EvalMatrixDefinition,
+): Readonly<Record<string, readonly JsonValue[]>> {
+  if (definition.limits === undefined) return definition.parameters;
+  const parameters = { ...definition.parameters };
+  for (const [kind, values] of Object.entries(definition.limits)) {
+    if (values === undefined) continue;
+    const axis = `${LIMIT_PARAMETER_PREFIX}${kind}`;
+    if (Object.hasOwn(parameters, axis))
+      throw new Error(
+        `Matrix declares ${axis} as both a parameter and a limit`,
+      );
+    for (const value of values)
+      parseLimits({ [kind]: value }, `Matrix ${definition.id}`);
+    parameters[axis] = values;
+  }
+  return parameters;
+}
 const equal = (a: JsonValue, b: JsonValue) =>
   canonicalParameters(a) === canonicalParameters(b);
 const matches = (pattern: JsonObject, values: JsonObject) =>
@@ -49,9 +79,10 @@ const matches = (pattern: JsonObject, values: JsonObject) =>
   );
 
 export function defineEvalMatrix<const T extends EvalMatrixDefinition>(
-  definition: T,
+  input: T,
 ): EvalMatrix & T {
-  authoringId(definition);
+  authoringId(input);
+  const definition = { ...input, parameters: withLimitAxes(input) };
   const identities = new Set<string>();
   for (const evaluation of definition.evals) {
     const id = authoringId(evaluation);
@@ -236,7 +267,7 @@ export function defineEvalMatrix<const T extends EvalMatrixDefinition>(
   }
 
   return {
-    ...definition,
+    ...(definition as T),
     kind: 'matrix',
     count(selection) {
       const selected = select(selection);

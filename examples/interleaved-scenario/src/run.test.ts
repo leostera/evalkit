@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import type { RunResult } from '@evalkit/core';
+import { toolCalls, type RunResult } from '@evalkit/core';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -11,6 +11,7 @@ import {
   readRunEvents,
   readRunManifest,
   readRunScoring,
+  readRunTranscript,
   runEval,
 } from '@evalkit/runner';
 
@@ -53,7 +54,7 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
     expect(passed.scoring?.passed).toBe(true);
     expect(passed.scoring?.overall).toBe(1);
     expect((await readRunManifest(reports, passed.runId)).schemaVersion).toBe(
-      6,
+      7,
     );
     const passedScores = await readRunScoring(reports, passed.runId);
     expect(passedScores.checkpoints?.map((entry) => entry.status)).toEqual([
@@ -62,18 +63,15 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
       'passed',
       'passed',
     ]);
-    const passedEvents = await readRunEvents(reports, passed.runId);
+    const passedTranscript = await readRunTranscript(reports, passed.runId);
     const match = passedScores.checkpoints?.[1]?.matchedToolCall;
-    expect(passedEvents[match!.eventIndex]).toMatchObject({
-      source: 'aut',
-      kind: 'tool-call',
+    const calls = toolCalls({ transcript: passedTranscript });
+    expect(calls.map((call) => call.id)).toEqual(['write-1', 'write-2']);
+    // The match names the message that made the call.
+    expect(calls[0]).toMatchObject({
       id: match!.id,
+      messageId: match!.messageId,
     });
-    expect(
-      passedEvents.filter(
-        (event) => event.source === 'aut' && event.kind === 'tool-call',
-      ),
-    ).toHaveLength(2);
     expect(await readRunSummary(reports, passed.runId)).toMatchObject({
       status: 'passed',
     });
@@ -98,12 +96,13 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
         prompt: expect.stringContaining(
           'Rubric:\nDid the assistant describe writing 2112?',
         ),
-        events: [
-          expect.objectContaining({ kind: 'message', role: 'assistant' }),
-          expect.objectContaining({ kind: 'turn-completed' }),
-        ],
       },
     });
+    expect(
+      judged.scoring?.results[0]?.judge?.transcript?.records.map((record) =>
+        record.type === 'message' ? record.role : record.type,
+      ),
+    ).toEqual(['user', 'assistant', 'seal']);
 
     const failed = await run('failfast-file');
     expect(failed.status).toBe('failed'); // a failed assertion, not an execution error (errored)
@@ -117,19 +116,12 @@ test('discovered scenarios prove interleaved success and failfast using real v3+
         (entry) => entry.status,
       ),
     ).toEqual(['passed', 'passed', 'failed', 'skipped']);
+    const failedCalls = toolCalls({
+      transcript: await readRunTranscript(reports, failed.runId),
+    });
+    expect(failedCalls).toHaveLength(1);
+    expect(failedCalls[0]?.result).toEqual({ ok: false });
     const failedEvents = await readRunEvents(reports, failed.runId);
-    expect(
-      failedEvents.filter(
-        (event) => event.source === 'aut' && event.kind === 'tool-call',
-      ),
-    ).toHaveLength(1);
-    expect(failedEvents).toContainEqual(
-      expect.objectContaining({
-        source: 'aut',
-        kind: 'tool-result',
-        result: { ok: false },
-      }),
-    );
     expect(
       failedEvents.filter((event) => event.kind === 'transcript-step-skipped'),
     ).toHaveLength(2);

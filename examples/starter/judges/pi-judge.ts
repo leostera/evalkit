@@ -1,22 +1,17 @@
-import { predicate } from '@evalkit/core';
+import { lastReply, predicate } from '@evalkit/core';
 
 /** Uses the locally configured Pi CLI as a binary pass/fail judge. */
 export const piGreetingJudge = predicate(
   'pi judges the reply',
-  async ({ trajectory }) => {
-    const reply = trajectory.events.find(
-      (event) =>
-        event.source === 'aut' &&
-        event.kind === 'message' &&
-        event.role === 'assistant',
-    );
+  async (context) => {
+    const reply = lastReply(context);
     const process = Bun.spawn(
       [
         'pi',
         '--print',
         '--no-session',
         '--no-tools',
-        `Reply only PASS or FAIL. Is this a helpful greeting?\n${reply?.kind === 'message' ? String(reply.content) : ''}`,
+        `Reply only PASS or FAIL. Is this a helpful greeting?\n${reply}`,
       ],
       { stdout: 'pipe', stderr: 'pipe' },
     );

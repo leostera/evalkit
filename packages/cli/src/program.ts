@@ -147,16 +147,9 @@ export function createProgram(actions: Actions): Command {
     )
     .option('-j, --concurrency <n>', 'matrix cells to run at once (default: 4)')
     .option(
-      '--max-tokens <n>',
-      'pass maxTokens to the agent in context.parameters',
-    )
-    .option(
-      '--turn-budget <n>',
-      'pass turnBudget to the agent in context.parameters',
-    )
-    .option(
-      '--chat-timeout-ms <n>',
-      'pass chatTimeoutMs to the agent in context.parameters',
+      '--limit <kind=value>',
+      'stop each run past this limit: steps=80, tokens=2000000, time=20m; repeatable; overrides config, scenario and matrix',
+      collect,
     )
     .option('--local', "require the agent's local runtime")
     .option('--all', 'allow more matrix cells than execution.maxCells')
@@ -369,9 +362,7 @@ type RunFlags = {
   param?: string[];
   repeat?: string;
   concurrency?: string;
-  maxTokens?: string;
-  turnBudget?: string;
-  chatTimeoutMs?: string;
+  limit?: string[];
   local?: boolean;
   all?: boolean;
   dryRun?: boolean;
@@ -393,9 +384,7 @@ function runInput(evalIds: string[], flags: RunFlags): RunInput {
       mode: flags.mode,
       select: flags.select,
       param: flags.param,
-      'max-tokens': flags.maxTokens,
-      'chat-timeout-ms': flags.chatTimeoutMs,
-      'turn-budget': flags.turnBudget,
+      limit: flags.limit,
       concurrency: flags.concurrency,
       repeat: flags.repeat,
       json: flags.json,

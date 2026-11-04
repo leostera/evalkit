@@ -32,8 +32,12 @@ export function bytes(size: number): string {
   return `${(size / 1024 ** 2).toFixed(1)} MB`;
 }
 
-export function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+export function plural(
+  count: number,
+  noun: string,
+  nouns = `${noun}s`,
+): string {
+  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 /** Times one build step, showing a live line while it runs. */

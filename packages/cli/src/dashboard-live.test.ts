@@ -47,7 +47,7 @@ test('dashboard API lists a run before its summary exists', async () => {
     await writeFile(
       join(runDir, 'manifest.json'),
       JSON.stringify({
-        schemaVersion: 6,
+        schemaVersion: 7,
         runUri: `evalkit:run:${runId}`,
         evalId: 'echo',
         matrix: { id: 'benchmark', cellKey: 'echo-glm-with' },
@@ -75,10 +75,38 @@ test('dashboard API lists a run before its summary exists', async () => {
       summary: { status: string };
     };
     expect(detail.summary.status).toBe('running');
-    const events = (await (
-      await fetch(`${url}/v1/runs/${runId}/events`)
-    ).json()) as { events: unknown[] };
-    expect(events.events).toEqual([]);
+    const session = async () =>
+      (await (await fetch(`${url}/v1/runs/${runId}/transcript`)).json()) as {
+        transcript: { records: unknown[] } | null;
+        subagents: Record<string, unknown>;
+        runEvents: unknown[];
+      };
+    expect(await session()).toEqual({
+      transcript: null,
+      subagents: {},
+      runEvents: [],
+    });
+    // A running run's transcript is read up to its last complete line.
+    const header = {
+      type: 'transcript',
+      atxf: '0.1',
+      id: runId,
+      time: '2026-01-01T00:00:00.000Z',
+      source: { agent: 'echo' },
+    };
+    const message = {
+      type: 'message',
+      id: 'r1',
+      parentId: null,
+      time: '2026-01-01T00:00:01.000Z',
+      role: 'user',
+      content: 'hi',
+    };
+    await writeFile(
+      join(runDir, 'transcript.atxf.jsonl'),
+      `${JSON.stringify(header)}\n${JSON.stringify(message)}\n{"type":"mess`,
+    );
+    expect((await session()).transcript?.records).toEqual([message]);
     await writeFile(join(runDir, 'summary.json'), '{broken json');
     expect((await fetch(`${url}/v1/runs`)).status).toBe(500);
     await writeFile(

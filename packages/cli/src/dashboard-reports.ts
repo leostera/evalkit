@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import type {
+  RunTranscriptView,
   AttachmentEntry,
   Batch,
   CheckpointResult,
@@ -13,6 +14,8 @@ import { REPORT_SCHEMA_VERSION } from '@evalkit/core';
 import {
   ownerIsGone,
   readRunEvents,
+  readRunSubagents,
+  readRunTranscript,
   readRunManifest,
   readRunSummary,
 } from '@evalkit/runner';
@@ -247,6 +250,8 @@ export function createDashboardReportReader(root: string) {
           }
         : {}),
       status: summary ? summary.status : interrupted ? 'cancelled' : 'running',
+      ...(manifest.limits ? { limits: manifest.limits } : {}),
+      ...(summary?.limit ? { limit: summary.limit } : {}),
       ...(interrupted ? { interrupted: true as const } : {}),
       startedAt: manifest.startedAt,
       ...(summary?.endedAt ? { completedAt: summary.endedAt } : {}),
@@ -355,9 +360,19 @@ export function createDashboardReportReader(root: string) {
   const attachmentFile = (runId: string, name: string) =>
     artifactFile(runId, 'attachments', name);
 
-  async function trajectory(runId: string) {
+  /** The agent's transcript and EvalKit's events, as far as a running run has got. */
+  async function transcript(runId: string): Promise<RunTranscriptView> {
     runPath(root, runId);
-    return (await ifPresent(() => readRunEvents(root, runId))) ?? [];
+    const [recorded, subagents, runEvents] = await Promise.all([
+      ifPresent(() => readRunTranscript(root, runId)),
+      readRunSubagents(root, runId),
+      ifPresent(() => readRunEvents(root, runId)),
+    ]);
+    return {
+      transcript: recorded ?? null,
+      subagents,
+      runEvents: runEvents ?? [],
+    };
   }
 
   return {
@@ -369,7 +384,7 @@ export function createDashboardReportReader(root: string) {
     listCandidateWorkspace,
     candidateFile,
     attachmentFile,
-    trajectory,
+    transcript,
   };
 }
 

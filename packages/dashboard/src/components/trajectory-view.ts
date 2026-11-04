@@ -1,7 +1,20 @@
-import { turnTokens } from '@evalkit/core/usage';
-import type { TrajectoryEvent } from '../api.js';
+import type {
+  AssistantMessage,
+  EntryRecord,
+  RunEvent,
+  Transcript,
+  TreeRecord,
+  Usage,
+} from '@evalkit/core';
+import {
+  activePath,
+  contentText,
+  modelName,
+  toolResultValue,
+} from '@evalkit/core/transcript';
+import { addUsage, cachedTokens, uncachedTokens } from '@evalkit/core/usage';
 
-/** Milliseconds since the trajectory's first event. */
+/** Milliseconds since the transcript's first record or event. */
 type Offset = number;
 
 export type EventError = { name?: string; message: string; stack?: string };
@@ -9,12 +22,20 @@ export type EventError = { name?: string; message: string; stack?: string };
 export type CheckpointState =
   'running' | 'passed' | 'failed' | 'skipped' | 'error';
 
-/** One thing worth reading in a trajectory; lifecycle bookkeeping is folded away. */
+/** One thing worth reading in a transcript; bookkeeping is folded away. */
 export type TrajectoryItem =
-  | { type: 'user'; at: Offset; text: string }
-  | { type: 'assistant'; at: Offset; content: unknown }
-  /** System and tool-role messages. */
-  | { type: 'message'; at: Offset; role: string; content: unknown }
+  | { type: 'user'; at: Offset; text: string; scripted: boolean }
+  | {
+      type: 'assistant';
+      at: Offset;
+      text: string;
+      model?: string;
+      error?: string;
+    }
+  /** The model's reasoning before a reply; folded. */
+  | { type: 'reasoning'; at: Offset; text: string; redacted: boolean }
+  /** System messages, and tool results with no call. */
+  | { type: 'message'; at: Offset; role: string; content: string }
   | {
       type: 'tool';
       at: Offset;
@@ -22,7 +43,7 @@ export type TrajectoryItem =
       name: string;
       arguments?: unknown;
       /** Absent while the call has no recorded result. */
-      result?: { value: unknown; durationMs: number };
+      result?: { value: unknown; durationMs: number; isError: boolean };
     }
   | {
       type: 'checkpoint';
@@ -34,25 +55,35 @@ export type TrajectoryItem =
       durationMs?: number;
     }
   | { type: 'skipped-step'; at: Offset; step: number }
-  | { type: 'error'; at: Offset; source: string; error: EventError }
-  /** The AUT's final output, when it differs from its last reply. */
-  | { type: 'output'; at: Offset; output: unknown }
-  /** A kind this dashboard does not know; shown as-is. */
-  | { type: 'unknown'; at: Offset; event: TrajectoryEvent };
+  | { type: 'error'; at: Offset; error: EventError }
+  | { type: 'limit'; at: Offset; limit: string; value: number; used: number }
+  | {
+      type: 'compaction';
+      at: Offset;
+      summary?: string;
+      tokensBefore?: number;
+    }
+  | { type: 'branch'; at: Offset; summary: string }
+  /** A sub-agent: its transcript, nested, when the run kept it. */
+  | {
+      type: 'subagent';
+      at: Offset;
+      transcriptId: string;
+      relation: string;
+      name?: string;
+      content?: string;
+      view?: TrajectoryView;
+    }
+  /** A record this dashboard does not show on its own; shown as-is. */
+  | { type: 'unknown'; at: Offset; label: string; record: unknown };
 
-export type TurnUsage = {
-  inputTokens?: number;
-  outputTokens?: number;
-  cachedInputTokens?: number;
-  totalTokens?: number;
-};
-
-/** The events from one user message up to the next. */
+/** From one user message up to the next. */
 export type TrajectoryTurn = {
-  /** The AUT's turn number, when it reported one. */
-  turn?: number;
+  /** First record to last, in this turn. */
   latencyMs?: number;
-  usage?: TurnUsage;
+  usage?: Usage;
+  /** Assistant messages: model calls. */
+  steps: number;
   items: TrajectoryItem[];
 };
 
@@ -65,11 +96,11 @@ export type ScorerRun = {
 };
 
 export type TrajectoryView = {
-  /** Events before the first user message (usually empty). */
+  /** Records before the first user message. */
   preamble: TrajectoryItem[];
   turns: TrajectoryTurn[];
   scorers: ScorerRun[];
-  /** First to last event. */
+  /** First record or event to the last. */
   durationMs?: number;
 };
 
@@ -90,40 +121,91 @@ function eventError(value: unknown): EventError {
   return { message: String(value) };
 }
 
-function usage(value: unknown): TurnUsage | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const record = value as Record<string, unknown>;
-  const result: TurnUsage = {
-    inputTokens: num(record.inputTokens),
-    outputTokens: num(record.outputTokens),
-    cachedInputTokens: num(record.cachedInputTokens),
-    totalTokens: num(record.totalTokens),
-  };
-  return Object.values(result).some((entry) => entry !== undefined)
-    ? result
-    : undefined;
-}
-
-/** Bookkeeping events whose meaning the view already shows in other ways. */
+/** Run events that the view shows in other ways. */
 const FOLDED = new Set([
   'run-started',
   'run-completed',
-  'started',
+  'transcript-step-started',
   'transcript-step-completed',
 ]);
 
+/** Records that only keep books: shown in All records, not the conversation. */
+const QUIET = new Set([
+  'turn',
+  'usage',
+  'tool_status',
+  'settings',
+  'context',
+  'context_edit',
+]);
+
+type Entry =
+  { kind: 'record'; record: TreeRecord } | { kind: 'event'; event: RunEvent };
+
 /**
- * Turns raw trajectory events into what a reader wants: the conversation,
- * tool calls paired with their results, and checkpoints as single verdicts.
+ * The transcript's active path with EvalKit's events placed in it by `at`:
+ * after the record they name, or before every record when `at` is null. An
+ * event placed on an abandoned branch follows the last record on the path
+ * written before it.
+ */
+export function placeEvents(
+  transcript: Transcript | null,
+  events: readonly RunEvent[],
+): Entry[] {
+  const records = transcript?.records ?? [];
+  const path = transcript ? activePath(transcript) : [];
+  const onPath = new Set(path.map((record) => record.id));
+  const order = new Map(records.map((record, index) => [record.id, index]));
+  // Each record's nearest record on the path, at or before it in the file.
+  const anchor = new Map<string, string | null>();
+  let last: string | null = null;
+  for (const record of records) {
+    if (onPath.has(record.id)) last = record.id;
+    anchor.set(record.id, last);
+  }
+  const after = new Map<string | null, RunEvent[]>();
+  for (const event of events) {
+    const at =
+      event.at === null || !order.has(event.at)
+        ? event.at === null
+          ? null
+          : (path.at(-1)?.id ?? null)
+        : (anchor.get(event.at) ?? null);
+    after.set(at, [...(after.get(at) ?? []), event]);
+  }
+  const entries: Entry[] = [];
+  const pushEvents = (id: string | null) => {
+    for (const event of after.get(id) ?? [])
+      entries.push({ kind: 'event', event });
+  };
+  pushEvents(null);
+  for (const record of path) {
+    entries.push({ kind: 'record', record });
+    pushEvents(record.id);
+  }
+  return entries;
+}
+
+/**
+ * Turns a run's transcript and events into what a reader wants: the
+ * conversation, tool calls paired with their results, reasoning folded,
+ * sub-agents nested, and checkpoints and limits where they happened.
  */
 export function trajectoryView(
-  events: readonly TrajectoryEvent[],
+  transcript: Transcript | null,
+  events: readonly RunEvent[] = [],
+  subagents: Readonly<Record<string, Transcript>> = {},
+  seen: ReadonlySet<string> = new Set(),
 ): TrajectoryView {
-  const times = events.map((event) => Date.parse(event.timestamp));
-  const start = times.find((time) => !Number.isNaN(time)) ?? 0;
-  const offset = (index: number) => {
-    const time = times[index]!;
-    return Number.isNaN(time) ? 0 : Math.max(0, time - start);
+  const entries = placeEvents(transcript, events);
+  const times = [
+    ...(transcript?.records.map((record) => Date.parse(record.time)) ?? []),
+    ...events.map((event) => Date.parse(event.timestamp)),
+  ].filter((time) => !Number.isNaN(time));
+  const start = times.length ? Math.min(...times) : 0;
+  const offset = (time: string) => {
+    const parsed = Date.parse(time);
+    return Number.isNaN(parsed) ? 0 : Math.max(0, parsed - start);
   };
   const preamble: TrajectoryItem[] = [];
   const turns: TrajectoryTurn[] = [];
@@ -134,187 +216,244 @@ export function trajectoryView(
     number,
     Extract<TrajectoryItem, { type: 'checkpoint' }>
   >();
-  let lastReply: unknown;
-  /** Set once the open turn was started by a recorded user message. */
-  let promptOnly = false;
+  let turnStart: Offset | undefined;
   const current = () => turns.at(-1)?.items ?? preamble;
-  const openTurn = () => {
-    turns.push({ items: [] });
-    promptOnly = false;
-    return turns.at(-1)!;
+  const touch = (at: Offset) => {
+    const turn = turns.at(-1);
+    if (turn && turnStart !== undefined)
+      turn.latencyMs = Math.max(turn.latencyMs ?? 0, at - turnStart);
   };
 
-  events.forEach((event, index) => {
-    const at = offset(index);
-    if (FOLDED.has(event.kind)) return;
-    switch (event.kind) {
-      case 'transcript-step-started': {
-        const text = str(event.message);
-        if (text === undefined) return;
-        openTurn().items.push({ type: 'user', at, text });
-        promptOnly = true;
-        return;
-      }
-      case 'turn-started': {
-        const turn = num(event.turn);
-        // Older trajectories have no recorded prompt: the AUT's turn opens it.
-        const open = promptOnly ? turns.at(-1)! : openTurn();
-        open.turn = turn;
-        promptOnly = false;
-        return;
-      }
-      case 'turn-completed': {
-        const open = turns.at(-1);
-        if (!open) return;
-        open.turn ??= num(event.turn);
-        open.latencyMs = num(event.latencyMs);
-        open.usage = usage(event.usage);
-        return;
-      }
-      case 'message': {
-        promptOnly = false;
-        const role = str(event.role) ?? 'unknown';
-        if (role === 'user') {
-          const text =
-            typeof event.content === 'string' ? event.content : undefined;
-          const prompt = turns
-            .at(-1)
-            ?.items.find((item) => item.type === 'user');
-          // The AUT echoing the prompt the runner already recorded.
-          if (
-            text !== undefined &&
-            prompt?.type === 'user' &&
-            prompt.text === text
-          )
-            return;
-          current().push({
-            type: 'user',
-            at,
-            text: text ?? JSON.stringify(event.content),
-          });
-          return;
-        }
-        if (role === 'assistant') {
-          lastReply = event.content;
-          current().push({ type: 'assistant', at, content: event.content });
-          return;
-        }
-        current().push({ type: 'message', at, role, content: event.content });
-        return;
-      }
-      case 'tool-call': {
-        promptOnly = false;
-        const id = str(event.id) ?? `call-${index}`;
-        const item = {
-          type: 'tool' as const,
-          at,
-          id,
-          name: str(event.name) ?? 'tool',
-          arguments: event.arguments,
-        };
-        tools.set(id, item);
-        current().push(item);
-        return;
-      }
-      case 'tool-result': {
-        const call = tools.get(str(event.id) ?? '');
-        if (call && !call.result) {
-          call.result = { value: event.result, durationMs: at - call.at };
-          return;
-        }
-        // A result without a call: show it as its own tool row.
+  const onRecord = (record: TreeRecord) => {
+    const at = offset(record.time);
+    if (record.type === 'message') {
+      if (record.role === 'user') {
+        turns.push({ steps: 0, items: [] });
+        turnStart = at;
         current().push({
-          type: 'tool',
+          type: 'user',
           at,
-          id: str(event.id) ?? `result-${index}`,
-          name: str(event.name) ?? 'tool',
-          result: { value: event.result, durationMs: 0 },
+          text: contentText(record.content),
+          scripted:
+            record.origin?.kind === 'synthetic' &&
+            record.origin.name === 'evalkit',
         });
         return;
       }
+      touch(at);
+      if (record.role === 'assistant') {
+        onAssistant(record as AssistantMessage, at);
+        return;
+      }
+      if (record.role === 'tool') {
+        const call = tools.get(record.toolCallId);
+        const value = toolResultValue(record);
+        if (call && !call.result) {
+          call.result = {
+            value,
+            durationMs: at - call.at,
+            isError: record.isError === true,
+          };
+          return;
+        }
+        // A result without a call: its own tool row.
+        current().push({
+          type: 'tool',
+          at,
+          id: record.toolCallId,
+          name: record.toolName ?? 'tool',
+          result: { value, durationMs: 0, isError: record.isError === true },
+        });
+        return;
+      }
+      current().push({
+        type: 'message',
+        at,
+        role: record.role,
+        content: contentText(record.content),
+      });
+      return;
+    }
+    touch(at);
+    switch (record.type) {
+      case 'compaction':
+        current().push({
+          type: 'compaction',
+          at,
+          ...(record.summary ? { summary: record.summary } : {}),
+          ...(record.tokensBefore === undefined
+            ? {}
+            : { tokensBefore: record.tokensBefore }),
+        });
+        return;
+      case 'branch_summary':
+        current().push({ type: 'branch', at, summary: record.summary });
+        return;
+      case 'agent_link': {
+        const nested = subagents[record.transcriptId];
+        current().push({
+          type: 'subagent',
+          at,
+          transcriptId: record.transcriptId,
+          relation: record.relation,
+          ...(record.agent?.name ? { name: record.agent.name } : {}),
+          ...(record.content ? { content: contentText(record.content) } : {}),
+          // A transcript that links back to one already shown is not nested again.
+          ...(nested && !seen.has(record.transcriptId)
+            ? {
+                view: trajectoryView(
+                  nested,
+                  [],
+                  subagents,
+                  new Set([...seen, record.transcriptId]),
+                ),
+              }
+            : {}),
+        });
+        return;
+      }
+      default:
+        if (record.type === 'usage' && !record.cumulative) {
+          const turn = turns.at(-1);
+          if (turn) turn.usage = addUsage(turn.usage, record.usage);
+        }
+        if (QUIET.has(record.type)) return;
+        current().push({
+          type: 'unknown',
+          at,
+          label:
+            record.type === 'custom'
+              ? `${record.namespace} · ${record.name}`
+              : record.type,
+          record,
+        });
+    }
+  };
+
+  const onAssistant = (record: AssistantMessage, at: Offset) => {
+    const turn = turns.at(-1);
+    if (turn) {
+      turn.steps += 1;
+      turn.usage = addUsage(turn.usage, record.usage);
+    }
+    for (const block of record.content)
+      if (block.type === 'reasoning') {
+        const text = block.text ?? block.summary?.join('\n') ?? '';
+        if (text || block.redacted)
+          current().push({
+            type: 'reasoning',
+            at,
+            text,
+            redacted: block.redacted === true,
+          });
+      }
+    const text = contentText(record.content);
+    if (text || record.error)
+      current().push({
+        type: 'assistant',
+        at,
+        text,
+        ...(record.model ? { model: modelName(record.model)! } : {}),
+        ...(record.error ? { error: record.error.message } : {}),
+      });
+    for (const block of record.content)
+      if (block.type === 'tool_call') {
+        const item = {
+          type: 'tool' as const,
+          at,
+          id: block.id,
+          name: block.name,
+          arguments: block.arguments ?? block.input,
+        };
+        tools.set(block.id, item);
+        current().push(item);
+      }
+  };
+
+  const onEvent = (event: RunEvent) => {
+    if (FOLDED.has(event.kind)) return;
+    const at = offset(event.timestamp);
+    switch (event.kind) {
       case 'checkpoint-started': {
-        const step = num(event.step) ?? index;
         const item = {
           type: 'checkpoint' as const,
           at,
-          step,
-          name: str(event.name) ?? `step ${step + 1}`,
+          step: event.step,
+          name: event.name,
           state: 'running' as CheckpointState,
         };
-        checkpoints.set(step, item);
+        checkpoints.set(event.step, item);
         current().push(item);
         return;
       }
       case 'checkpoint-completed':
       case 'checkpoint-error': {
-        const step = num(event.step) ?? -1;
-        const item = checkpoints.get(step);
+        const item = checkpoints.get(event.step);
         if (!item) return;
         item.durationMs = at - item.at;
         if (event.kind === 'checkpoint-error') {
           item.state = 'error';
           item.error = eventError(event.error);
-        } else {
-          const status = str(event.status);
+        } else
           item.state =
-            status === 'passed' || status === 'failed' || status === 'skipped'
-              ? status
+            event.status === 'passed' ||
+            event.status === 'failed' ||
+            event.status === 'skipped'
+              ? event.status
               : 'error';
-        }
         return;
       }
       case 'transcript-step-skipped':
+        current().push({ type: 'skipped-step', at, step: event.step });
+        return;
+      case 'limit-reached':
         current().push({
-          type: 'skipped-step',
+          type: 'limit',
           at,
-          step: num(event.step) ?? -1,
+          limit: event.limit,
+          value: event.value,
+          used: event.used,
         });
         return;
       case 'scorer-started':
-        scorerStarts.set(str(event.scorer) ?? 'scorer', at);
+        scorerStarts.set(event.scorer, at);
         return;
       case 'scorer-completed':
       case 'scorer-failed': {
-        const name = str(event.scorer) ?? 'scorer';
-        const started = scorerStarts.get(name);
-        scorers.set(name, {
-          name,
-          value: num(event.value),
-          skipped: event.skipped === true,
-          error:
-            event.kind === 'scorer-failed'
-              ? eventError(event.error)
-              : undefined,
-          durationMs: started === undefined ? undefined : at - started,
+        const started = scorerStarts.get(event.scorer);
+        scorers.set(event.scorer, {
+          name: event.scorer,
+          value:
+            event.kind === 'scorer-completed' ? num(event.value) : undefined,
+          skipped: event.kind === 'scorer-completed' && event.skipped === true,
+          ...(event.kind === 'scorer-failed'
+            ? { error: eventError(event.error) }
+            : {}),
+          ...(started === undefined ? {} : { durationMs: at - started }),
         });
-        return;
-      }
-      case 'completed': {
-        if (event.output === undefined) return;
-        if (JSON.stringify(event.output) === JSON.stringify(lastReply)) return;
-        current().push({ type: 'output', at, output: event.output });
         return;
       }
       case 'error':
-        current().push({
-          type: 'error',
-          at,
-          source: event.source,
-          error: eventError(event.error),
-        });
+        current().push({ type: 'error', at, error: eventError(event.error) });
         return;
-      default:
-        current().push({ type: 'unknown', at, event });
     }
-  });
+  };
 
-  const last = events.length ? offset(events.length - 1) : undefined;
+  for (const entry of entries)
+    if (entry.kind === 'record') onRecord(entry.record);
+    else onEvent(entry.event);
+
   return {
     preamble,
     turns,
     scorers: [...scorers.values()],
-    durationMs: last,
+    ...(times.length ? { durationMs: Math.max(...times) - start } : {}),
   };
+}
+
+/** Every line of a transcript, as All records lists them. */
+export function rawRecords(transcript: Transcript | null): EntryRecord[] {
+  return transcript?.records ?? [];
 }
 
 /** `12ms`, `1.4s`, `2m 03s`. */
@@ -327,22 +466,17 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-/** `1,204 tokens (900 in · 304 out)`. */
-export function formatUsage(usage: TurnUsage): string {
-  const total = turnTokens(usage);
+/** `1,204 tokens (900 in · 304 out · 8,000 cached)`; cache reads are not tokens. */
+export function formatUsage(usage: Usage): string {
   const parts = [
-    usage.inputTokens === undefined
-      ? undefined
-      : `${usage.inputTokens.toLocaleString()} in`,
-    usage.outputTokens === undefined
-      ? undefined
-      : `${usage.outputTokens.toLocaleString()} out`,
-    usage.cachedInputTokens
-      ? `${usage.cachedInputTokens.toLocaleString()} cached`
+    usage.input || usage.cacheWrite
+      ? `${(usage.input + (usage.cacheWrite ?? 0)).toLocaleString()} in`
+      : undefined,
+    usage.output ? `${usage.output.toLocaleString()} out` : undefined,
+    cachedTokens(usage)
+      ? `${cachedTokens(usage).toLocaleString()} cached`
       : undefined,
   ].filter(Boolean);
-  const head = total === undefined ? '' : `${total.toLocaleString()} tokens`;
-  return parts.length
-    ? `${head}${head ? ' ' : ''}(${parts.join(' · ')})`
-    : head;
+  const head = `${uncachedTokens(usage).toLocaleString()} tokens`;
+  return parts.length ? `${head} (${parts.join(' · ')})` : head;
 }

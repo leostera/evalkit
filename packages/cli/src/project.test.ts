@@ -25,7 +25,7 @@ async function project() {
 }
 const evaluation = (id: number) => `export default {
   id: 'task-${id}',
-  agent: { async start({context}) { if (context.parameters?.maxTokens !== 10000) throw new Error('missing override'); return { async send() {}, async close() {} }; } },
+  agent: { async start({context}) { if (context.limits.tokens !== 10000) throw new Error('missing limit'); return { async send() {}, async close() {} }; } },
   transcript: [], scoring: []
 };`;
 
@@ -196,11 +196,20 @@ test('CLI plans only eligible cells for configured and suite matrices', async ()
 
 test('run flags are validated into a selection, overrides and limits', () => {
   const parsed = normalizeRunOptions(
-    { 'max-tokens': '10000', model: ['a,b'], mode: ['with-docs'] },
+    {
+      limit: ['steps=80', 'time=20m,tokens=2000000'],
+      model: ['a,b'],
+      mode: ['with-docs'],
+    },
     ['task-1'],
   );
   expect(parsed.positionals).toEqual(['task-1']);
-  expect(parsed.parameters).toEqual({ maxTokens: 10000 });
+  expect(parsed.parameters).toEqual({});
+  expect(parsed.limits).toEqual({
+    steps: 80,
+    time: 1_200_000,
+    tokens: 2_000_000,
+  });
   expect(parsed.selection).toEqual({ model: ['a', 'b'], mode: ['with-docs'] });
   // --select (-a) takes comma-separated text, or one JSON value.
   expect(
@@ -216,7 +225,9 @@ test('run flags are validated into a selection, overrides and limits', () => {
   });
   const invalid: Array<[Parameters<typeof normalizeRunOptions>[0], string[]]> =
     [
-      [{ 'max-tokens': '-1' }, []],
+      [{ limit: ['steps=-1'] }, []],
+      [{ limit: ['turns=3'] }, []],
+      [{ limit: ['time=soon'] }, []],
       [{ repeat: '1.5' }, []],
       [{ select: ['novalue'] }, []],
     ];
@@ -276,8 +287,8 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
     'a',
     '--mode',
     'with-docs',
-    '--max-tokens',
-    '10000',
+    '--limit',
+    'tokens=10000',
   ]);
   expect(run.status).toBe(0);
   const runs = await readdir(join(root, '_evalkit-results'));
@@ -288,14 +299,11 @@ test('CLI dry-run is side-effect free; execution persists matrix parameters in m
       'utf8',
     ),
   );
-  expect(manifest.schemaVersion).toBe(6);
+  expect(manifest.schemaVersion).toBe(7);
   expect(manifest.evalId).toBe('task-1');
   expect(manifest.evalUri).toBeUndefined();
-  expect(manifest.parameters).toEqual({
-    model: 'a',
-    mode: 'with-docs',
-    maxTokens: 10000,
-  });
+  expect(manifest.parameters).toEqual({ model: 'a', mode: 'with-docs' });
+  expect(manifest.limits).toEqual({ tokens: 10000 });
   expect(manifest.matrix.id).toBe('models');
   expect(manifest.matrix.cellKey).toContain('with-docs');
 });

@@ -14,4 +14,4 @@ Read `../evalkit/SKILL.md` and `../../../sites/evalkit.leostera.dev/src/content/
 5. Files land below `mount` (default: the dataset ID; `'.'` is the workspace root). Paths may not escape the mount; two datasets in one scenario may not write the same file. Each run gets fresh copies.
 6. For a file-creating agent, inspect candidate files via `artifacts.candidate.root` in predicates and the report's `<run-id>/artifacts/candidate/`. Each run records a digest per dataset; `evalkit compare` lists datasets whose digest changed.
 
-Datasets never template or fan out scenarios: write one concrete scenario file per case and share the dataset. When dataset setup fails, the run's `summary.json` and `trajectory.jsonl` record the error naming the dataset. Test the smallest scenario from the project directory.
+Datasets never template or fan out scenarios: write one concrete scenario file per case and share the dataset. When dataset setup fails, the run's `summary.json` and `run-events.jsonl` record the error naming the dataset. Test the smallest scenario from the project directory.

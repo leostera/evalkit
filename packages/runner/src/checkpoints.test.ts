@@ -10,7 +10,6 @@ import {
   expectToolCall,
   predicate,
   user,
-  parseTrajectoryJsonl,
   canonicalParameters,
   type ReportStore,
 } from '@evalkit/core';
@@ -20,6 +19,7 @@ import {
   readRunSummary,
   readRunScoring,
   readRunEvents,
+  readRunTranscript,
   runEval,
 } from './index.js';
 
@@ -42,40 +42,38 @@ async function root() {
   roots.push(dir);
   return dir;
 }
-const stamp = () => new Date().toISOString();
 
 function writerAgent(options: { first?: string; emitTool?: boolean } = {}) {
   const sends: string[] = [];
   let closed = 0;
   const agent = defineAgent({
-    async start({ context, onEvent }) {
+    async start({ context, transcript }) {
       return {
         async send(message: string) {
           sends.push(message);
           if (options.emitTool !== false && sends.length === 1) {
-            await onEvent({
-              kind: 'tool-call',
-              id: 'call-1',
-              name: 'write_file',
-              arguments: { contents: '2112', path: 'number.txt' },
-              timestamp: stamp(),
+            transcript.assistant({
+              content: [
+                {
+                  type: 'tool_call',
+                  id: 'call-1',
+                  name: 'write_file',
+                  arguments: { contents: '2112', path: 'number.txt' },
+                },
+              ],
             });
-            await onEvent({
-              kind: 'tool-result',
-              id: 'call-1',
-              result: { ok: false },
-              timestamp: stamp(),
-            });
+            transcript.toolResult(
+              'call-1',
+              { ok: false },
+              { name: 'write_file' },
+            );
           }
           await writeFile(
             join(context.workspace.root, 'number.txt'),
             sends.length === 1 ? (options.first ?? '2112') : '2113',
           );
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
+          transcript.assistant({
             content: sends.length === 1 ? 'Hello there!' : 'Revised.',
-            timestamp: stamp(),
           });
         },
         async close() {
@@ -117,7 +115,7 @@ const scenario = (
         'greeting',
         ({ turn }) =>
           turn?.lastAssistantText === 'Hello there!' &&
-          turn.assistantMessages.length === 1 &&
+          turn.assistantMessages.length === 2 &&
           turn.toolCalls[0]?.resultObservation === 'observed' &&
           JSON.stringify(turn.toolCalls[0]?.result) === '{"ok":false}',
       ),
@@ -155,8 +153,7 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
   expect(result.scoring?.overall).toBe(1);
   expect(aut.sends).toEqual(['first', 'revise']);
   expect(aut.closed).toBe(1);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(6);
-  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(6);
+  expect((await readRunManifest(dir, result.runId)).schemaVersion).toBe(7);
   const scoring = await readRunScoring(dir, result.runId);
   expect(scoring.checkpoints?.map((c) => c.status)).toEqual([
     'passed',
@@ -165,21 +162,29 @@ test('interleaves checks with sends and records turn-local evidence in v3+ repor
     'passed',
     'passed',
   ]);
-  const events = await readRunEvents(dir, result.runId);
+  // The match names the assistant message that made the call.
+  const transcript = await readRunTranscript(dir, result.runId);
   const matched = scoring.checkpoints![1]!.matchedToolCall!;
-  expect(events[matched.eventIndex]).toMatchObject({
-    source: 'aut',
-    kind: 'tool-call',
-    id: matched.id,
-  });
-  expect(events.some((event) => event.kind === 'checkpoint-completed')).toBe(
-    true,
+  const message = transcript.records.find(
+    (record) => record.type === 'message' && record.id === matched.messageId,
   );
-  expect(
-    parseTrajectoryJsonl(
-      await readFile(join(dir, result.runId, 'trajectory.jsonl'), 'utf8'),
-    ),
-  ).toHaveLength(events.length);
+  expect(message).toMatchObject({
+    role: 'assistant',
+    content: [{ type: 'tool_call', id: matched.id, name: 'write_file' }],
+  });
+  // A checkpoint's events are placed at the record it saw last.
+  const events = await readRunEvents(dir, result.runId);
+  const checked = events.find((event) => event.kind === 'checkpoint-completed');
+  expect(checked?.at).toBe(
+    transcript.records.find(
+      (record) =>
+        record.type === 'message' &&
+        record.role === 'assistant' &&
+        record.content.some(
+          (block) => block.type === 'text' && block.text === 'Hello there!',
+        ),
+    )?.id,
+  );
   expect(canonicalParameters({ a: 1, b: 2 })).toBe(
     canonicalParameters({ b: 2, a: 1 }),
   );
@@ -313,6 +318,8 @@ for (const failingEvent of [
           writeScores: (scoring) => writer.writeScores(scoring),
           writeArtifact: (path, data) => writer.writeArtifact(path, data),
           finalize: (summary) => writer.finalize(summary),
+          appendTranscript: (line) => writer.appendTranscript(line),
+          writeSubagent: (id, text) => writer.writeSubagent(id, text),
           async appendEvent(event) {
             if (event.kind === failingEvent)
               throw new Error('report unavailable');

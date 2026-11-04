@@ -52,7 +52,7 @@ export const greetingAgent = defineAgent({
   identity: { id: 'greeting-agent', kind: 'in-process' },
   async start({ context }) {
     return {
-      // Return the reply; EvalKit records it. Call onEvent instead to stream events.
+      // Return the reply; EvalKit records it. Use the transcript writer in start() to record tool calls and usage.
       async send(message: string) {
         const file = join(context.workspace.root, 'greeting', 'greeting.txt');
         const prefix = (await readFile(file, 'utf8')).trim();

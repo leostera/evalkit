@@ -1,6 +1,24 @@
 import { authorId, type ResourceUri } from './identity.js';
 import { isDataset, type Dataset, type DatasetVisibility } from './dataset.js';
-import type { AutEventInput, TurnResult } from './aut-events.js';
+import { buildContext, type ModelContext } from '@leostera/atxf';
+import type { TranscriptWriter, TurnResult } from './agent-transcript.js';
+import {
+  parseLimits,
+  type Limits,
+  type LimitReached,
+  type LimitsInput,
+} from './limits.js';
+import {
+  contentText,
+  transcriptMessages,
+  transcriptReply,
+  transcriptToolCalls,
+  type AssistantMessage,
+  type MessageRecord,
+  type ToolCall,
+  type Transcript,
+  type TreeRecord,
+} from './transcript.js';
 import { toJsonObject } from './json.js';
 import { assertNoRemovedOptions } from './upgrade.js';
 import {
@@ -69,49 +87,14 @@ export type AgentRuntime = {
 
 export type AgentRuntimes = Partial<Record<AgentRuntimeName, AgentRuntime>>;
 
-export { turnTokens, type Usage } from './usage.js';
-import type { Usage } from './usage.js';
+export type { Usage, UsageInput } from './usage.js';
+import { transcriptUsage, type Usage } from './usage.js';
 
 export type RecordedError = {
   name: string;
   message: string;
   stack?: string;
 };
-
-export type AutEvent =
-  | { kind: 'started'; timestamp: string }
-  | {
-      kind: 'message';
-      role: 'system' | 'user' | 'assistant' | 'tool';
-      content: JsonValue;
-      timestamp: string;
-    }
-  | {
-      kind: 'tool-call';
-      id: string;
-      name: string;
-      arguments: JsonValue;
-      timestamp: string;
-    }
-  | {
-      kind: 'tool-result';
-      id: string;
-      name?: string;
-      result: JsonValue;
-      timestamp: string;
-    }
-  | { kind: 'turn-started'; turn: number; timestamp: string }
-  | {
-      kind: 'turn-completed';
-      turn: number;
-      timestamp: string;
-      latencyMs?: number;
-      usage?: Usage;
-      /** The model that answered this turn, when the agent knows it. */
-      model?: string;
-    }
-  | { kind: 'completed'; output?: JsonValue; timestamp: string }
-  | { kind: 'error'; error: RecordedError; timestamp: string };
 
 export type RunnerEvent =
   | { kind: 'run-started'; timestamp: string }
@@ -157,11 +140,28 @@ export type RunnerEvent =
       error: RecordedError;
       timestamp: string;
     }
+  | ({ kind: 'limit-reached'; timestamp: string } & LimitReached)
   | { kind: 'run-completed'; timestamp: string }
   | { kind: 'error'; error: RecordedError; timestamp: string };
 
-export type TrajectoryEvent =
-  (AutEvent & { source: 'aut' }) | (RunnerEvent & { source: 'runner' });
+/**
+ * One of EvalKit's own events in `run-events.jsonl`. `at` is the ID of the
+ * transcript record it happened after (null before the first), which places
+ * it in the agent's transcript.
+ */
+/**
+ * What the dashboard shows of one run's session: the agent's transcript
+ * (null before its first line is written) and EvalKit's events, placed in
+ * it by `at`.
+ */
+export type RunTranscriptView = {
+  transcript: Transcript | null;
+  /** Sub-agent transcripts the run kept, by transcript ID. */
+  subagents: Record<string, Transcript>;
+  runEvents: RunEvent[];
+};
+
+export type RunEvent = RunnerEvent & { at: string | null };
 
 export type WorkspaceView = {
   /** Absolute path to this run-scoped workspace. Do not persist it in reports. */
@@ -182,6 +182,13 @@ export type AutContext = {
   runtime?: AgentRuntimeName;
   /** Values of the scenario's candidate datasets, by dataset ID. */
   data: JsonObject;
+  /**
+   * Aborts when the run hits a limit or is cancelled. Pass it to model calls
+   * and tool processes so they stop with the run.
+   */
+  signal: AbortSignal;
+  /** The limits in force for this run; see `limits` in the config. */
+  limits: Limits;
   /** Contains only resources visible to the AUT/model. */
   workspace: CandidateWorkspace;
   /** Private evaluator capability for trusted AUT adapters; never expose this to the model. */
@@ -195,8 +202,11 @@ export type AutAdapter<TMessage = string> = {
   start(options: {
     context: AutContext;
     runtime?: AgentRuntime;
-    /** Optional: stream events as they happen. Returning a turn result from `send` is enough for most agents. */
-    onEvent: (event: AutEventInput) => void | Promise<void>;
+    /**
+     * Where to record what the agent does, as ATXF. Optional: returning a
+     * turn result from `send` is enough for most agents.
+     */
+    transcript: TranscriptWriter;
     /**
      * Saves a file with the run's results, such as the agent's raw log,
      * whether or not its sandbox is kept. `name` is a relative path of
@@ -262,15 +272,15 @@ export type AgentStep = {
   expectation: JsonObject;
 };
 
+/** One user step and what the agent did in answer to it. */
 export type TurnView = {
   userStepIndex: number;
-  events: readonly (AutEvent & { source: 'aut' })[];
-  assistantMessages: readonly (Extract<AutEvent, { kind: 'message' }> & {
-    role: 'assistant';
-    source: 'aut';
-  })[];
+  /** The transcript records of this turn, on the active path, in order. */
+  records: readonly TreeRecord[];
+  assistantMessages: readonly AssistantMessage[];
   toolCalls: readonly {
-    eventIndex: number;
+    /** The assistant message holding the call. */
+    messageId: string;
     id: string;
     name: string;
     arguments: JsonValue;
@@ -316,7 +326,7 @@ export function agent(expectation: JsonObject): AgentStep {
  */
 export type JudgeRunInfo = {
   agent?: AutIdentity;
-  /** The model the judge reported using (`turn-completed` `model`). */
+  /** The model the judge reported using, as `provider/id`. */
   model?: string;
   /** Tokens the judge used: never counted in the agent's `tokens`. */
   usage?: Usage;
@@ -326,8 +336,8 @@ export type JudgeRunInfo = {
   reply?: JsonValue;
   /** 2 when its first reply was not in the format asked for and it was asked again. */
   attempts?: number;
-  /** Judge-agent observations; never attributed to the AUT trajectory. */
-  events?: JsonValue[];
+  /** The judge's own session, as ATXF; never part of the agent's transcript. */
+  transcript?: Transcript;
 };
 
 /** A scorer's "does not apply" result; see `skip()`. */
@@ -392,12 +402,21 @@ export type ArtifactView = {
 
 export type ScoringContext = {
   context: AutContext;
-  trajectory: { events: readonly TrajectoryEvent[] };
+  /**
+   * What the agent did, as an ATXF transcript: all of it for final scorers,
+   * up to this step for checkpoints. `messages(ctx)`, `toolCalls(ctx)` and
+   * `lastReply(ctx)` read it.
+   */
+  transcript: Transcript;
+  /** Sub-agent transcripts the agent kept, by transcript ID. */
+  subagents: Readonly<Record<string, Transcript>>;
+  /** EvalKit's events so far: steps, checkpoints and scorers. */
+  runEvents: readonly RunEvent[];
   artifacts: ArtifactView;
   /** Most recent completed turn; absent if no user message has been sent. */
   turn?: TurnView;
-  /** Content of the last assistant message of `turn`. */
-  output?: JsonValue;
+  /** The text of the last assistant message of `turn`. */
+  output?: string;
   /** Values of all the scenario's datasets (candidate and evaluator), by dataset ID. */
   data: JsonObject;
   /**
@@ -608,7 +627,6 @@ function assertPassAt(owner: string, passAt: number | undefined): void {
 }
 
 export type EvalPolicy = {
-  timeoutMs?: number;
   /** Stop later transcript steps after a failed checkpoint assertion. Default false. */
   failfast?: boolean;
 };
@@ -629,6 +647,11 @@ export type EvalDefinition<TAgent extends AutAdapter = AutAdapter> = {
    * under identical conditions, to see how often it passes. Default 1.
    */
   repeat?: number;
+  /**
+   * What each run may use before EvalKit stops it: `{ steps: 40, time: '20m' }`.
+   * Over the project's `limits`; a matrix cell's and `--limit` come after.
+   */
+  limits?: LimitsInput;
   /** Any JSON-convertible object; converted when the eval is defined. */
   metadata?: Record<string, unknown>;
   workspace?: EvalWorkspace;
@@ -652,6 +675,7 @@ export function defineEval<const T extends EvalDefinition>(definition: T): T {
   assertNoRemovedOptions(definition);
   if (definition.metadata !== undefined)
     toJsonObject(definition.metadata, `${definition.id}.metadata`);
+  parseLimits(definition.limits, `Eval ${definition.id}`);
   for (const [index, pattern] of (definition.workspace?.ignore ?? []).entries())
     if (typeof pattern !== 'string' || pattern.replace(/^!/, '').trim() === '')
       throw new Error(
@@ -851,10 +875,12 @@ export function registerEvals<
 
 /**
  * How a run ended: `passed` or `failed` by its scores, `errored` when it could
- * not finish (the agent, a dataset or EvalKit failed), `cancelled` by Ctrl+C.
+ * not finish (the agent, a dataset or EvalKit failed), `cancelled` by Ctrl+C,
+ * `limited` when it hit one of its limits (graded by scorers that support
+ * partial work, and never a pass).
  */
 export type RunStatus =
-  'running' | 'passed' | 'failed' | 'errored' | 'cancelled';
+  'running' | 'passed' | 'failed' | 'errored' | 'cancelled' | 'limited';
 
 /** Runs launched together as repeats of one configuration (`repeat`). */
 export type Batch = {
@@ -893,7 +919,7 @@ export type RunCatalog = {
 export type RunProcess = { pid: number; hostname: string };
 
 export type RunMetadata = {
-  schemaVersion: 6;
+  schemaVersion: 7;
   runId: string;
   runUri: ResourceUri<'run'>;
   evalId: string;
@@ -911,6 +937,8 @@ export type RunMetadata = {
   workspaceIgnore?: string[];
   /** The datasets this run used, with content digests. */
   datasets?: RunDataset[];
+  /** The limits in force. */
+  limits?: Limits;
 };
 
 export type RunDataset = {
@@ -938,22 +966,31 @@ export type CheckpointResult = {
   judge?: JudgeRunInfo;
   durationMs?: number;
   error?: RecordedError;
-  matchedToolCall?: { eventIndex: number; id: string };
+  /** The tool call it matched: the assistant message holding it, and the call's ID. */
+  matchedToolCall?: { messageId: string; id: string };
 };
 
 /**
  * Metrics EvalKit records for every run; scenario metrics may not reuse
  * these names.
  *
- * - `agent time` (ms): from the run's first event to its last one before
- *   final scoring.
- * - `tokens`: the sum of `turnTokens(usage)` over the turns that reported
- *   usage, cached input included. Absent when no turn reported any.
- * - `tool calls`: the agent's `tool-call` events.
+ * - `agent time` (ms): from the session's start to the end of its last turn.
+ * - `tokens`: uncached input, cache writes and output, summed over the
+ *   transcript (`uncachedTokens`). Absent when nothing reported usage.
+ * - `cached tokens`: input tokens read from a prompt cache.
+ * - `output tokens`: output, reasoning included.
+ * - `cache hit rate`: the share of input tokens read from a cache, 0 to 1.
+ * - `steps`: assistant messages, one per model call.
+ * - `tool calls`: tool calls in the transcript.
+ * - `judge tokens`: `tokens` over the judges' transcripts, never the agent's.
  */
 export const BUILT_IN_METRICS = [
   'agent time',
   'tokens',
+  'cached tokens',
+  'output tokens',
+  'cache hit rate',
+  'steps',
   'tool calls',
   'judge tokens',
 ] as const;
@@ -994,11 +1031,20 @@ export type RunSummary = {
   artifacts?: ArtifactEntry[];
   attachments?: AttachmentEntry[];
   error?: RecordedError;
+  /** The limit a `limited` run hit. */
+  limit?: LimitReached;
 };
 
 export type RunWriter = {
   readonly location: string;
-  appendEvent(event: TrajectoryEvent): Promise<void>;
+  /** Appends one of EvalKit's events to `run-events.jsonl`. */
+  appendEvent(event: RunEvent): Promise<void>;
+  /** Appends an ATXF record (the header first) to `transcript.atxf.jsonl`. */
+  appendTranscript(
+    line: Transcript['header'] | Transcript['records'][number],
+  ): Promise<void>;
+  /** Writes a sub-agent's whole transcript (JSONL), replacing the one kept. */
+  writeSubagent(id: string, text: string): Promise<void>;
   writeScores(scoring: RunScoring): Promise<void>;
   /** Writes a file below this run's artifact root. */
   writeArtifact(path: string, data: Uint8Array): Promise<void>;
@@ -1023,16 +1069,21 @@ export type RunResult = {
   durationMs?: number;
   scoring?: RunScoring;
   error?: RecordedError;
+  /** The limit a `limited` run hit. */
+  limit?: LimitReached;
 };
 
 export * from './identity.js';
 export * from './dataset.js';
-export * from './aut-events.js';
+export * from './agent-transcript.js';
+// Limits, transcripts and usage: types here, helpers in the subpath modules.
+export type * from './limits.js';
+export type * from './transcript.js';
+export type { ModelContext } from '@leostera/atxf';
 export * from './json.js';
 export * from './catalog.js';
 export { definitionSite, type DefinitionSite } from './definition-site.js';
 export * from './schema.js';
-export * from './trajectory.js';
 
 export function recordError(error: unknown): RecordedError {
   if (error instanceof Error) {
@@ -1044,4 +1095,59 @@ export function recordError(error: unknown): RecordedError {
   }
 
   return { name: 'Error', message: String(error) };
+}
+
+/** Messages on the active path of what the agent did, optionally of one role. */
+export function messages(
+  scoring: Pick<ScoringContext, 'transcript'>,
+  role?: MessageRecord['role'],
+): Message[] {
+  return transcriptMessages(scoring.transcript, role).map((record) => ({
+    id: record.id,
+    role: record.role,
+    text: contentText(record.content),
+    time: record.time,
+    record,
+  }));
+}
+
+/** A message as scorers see it: who said it and its text, with the ATXF record for the rest. */
+export type Message = {
+  id: string;
+  role: MessageRecord['role'];
+  /** Its text blocks, joined; tool calls and images are left out. */
+  text: string;
+  time: string;
+  record: MessageRecord;
+};
+
+/** The agent's tool calls, in order, each with its result when recorded; optionally of one tool. */
+export function toolCalls(
+  scoring: Pick<ScoringContext, 'transcript'>,
+  name?: string,
+): ToolCall[] {
+  return transcriptToolCalls(scoring.transcript, name);
+}
+
+/** The text of the agent's last reply, or `''`. */
+export function lastReply(scoring: Pick<ScoringContext, 'transcript'>): string {
+  return transcriptReply(scoring.transcript);
+}
+
+/** Everything the agent's transcript reported using; undefined when nothing reported usage. */
+export function usage(
+  scoring: Pick<ScoringContext, 'transcript'>,
+): Usage | undefined {
+  return transcriptUsage(scoring.transcript);
+}
+
+/**
+ * What the model saw at the end of the agent's transcript, rebuilt by ATXF
+ * (compactions and context edits applied): its instructions, tools and
+ * messages.
+ */
+export function modelContext(
+  scoring: Pick<ScoringContext, 'transcript'>,
+): ModelContext {
+  return buildContext(scoring.transcript);
 }

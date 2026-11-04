@@ -1,4 +1,8 @@
-import { encodePath, type DashboardApi } from './api.js';
+import {
+  encodePath,
+  type DashboardApi,
+  type RunTranscriptView,
+} from './api.js';
 
 const READ_ONLY =
   'This is a read-only dashboard snapshot. Run evals with `evalkit run`, then rebuild it with `evalkit build`.';
@@ -47,8 +51,8 @@ export function createStaticDashboardApi(options: {
       (await json<{ suites: never[] }>('suites.json')).suites,
     listRuns: async () => (await json<{ runs: never[] }>('runs.json')).runs,
     getRun: (runId) => json(`${run(runId)}/detail.json`),
-    getRunEvents: async (runId) =>
-      (await json<{ events: never[] }>(`${run(runId)}/events.json`)).events,
+    getRunTranscript: (runId) =>
+      json<RunTranscriptView>(`${run(runId)}/transcript.json`),
     listArtifacts: async (runId) =>
       (await json<{ artifacts: never[] }>(`${run(runId)}/artifacts.json`))
         .artifacts,

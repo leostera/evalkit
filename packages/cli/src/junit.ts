@@ -1,5 +1,5 @@
 import type { RunReport } from './run-reporter.js';
-import { parameterLabel } from './run-reporter.js';
+import { limitReason, parameterLabel } from './run-reporter.js';
 
 function escape(text: string): string {
   return (
@@ -28,7 +28,9 @@ export function junitReport(scenarios: readonly RunReport[]): string {
     bySuite.set(suite, [...(bySuite.get(suite) ?? []), scenario]);
   }
   const suites = [...bySuite].map(([suite, cases]) => {
-    const failures = cases.filter((c) => c.outcome === 'failed').length;
+    const failures = cases.filter(
+      (c) => c.outcome === 'failed' || c.outcome === 'limited',
+    ).length;
     const skipped = cases.filter(
       (c) =>
         c.outcome === 'cancelled' ||
@@ -42,6 +44,10 @@ export function junitReport(scenarios: readonly RunReport[]): string {
         (parameters ? `${scenario.evalId} [${parameters}]` : scenario.evalId) +
         (batch ? ` #${batch.index + 1}` : '');
       const attributes = `name="${escape(name)}" classname="${escape(suite)}" time="${seconds(scenario.durationMs)}"`;
+      if (scenario.outcome === 'limited') {
+        const reasons = [limitReason(scenario.result), ...scenario.reasons];
+        return `    <testcase ${attributes}>\n      <failure message="${escape(reasons.join('; '))}" type="limited">${escape(reasons.join('\n'))}</failure>\n    </testcase>`;
+      }
       if (scenario.outcome === 'failed') {
         const message = scenario.reasons.join('; ') || 'failed';
         return `    <testcase ${attributes}>\n      <failure message="${escape(message)}">${escape(scenario.reasons.join('\n'))}</failure>\n    </testcase>`;
@@ -55,7 +61,9 @@ export function junitReport(scenarios: readonly RunReport[]): string {
     return `  <testsuite name="${escape(suite)}" tests="${cases.length}" failures="${failures}" errors="0" skipped="${skipped}" time="${seconds(time)}">\n${testcases.join('\n')}\n  </testsuite>`;
   });
   const total = scenarios.length;
-  const failures = scenarios.filter((c) => c.outcome === 'failed').length;
+  const failures = scenarios.filter(
+    (c) => c.outcome === 'failed' || c.outcome === 'limited',
+  ).length;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="evalkit" tests="${total}" failures="${failures}">\n${suites.join('\n')}\n</testsuites>\n`;
 }
 

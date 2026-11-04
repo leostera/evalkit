@@ -1,5 +1,5 @@
 import { Table, Tabs } from '@cloudflare/kumo';
-import { turnTokens } from '@evalkit/core/usage';
+import { uncachedTokens } from '@evalkit/core/usage';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type {
@@ -7,7 +7,7 @@ import type {
   DashboardApi,
   RunDetail as RunDetailData,
   RunSummary,
-  TrajectoryEvent,
+  RunTranscriptView,
 } from '../api.js';
 import { agentName } from './agentName.js';
 import { monoClass, NestedTable, tableLinkClass } from './DataTable.js';
@@ -21,24 +21,27 @@ import { Trajectory } from './Trajectory.js';
 import { verdictStatus } from './Verdict.js';
 
 /**
- * A run's trajectory, loaded once per run and again when it finishes, when
- * its events are complete.
+ * A run's transcript and events, loaded once per run and again when it
+ * finishes, when they are complete.
  */
-export function useRunEvents(api: DashboardApi, run: RunSummary | undefined) {
-  const [events, setEvents] = useState<TrajectoryEvent[]>([]);
+export function useRunTranscript(
+  api: DashboardApi,
+  run: RunSummary | undefined,
+) {
+  const [session, setSession] = useState<RunTranscriptView>(EMPTY_SESSION);
   const [error, setError] = useState<string>();
   const signature = run ? `${run.id}:${run.status}` : '';
   useEffect(() => {
     if (!run) return;
     let active = true;
-    // Clear the previous run's events while this one loads.
+    // Clear the previous run's transcript while this one loads.
     // oxlint-disable-next-line react/set-state-in-effect
     setError(undefined);
-    setEvents([]);
+    setSession(EMPTY_SESSION);
     void api
-      .getRunEvents(run.id)
+      .getRunTranscript(run.id)
       .then((next) => {
-        if (active) setEvents(next);
+        if (active) setSession(next);
       })
       .catch((cause: unknown) => {
         if (active)
@@ -51,13 +54,20 @@ export function useRunEvents(api: DashboardApi, run: RunSummary | undefined) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, signature]);
-  return { events, error };
+  return { session, error };
 }
+
+const EMPTY_SESSION: RunTranscriptView = {
+  transcript: null,
+  subagents: {},
+  runEvents: [],
+};
 
 /** The question the verdicts answer, by how the run ended. */
 export function verdictTitle(run: RunSummary, detail?: RunDetailData): string {
   if (run.status === 'running') return 'How it is scoring';
   if (run.status === 'errored') return 'Why it errored';
+  if (run.status === 'limited') return 'Why it stopped';
   if (run.status === 'cancelled') return 'How far it got';
   if (detail && run.status === 'failed') return 'Why it failed';
   return 'How it scored';
@@ -113,6 +123,9 @@ export function RunFacts({
   const metric = (name: string) =>
     detail?.metrics?.find((entry) => entry.name === name)?.value;
   const tokens = metric('tokens');
+  const cached = metric('cached tokens');
+  const hits = metric('cache hit rate');
+  const steps = metric('steps');
   const judgeTokens = metric('judge tokens');
   const facts: Array<[string, ReactNode]> = [
     [
@@ -163,10 +176,27 @@ export function RunFacts({
     ...(run.score !== undefined
       ? ([['Score', formatScore(run.score)]] as Array<[string, ReactNode]>)
       : []),
-    ...(tokens !== undefined
-      ? ([['Agent tokens', tokens.toLocaleString()]] as Array<
+    ...(steps !== undefined
+      ? ([['Steps', againstLimit(steps, run.limits?.steps)]] as Array<
           [string, ReactNode]
         >)
+      : []),
+    ...(tokens !== undefined
+      ? ([
+          [
+            'Agent tokens',
+            [
+              againstLimit(tokens, run.limits?.tokens),
+              cached ? `${compact(cached)} cached` : '',
+              // A hit rate only means something once the cache was used.
+              hits === undefined || !cached
+                ? ''
+                : `${Math.round(hits * 100)}% cache hits`,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          ],
+        ] as Array<[string, ReactNode]>)
       : []),
     ...(judgeTokens !== undefined
       ? ([['Judge tokens', judgeTokens.toLocaleString()]] as Array<
@@ -199,18 +229,20 @@ export function TrajectoryAndScoring({
   run,
   detail,
   scenario,
-  events,
-  eventsError,
+  session,
+  sessionError,
 }: {
   run: RunSummary;
   detail?: RunDetailData;
   scenario?: CatalogEval;
-  events: TrajectoryEvent[];
-  eventsError?: string;
+  session: RunTranscriptView;
+  sessionError?: string;
 }) {
   const [params, setParams] = useSearchParams();
   const fallback: Pane =
-    run.status === 'failed' || run.status === 'errored'
+    run.status === 'failed' ||
+    run.status === 'errored' ||
+    run.status === 'limited'
       ? 'verdicts'
       : 'trajectory';
   const pane = (params.get('pane') as Pane | null) ?? fallback;
@@ -252,11 +284,11 @@ export function TrajectoryAndScoring({
           pane === 'trajectory' ? '' : 'hidden'
         }`}
       >
-        {eventsError ? (
-          <ErrorBanner title="Unable to load the run" message={eventsError} />
+        {sessionError ? (
+          <ErrorBanner title="Unable to load the run" message={sessionError} />
         ) : null}
         <Trajectory
-          events={events}
+          session={session}
           checkpoints={detail?.checkpoints}
           scenario={scenario}
         />
@@ -276,6 +308,9 @@ export function TrajectoryAndScoring({
         {run.status === 'errored' && detail?.summary ? (
           <RunError summary={detail.summary} />
         ) : null}
+        {run.status === 'limited' ? (
+          <RunLimit run={run} skipped={skippedScorers(detail)} />
+        ) : null}
         {detail ? (
           <VerdictList detail={detail} scenario={scenario} />
         ) : (
@@ -284,6 +319,53 @@ export function TrajectoryAndScoring({
       </section>
     </div>
   );
+}
+
+/** `41 of 40`, or `41` without a limit. */
+function againstLimit(value: number, limit: number | undefined): string {
+  return limit === undefined
+    ? value.toLocaleString()
+    : `${value.toLocaleString()} of ${limit.toLocaleString()}`;
+}
+
+/** `9.8M`, `120k`, `950`. */
+function compact(value: number): string {
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+/** Which limit stopped the run, and what that left graded. */
+function RunLimit({ run, skipped }: { run: RunSummary; skipped: string[] }) {
+  const limit = run.limit;
+  return (
+    <div className="run-limit rounded-lg border border-kumo-line bg-kumo-badge-purple/10 px-3 py-2 text-[13px]">
+      <p className="font-medium text-kumo-strong">
+        {limit
+          ? `Stopped at its ${limit.limit} limit: ${limitUse(limit)}.`
+          : 'Stopped at one of its limits.'}
+      </p>
+      <p className="text-kumo-subtle">
+        Scorers that grade partial work ran on what it left
+        {skipped.length ? `; ${skipped.join(', ')} did not.` : '.'}
+      </p>
+    </div>
+  );
+}
+
+/** `41 of 40 steps`, `20m 04s of 20m`. */
+export function limitUse(limit: NonNullable<RunSummary['limit']>): string {
+  return limit.limit === 'time'
+    ? `${formatDuration(limit.used)} of ${formatDuration(limit.value)}`
+    : `${limit.used.toLocaleString()} of ${limit.value.toLocaleString()} ${limit.limit}`;
+}
+
+function skippedScorers(detail: RunDetailData | undefined): string[] {
+  const scoring = (
+    detail?.summary as { scoring?: { skippedScorers?: string[] } }
+  )?.scoring;
+  return scoring?.skippedScorers ?? [];
 }
 
 /** Why the run could not finish, in the words it was recorded with. */
@@ -350,7 +432,7 @@ export function JudgingTable({ detail }: { detail: RunDetailData }) {
       <p className="text-[13px] text-kumo-subtle">No judges ran in this run.</p>
     );
   const tokensOf = (result: (typeof judged)[number]['result']) =>
-    result.judge?.usage ? turnTokens(result.judge.usage) : undefined;
+    result.judge?.usage ? uncachedTokens(result.judge.usage) : undefined;
   const totalTokens = judged.reduce(
     (sum, { result }) => sum + (tokensOf(result) ?? 0),
     0,
@@ -415,8 +497,20 @@ export function agentMetrics(detail: RunDetailData | undefined) {
   );
 }
 
-export function MetricsList({ detail }: { detail: RunDetailData }) {
+export function MetricsList({
+  detail,
+  limits,
+}: {
+  detail: RunDetailData;
+  /** The run's limits, shown beside the metrics they cap. */
+  limits?: RunSummary['limits'];
+}) {
   const metrics = agentMetrics(detail);
+  const cap: Record<string, number | undefined> = {
+    steps: limits?.steps,
+    tokens: limits?.tokens,
+    'agent time': limits?.time,
+  };
   if (!metrics.length)
     return (
       <p className="text-[13px] text-kumo-subtle">
@@ -439,6 +533,12 @@ export function MetricsList({ detail }: { detail: RunDetailData }) {
                   <span className="text-kumo-subtle">not measured</span>
                 ) : (
                   formatMetric(metric.value, metric.unit)
+                )}
+                {cap[metric.name] === undefined ? null : (
+                  <span className="text-kumo-subtle">
+                    {' '}
+                    of {formatMetric(cap[metric.name]!, metric.unit)} allowed
+                  </span>
                 )}
               </span>
             ),

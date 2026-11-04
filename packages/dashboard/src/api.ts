@@ -7,9 +7,12 @@ import type {
   EvalCatalogEntry,
   EvalCatalogScorer,
   EvalCatalogStep,
+  LimitReached,
+  Limits,
   MetricResult,
+  RunTranscriptView,
 } from '@evalkit/core';
-export type { AttachmentEntry, MetricResult };
+export type { AttachmentEntry, MetricResult, RunTranscriptView };
 export type EvalSummary = {
   id: string;
   name?: string;
@@ -33,7 +36,7 @@ export type CatalogEval = EvalSummary &
   Partial<
     Pick<
       EvalCatalogEntry,
-      'datasets' | 'policy' | 'transcript' | 'metadata' | 'definedAt'
+      'datasets' | 'policy' | 'limits' | 'transcript' | 'metadata' | 'definedAt'
     >
   >;
 
@@ -116,8 +119,12 @@ export type RunSummary = {
   matrixId?: string;
   cellKey?: string;
   parameters?: Record<string, unknown>;
-  /** Dashboard status: terminal runs are passed, failed, errored, or cancelled. */
-  status: 'running' | 'passed' | 'failed' | 'errored' | 'cancelled';
+  /** Dashboard status: terminal runs are passed, failed, errored, limited or cancelled. */
+  status: 'running' | 'passed' | 'failed' | 'errored' | 'limited' | 'cancelled';
+  /** The limits the run had to keep to. */
+  limits?: Limits;
+  /** The limit a `limited` run hit. */
+  limit?: LimitReached;
   /** Cancelled because its process stopped without finishing it. */
   interrupted?: true;
   startedAt: string;
@@ -212,13 +219,6 @@ export type RunDetail = {
   summary: unknown;
 };
 
-export type TrajectoryEvent = {
-  source: 'aut' | 'runner';
-  kind: string;
-  timestamp: string;
-  [key: string]: unknown;
-};
-
 type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -238,7 +238,8 @@ export interface DashboardApi {
   listSuites(): Promise<SuiteSummary[]>;
   listRuns(): Promise<RunSummary[]>;
   getRun(runId: string): Promise<RunDetail>;
-  getRunEvents(runId: string): Promise<TrajectoryEvent[]>;
+  /** The agent's transcript and EvalKit's events, as far as the run has got. */
+  getRunTranscript(runId: string): Promise<RunTranscriptView>;
   listArtifacts(
     runId: string,
   ): Promise<Array<{ path: string; kind: string; size?: number }>>;
@@ -345,10 +346,8 @@ export function createHttpDashboardApi(options: {
         throw new Error(`Dashboard request failed: ${response.status}`);
       return response;
     },
-    async getRunEvents(runId) {
-      return (
-        await request<{ events: TrajectoryEvent[] }>(`${run(runId)}/events`)
-      ).events;
+    async getRunTranscript(runId) {
+      return request<RunTranscriptView>(`${run(runId)}/transcript`);
     },
     async runEval(path, parameters) {
       await request('/v1/runs', {

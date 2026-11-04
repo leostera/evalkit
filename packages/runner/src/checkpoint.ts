@@ -8,9 +8,9 @@ import {
   type ScoringRule,
   type AutAdapter,
   type ExpectToolCallStep,
-  type TrajectoryEvent,
+  type RunEvent,
+  type Transcript,
   type JsonObject,
-  type JsonValue,
   type TurnView,
   type CheckpointResult,
 } from '@evalkit/core';
@@ -34,9 +34,11 @@ export function evaluateCheckpoint(
   input: {
     context: AutContext;
     artifacts: ArtifactView;
-    trajectory: { events: readonly TrajectoryEvent[] };
+    transcript: Transcript;
+    subagents: Readonly<Record<string, Transcript>>;
+    runEvents: readonly RunEvent[];
     turn: TurnView;
-    output?: JsonValue;
+    output?: string;
     data: JsonObject;
     checkpoints: readonly CheckpointResult[];
     checkpoint: ScoringContext['checkpoint'];
@@ -92,7 +94,7 @@ export function evaluateCheckpoint(
       durationMs: now().getTime() - started.getTime(),
       ...recorded,
       ...(match
-        ? { matchedToolCall: { eventIndex: match.eventIndex, id: match.id } }
+        ? { matchedToolCall: { messageId: match.messageId, id: match.id } }
         : {}),
     }).pipe(Effect.mapError((cause) => failure(index, step.name, cause)));
     yield* Effect.logDebug('checkpoint completed').pipe(

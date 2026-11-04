@@ -66,6 +66,7 @@ test('every scenario passes in both tones, in suites from its directory', async 
       runs: files.length * 4,
       passed: files.length * 4,
       failed: 0,
+      limited: 0,
       cancelled: 0,
     });
     // One digest for the static help center; customers vary by run seed.

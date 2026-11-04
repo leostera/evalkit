@@ -15,6 +15,7 @@ const shared: UserConfig = {
     // The workspace packages are implementation details, not consumer dependencies.
     alwaysBundle: [/^@evalkit\//],
     neverBundle: [
+      '@leostera/atxf',
       'effect',
       'hono',
       /^hono\//,

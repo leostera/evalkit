@@ -163,11 +163,15 @@ describe('dashboard URL routing', () => {
           contentType: 'application/json',
           body: JSON.stringify({ artifacts: [] }),
         });
-      } else if (url.pathname.includes('/events')) {
+      } else if (url.pathname.includes('/transcript')) {
         void request.respond({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ events: [] }),
+          body: JSON.stringify({
+            transcript: null,
+            subagents: {},
+            runEvents: [],
+          }),
         });
       } else {
         void request.continue();

@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@leostera/atxf": "0.1.1",
     "effect": "^3.19.0"
   },
   "peerDependencies": {

@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineEval, expectToolCall, predicate, user } from '@evalkit/core';
+import {
+  defineEval,
+  expectToolCall,
+  predicate,
+  toolCalls,
+  user,
+} from '@evalkit/core';
 import { fileAgent } from '../agents/file-agent.js';
 
 // A complete two-turn scenario: both intermediate and final file states pass.
@@ -54,13 +60,10 @@ export default defineEval({
     }),
     predicate(
       'first turn was observed',
-      ({ trajectory }) =>
+      (context) =>
         Number(
-          trajectory.events.some(
-            (event) =>
-              event.source === 'aut' &&
-              event.kind === 'tool-call' &&
-              event.id === 'write-1',
+          toolCalls(context, 'write_file').some(
+            (call) => call.id === 'write-1',
           ),
         ),
       { supportsPartial: true },

@@ -8,12 +8,16 @@ import type {
 } from '@evalkit/core';
 import { runEval, type RunEvalOptions } from './index.js';
 
-/** Cells and runs; a run that errored counts as failed, a cancelled one as neither. */
+/**
+ * Cells and runs; a run that errored counts as failed, one stopped at a
+ * limit as limited, a cancelled one as none of them.
+ */
 export type MatrixSummary = {
   cells: number;
   runs: number;
   passed: number;
   failed: number;
+  limited: number;
   cancelled: number;
 };
 
@@ -41,6 +45,7 @@ export function runMatrix(
       runs: 0,
       passed: 0,
       failed: 0,
+      limited: 0,
       cancelled: 0,
     };
     yield* Effect.all(
@@ -69,6 +74,7 @@ export function runMatrix(
               summary.runs++;
               if (run.status === 'cancelled') summary.cancelled++;
               else if (run.status === 'passed') summary.passed++;
+              else if (run.status === 'limited') summary.limited++;
               else summary.failed++;
             }
             if (options.onResult)

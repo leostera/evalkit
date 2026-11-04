@@ -1,3 +1,4 @@
+import { parseLimits, type Limits } from './limits.js';
 import type { Dataset, DatasetVisibility } from './dataset.js';
 import { definitionSite, relativeSite } from './definition-site.js';
 import {
@@ -98,7 +99,9 @@ export type EvalCatalogEntry = {
   datasets: EvalCatalogDataset[];
   /** Runs started each time the scenario runs (`repeat`). */
   repeat: number;
-  policy: { timeoutMs?: number; failfast?: boolean };
+  policy: { failfast?: boolean };
+  /** The scenario's own limits; the project's, a cell's and `--limit` may add to them. */
+  limits?: Limits;
   transcript: EvalCatalogStep[];
   scorers: EvalCatalogScorer[];
   metadata?: JsonValue;
@@ -125,12 +128,10 @@ export function catalogEntry(
       catalogDataset(dataset, at),
     ),
     repeat: evaluation.repeat ?? 1,
-    policy: {
-      ...(policy.timeoutMs !== undefined
-        ? { timeoutMs: policy.timeoutMs }
-        : {}),
-      ...(policy.failfast !== undefined ? { failfast: policy.failfast } : {}),
-    },
+    policy: policy.failfast !== undefined ? { failfast: policy.failfast } : {},
+    ...(evaluation.limits
+      ? { limits: parseLimits(evaluation.limits, `Eval ${evaluation.id}`) }
+      : {}),
     transcript: evaluation.transcript.map((step) =>
       catalogStep(step, at, options.judge),
     ),

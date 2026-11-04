@@ -95,8 +95,8 @@ async function shareAndBrowse(options: {
     export default {
       id: 'shared-greeting',
       name: 'Shared greeting',
-      agent: { async start({ onEvent }) { return {
-        async send() { await onEvent({ kind: 'message', role: 'assistant', content: 'hi', timestamp: new Date().toISOString() }); },
+      agent: { async start({ transcript }) { return {
+        async send() { transcript.assistant({ content: 'hi' }); },
         async close() {},
       }; } },
       transcript: [{ kind: 'user', message: '${message}' }],

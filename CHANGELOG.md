@@ -4,6 +4,36 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+Runs record what the agent did as an [ATXF](https://atxf.leostera.dev) transcript, an open format other tools read, and stop at the limits you declare.
+
+### Breaking: runs record an ATXF transcript
+
+- **Adapters write to `transcript` instead of calling `onEvent`.** `start()` receives a `TranscriptWriter`: `assistant({ content, model?, usage? })` for each model response (text, reasoning and `tool_call` blocks), `toolResult(callId, result, { name?, isError? })`, `turn('start' | 'end')`, `append(record)` for any other ATXF record, `import(transcript)` for agents whose sessions ATXF converts (Pi, Claude Code, Codex, Gemini CLI, OpenCode), and `subagent(transcript)` to keep a sub-agent's transcript with the run. Returning `{ reply, toolCalls, usage, model }` from `send()` still works.
+- **Usage is in ATXF's buckets**: `{ input, output, cacheRead?, cacheWrite?, reasoning?, total? }`. `input` no longer includes cached tokens: a provider reporting `input_tokens: 200, cache_read_input_tokens: 9000` reports `input: 200, cacheRead: 9000`. `inputTokens`, `outputTokens`, `cachedInputTokens` and `totalTokens` are gone, and so is `turnTokens()`.
+- **Scorers read `transcript` instead of `trajectory`.** `ScoringContext` has `transcript` (ATXF), `subagents` and `runEvents` (EvalKit's step, checkpoint, scorer and limit events). New helpers read it: `messages(ctx, role?)`, `toolCalls(ctx, name?)`, `lastReply(ctx)`, `usage(ctx)` and `modelContext(ctx)`. `turn.events` is `turn.records`, and a checkpoint's `matchedToolCall` is `{ messageId, id }`.
+- **Each run saves `transcript.atxf.jsonl` and `run-events.jsonl`** instead of `trajectory.jsonl`, plus `transcripts/` for sub-agents. The transcript is sealed with a hash of every record when the run ends, and a run whose transcript is not valid ATXF errors. Report schema version 7; `readRunTranscript` and `readRunSubagents` read the new files, and `readRunEvents` returns run events.
+- **The `tokens` metric leaves out cache reads**, which used to dominate it. New built-in metrics: `cached tokens`, `output tokens`, `cache hit rate` and `steps` (one per model call). Sub-agents count toward them all.
+- **Judge results keep the judge's own transcript** (`judge.transcript`) instead of `judge.events`.
+- The dashboard reads `GET /v1/runs/:id/transcript` (and `transcript.json` in a static build) instead of `/events`. Share snapshots are version 3; the share server converts version 2 runs on upload, on read and with `POST /api/v1/upgrade`.
+
+### Breaking: limits are declared and enforced
+
+- **`limits: { steps?, tokens?, time? }`** in `evalkit.config.ts` and on a scenario caps every run. A matrix sweeps one with `limits: { steps: [40, 80] }` (an axis named `limits.steps`), and `evalkit run --limit steps=40,time=10m` overrides them. Each kind resolves on its own: project, scenario, matrix cell, then `--limit`.
+- **A run past a limit ends `limited`**, a new status: EvalKit records a `limit-reached` event, aborts `context.signal`, gives the turn in progress 10 seconds, and grades what the agent left with the scorers that support partial runs. It is a failure for the exit code and in JUnit. The run page shows steps and tokens against their limits.
+- **`context.signal` and `context.limits`** are new on the run context: pass the signal to model calls and tool processes so they stop with the run.
+- **`policy.timeoutMs` is gone**; it was never enforced. Use `limits: { time }`. A scenario that still sets it fails with a message saying so.
+- **`--max-tokens`, `--turn-budget` and `--chat-timeout-ms` are gone.** They only set unenforced parameters; use `--limit`, or `--param` for a value your adapter reads.
+
+### Migrating from 0.10
+
+1. Run `evalkit upgrade` after updating. It converts each run's `trajectory.jsonl` into a sealed `transcript.atxf.jsonl` and `run-events.jsonl`, and lists any run it could not convert, which it leaves as it was. Until then the CLI and dashboard skip those runs.
+2. In adapters, replace `onEvent({ kind: 'message', ... })` with `transcript.assistant({ content })`, `onEvent({ kind: 'tool-call', ... })` with a `tool_call` block in that message, and `onEvent({ kind: 'tool-result', ... })` with `transcript.toolResult(id, result)`. Drop lifecycle events. Move usage onto the assistant message.
+3. Rename usage fields: `inputTokens` becomes `input` **minus cached tokens**, `cachedInputTokens` becomes `cacheRead`, `outputTokens` becomes `output`.
+4. In scorers, replace `trajectory.events` filters with `toolCalls(ctx, name)`, `messages(ctx, role)` or `lastReply(ctx)`.
+5. Replace `policy: { timeoutMs }` with `limits: { time }`, and the removed CLI flags with `--limit`.
+6. The `tokens` metric drops for runs that read from a prompt cache; compare old and new runs on `tokens` plus `cached tokens`.
+7. Redeploy a share server, then call `POST /api/v1/upgrade` to convert stored runs.
+
 ### Fixed
 
 - **The hint after a run uses your package manager.** It says `pnpm run evalkit dev` in a pnpm project (or yarn, or `npm run evalkit -- dev`), from the manager that started the run or the nearest lockfile, instead of always `bun run`.

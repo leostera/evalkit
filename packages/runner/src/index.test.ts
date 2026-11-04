@@ -14,12 +14,21 @@ import {
   predicate,
   skip,
   user,
-  parseTrajectoryJsonl,
+  messages,
+  toolCalls,
   RunManifestSchema,
   RunScoringSchema,
   RunSummarySchema,
 } from '@evalkit/core';
-import { localReportStore, ownerIsGone, runEval } from './index';
+import { transcriptReply } from '@evalkit/core/transcript';
+import { parseTranscript, validateTranscript } from '@leostera/atxf';
+import {
+  localReportStore,
+  ownerIsGone,
+  readRunEvents,
+  readRunTranscript,
+  runEval,
+} from './index';
 
 /** Runs a scenario once and returns its one run. */
 const runOne = async (
@@ -63,30 +72,13 @@ function testAgent(response: string | (() => Promise<string>)) {
       kind: 'test-agent',
       id: 'agent-18',
     },
-    async start({ onEvent }) {
-      await onEvent({ kind: 'started', timestamp: new Date().toISOString() });
+    async start({ transcript }) {
       return {
         async send(message) {
-          await onEvent({
-            kind: 'message',
-            role: 'user',
-            content: message,
-            timestamp: new Date().toISOString(),
-          });
+          transcript.user(message);
           const content =
             typeof response === 'string' ? response : await response();
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
-            content,
-            timestamp: new Date().toISOString(),
-          });
-        },
-        async close() {
-          await onEvent({
-            kind: 'completed',
-            timestamp: new Date().toISOString(),
-          });
+          transcript.assistant({ content });
         },
       };
     },
@@ -94,22 +86,15 @@ function testAgent(response: string | (() => Promise<string>)) {
 }
 
 describe('runEval', () => {
-  test('streams a trajectory, scores it, and writes a hierarchical report', async () => {
+  test('records an ATXF transcript, scores it, and writes a hierarchical report', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
       id: 'eval-01',
       agent: testAgent('Hello back!'),
       transcript: [user('Hello')],
       scoring: [
-        predicate('responded', ({ trajectory }) =>
-          trajectory.events.some(
-            (event) =>
-              event.source === 'aut' &&
-              event.kind === 'message' &&
-              event.role === 'assistant',
-          )
-            ? 1
-            : 0,
+        predicate('responded', (context) =>
+          messages(context, 'assistant').length ? 1 : 0,
         ),
       ],
     });
@@ -130,7 +115,7 @@ describe('runEval', () => {
       await readFile(path.join(runDirectory, 'manifest.json'), 'utf8'),
     );
     expect(manifest).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       evalId: 'eval-01',
       status: 'passed',
     });
@@ -139,17 +124,26 @@ describe('runEval', () => {
       'passed',
     );
 
-    const trajectory = await readFile(
-      path.join(runDirectory, 'trajectory.jsonl'),
+    // The agent's session is a valid, sealed ATXF transcript; the adapter's
+    // user message stands for the scripted one, so it is written once.
+    const text = await readFile(
+      path.join(runDirectory, 'transcript.atxf.jsonl'),
       'utf8',
     );
-    expect(trajectory).toContain('"role":"assistant"');
-    expect(trajectory).toContain('"kind":"run-started"');
+    expect(validateTranscript(text).ok).toBe(true);
+    const transcript = parseTranscript(text);
     expect(
-      parseTrajectoryJsonl(trajectory).some(
-        (event) => event.kind === 'scorer-completed',
+      transcript.records.map((record) =>
+        record.type === 'message' ? record.role : record.type,
       ),
-    ).toBe(true);
+    ).toEqual(['user', 'assistant', 'seal']);
+    // EvalKit's own events are kept apart, each placed in the transcript.
+    const events = await readRunEvents(root, result.runId);
+    expect(events.map((event) => event.kind)).toContain('scorer-completed');
+    expect(events.at(-1)).toMatchObject({
+      kind: 'run-completed',
+      at: transcript.records[1]!.id,
+    });
 
     const scoring = JSON.parse(
       await readFile(path.join(runDirectory, 'scoring.json'), 'utf8'),
@@ -366,7 +360,7 @@ describe('runEval', () => {
     const manifest = Schema.decodeUnknownSync(RunManifestSchema)(
       JSON.parse(await readFile(path.join(runRoot, 'manifest.json'), 'utf8')),
     );
-    expect(manifest.schemaVersion).toBe(6);
+    expect(manifest.schemaVersion).toBe(7);
     expect(
       manifest.datasets?.map(({ id, visibility }) => [id, visibility]),
     ).toEqual([
@@ -383,17 +377,8 @@ describe('runEval', () => {
     await expect(
       access(path.join(runRoot, 'artifacts', 'evaluator')),
     ).rejects.toThrow();
-    const trajectory = parseTrajectoryJsonl(
-      await readFile(path.join(runRoot, 'trajectory.jsonl'), 'utf8'),
-    );
-    expect(
-      trajectory.some(
-        (event) =>
-          event.source === 'aut' &&
-          event.kind === 'message' &&
-          event.content === 'Created output.',
-      ),
-    ).toBe(true);
+    const transcript = await readRunTranscript(root, path.basename(runRoot));
+    expect(transcriptReply(transcript)).toBe('Created output.');
   });
 
   test('loads computed datasets once and derives each run with onRun', async () => {
@@ -471,14 +456,9 @@ describe('runEval', () => {
     expect(sent).toEqual([
       'Use Riot (riot.ml) (seed number, answers undefined)',
     ]);
-    const trajectory = parseTrajectoryJsonl(
-      await readFile(
-        path.join(result.reportLocation, 'trajectory.jsonl'),
-        'utf8',
-      ),
-    );
+    const events = await readRunEvents(root, result.runId);
     expect(
-      trajectory.find((event) => event.kind === 'transcript-step-started'),
+      events.find((event) => event.kind === 'transcript-step-started'),
     ).toMatchObject({ message: sent[0] });
 
     const empty = await execute(
@@ -607,11 +587,7 @@ describe('runEval', () => {
       metrics: [
         metric(
           'web searches',
-          ({ trajectory }) =>
-            trajectory.events.filter(
-              (event) =>
-                event.kind === 'tool-call' && event.name === 'web_search',
-            ).length,
+          (context) => toolCalls(context, 'web_search').length,
           { better: 'lower' },
         ),
         metric('nothing to measure', () => undefined),
@@ -626,6 +602,8 @@ describe('runEval', () => {
     expect(result.scoring?.passed).toBe(true);
     expect(result.scoring?.metrics).toEqual([
       expect.objectContaining({ name: 'agent time', builtIn: true }),
+      // The call and the reply are two assistant messages: two steps.
+      { name: 'steps', value: 2, better: 'lower', builtIn: true },
       { name: 'tool calls', value: 1, builtIn: true },
       { name: 'web searches', value: 1, better: 'lower' },
       { name: 'nothing to measure' },
@@ -811,7 +789,7 @@ describe('runEval', () => {
                       result: { eta: 'tomorrow' },
                     },
                   ],
-                  usage: { totalTokens: 12 },
+                  usage: { total: 12 },
                 };
               },
             };
@@ -831,23 +809,22 @@ describe('runEval', () => {
     );
     expect(result.status).toBe('passed');
     expect(result.scoring?.passed).toBe(true);
-    const trajectory = parseTrajectoryJsonl(
-      await readFile(
-        path.join(result.reportLocation, 'trajectory.jsonl'),
-        'utf8',
+    // A turn's result becomes messages: the call, its result, the reply.
+    const transcript = await readRunTranscript(root, result.runId);
+    expect(
+      transcript.records.map((record) =>
+        record.type === 'message' ? record.role : record.type,
       ),
-    );
+    ).toEqual(['user', 'assistant', 'tool', 'assistant', 'seal']);
+    expect(toolCalls({ transcript })).toMatchObject([
+      { name: 'lookupOrder', arguments: { id: 7 }, isError: false },
+    ]);
+    const events = await readRunEvents(root, result.runId);
     expect(
-      trajectory
-        .filter((event) => event.source === 'aut')
-        .map((event) => event.kind),
-    ).toEqual(['tool-call', 'tool-result', 'message', 'turn-completed']);
-    // The prompt is recorded so the trajectory reads as a conversation.
-    expect(
-      trajectory.filter((event) => event.kind === 'transcript-step-started'),
+      events.filter((event) => event.kind === 'transcript-step-started'),
     ).toMatchObject([{ step: 0, message: 'Where is order 7?' }, { step: 1 }]);
     expect(
-      trajectory.find(
+      events.find(
         (event) => event.kind === 'transcript-step-started' && event.step === 1,
       ),
     ).not.toHaveProperty('message');
@@ -881,9 +858,10 @@ describe('runEval', () => {
       report: localReportStore(root),
       concurrency: 2,
       signal: controller.signal,
-      onEvent: (run, event) => {
-        seen.push(`${run.batch?.index}:${event.kind}`);
-        if (event.kind === 'transcript-step-started') controller.abort();
+      onUpdate: (run, update) => {
+        if (update.kind !== 'event') return;
+        seen.push(`${run.batch?.index}:${update.event.kind}`);
+        if (update.event.kind === 'transcript-step-started') controller.abort();
       },
     });
     // Runs that never started are not created at all.
@@ -919,7 +897,7 @@ describe('runEval', () => {
     );
   });
 
-  test('persists a partial trajectory when the AUT fails', async () => {
+  test('persists a partial transcript when the AUT fails', async () => {
     const root = await reportDirectory();
     const evaluation = defineEval({
       id: 'eval-0d',
@@ -944,11 +922,9 @@ describe('runEval', () => {
       await readFile(path.join(root, result.runId, 'manifest.json'), 'utf8'),
     );
     expect(manifest.status).toBe('errored');
-    const trajectory = await readFile(
-      path.join(root, result.runId, 'trajectory.jsonl'),
-      'utf8',
-    );
-    expect(trajectory).toContain('"role":"user"');
-    expect(trajectory).toContain('"kind":"error"');
+    const transcript = await readRunTranscript(root, result.runId);
+    expect(messages({ transcript }, 'user')).toHaveLength(1);
+    const events = await readRunEvents(root, result.runId);
+    expect(events.map((event) => event.kind)).toContain('error');
   });
 });

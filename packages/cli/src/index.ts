@@ -447,11 +447,9 @@ function registerReportRoutes(
       );
     }
   });
-  app.get('/v1/runs/:runId/events', async (context) => {
+  app.get('/v1/runs/:runId/transcript', async (context) => {
     try {
-      return context.json({
-        events: await reports.trajectory(context.req.param('runId')),
-      });
+      return context.json(await reports.transcript(context.req.param('runId')));
     } catch (error) {
       return context.text(
         error instanceof Error ? error.message : 'Not found',
@@ -762,22 +760,38 @@ async function upgradeAction(options: {
     options.dryRun ? 'Checking results' : 'Upgrading results',
     () => upgradeReports(reportRoot, { dryRun: options.dryRun }),
     (value) =>
-      `${plural(value.upgraded, 'run')} from an older EvalKit ${options.dryRun ? 'found' : 'upgraded'}`,
+      `${plural(value.transcripts, 'run')} ${options.dryRun ? 'to upgrade' : 'upgraded'}`,
   );
   console.log('');
-  if (!report.upgraded)
+  if (!report.upgraded && !report.transcripts && !report.failed.length)
     console.log(`  ${cyan('✓')} Every run is already in the current format.`);
-  else {
-    const into = `${plural(report.upgraded, 'run')} from older EvalKit versions into ${plural(report.runs, 'run')}`;
+  if (report.upgraded) {
+    const into = `${plural(report.upgraded, 'run')} with trials into ${plural(report.runs, 'run')}`;
     console.log(
       options.dryRun
-        ? `  ${cyan('◆')} Would upgrade ${into}. Nothing was changed.`
+        ? `  ${cyan('◆')} Would upgrade ${into}.`
         : `  ${cyan('✓')} Upgraded ${into}.`,
     );
     if (report.batches)
       console.log(
         `  ${dim(`${plural(report.batches, 'run')} had more than one trial; each trial is now a run in a batch.`)}`,
       );
+  }
+  if (report.transcripts)
+    console.log(
+      options.dryRun
+        ? `  ${cyan('◆')} Would convert ${plural(report.transcripts, 'trajectory', 'trajectories')} to ATXF transcripts.`
+        : `  ${cyan('✓')} Converted ${plural(report.transcripts, 'trajectory', 'trajectories')} to ATXF transcripts.`,
+    );
+  if (options.dryRun && (report.upgraded || report.transcripts))
+    console.log(`  ${dim('Nothing was changed.')}`);
+  if (report.failed.length) {
+    console.log(
+      `  ${red('✗')} Left ${plural(report.failed.length, 'run')} as ${report.failed.length === 1 ? 'it was' : 'they were'}; ${report.failed.length === 1 ? 'it' : 'they'} could not be converted:`,
+    );
+    for (const { runId, reason } of report.failed)
+      console.log(`    ${runId}  ${dim(reason)}`);
+    process.exitCode = 1;
   }
   if (report.running.length)
     console.log(

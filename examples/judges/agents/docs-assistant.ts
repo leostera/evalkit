@@ -15,7 +15,7 @@ export const docsAssistant = defineAgent({
     const large = context.parameters?.model === 'large';
     return {
       async send(message: string) {
-        const usage = { inputTokens: 900 + message.length, outputTokens: 120 };
+        const usage = { input: 900 + message.length, output: 120 };
         if (/purge/i.test(message))
           return {
             reply: large

@@ -175,31 +175,31 @@ import {
             <h2>Follow the agent’s steps.</h2>
             <ol class="event-list">
               <li>
-                <code>run-started</code>
-                <span>runner</span>
+                <code>Say hello to Ada</code>
+                <span>user</span>
               </li>
               <li>
-                <code>transcript-step-started</code>
-                <span>runner</span>
+                <code>read_file greeting.txt</code>
+                <span>tool call</span>
+              </li>
+              <li>
+                <code>Hello from EvalKit</code>
+                <span>tool result</span>
               </li>
               <li class="message-event">
                 <code>Hello from EvalKit: Ada</code>
                 <span>assistant</span>
               </li>
               <li>
-                <code>scorer-completed</code>
-                <span>value: 1</span>
-              </li>
-              <li>
-                <code>run-completed</code>
-                <span>runner</span>
+                <code>2 steps · 1,240 tokens</code>
+                <span>usage</span>
               </li>
             </ol>
             <p class="evidence-explanation">
-              5 of 7 recorded events shown. Full events are saved in order.
+              Every message, tool call and token, as an open ATXF transcript.
             </p>
             <code class="file-path">
-              &lt;run-id&gt;/trajectory.jsonl
+              &lt;run-id&gt;/transcript.atxf.jsonl
             </code>
           </section>
           <section
@@ -223,9 +223,9 @@ import {
               </div>
               <div>
                 <dt>
-                  <code>trajectory.jsonl</code>
+                  <code>transcript.atxf.jsonl</code>
                 </dt>
-                <dd>The ordered event stream</dd>
+                <dd>What the agent did, in ATXF</dd>
               </div>
               <div>
                 <dt>

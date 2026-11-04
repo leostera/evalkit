@@ -1,4 +1,5 @@
 import type { AutAdapter, EvalDefinition, EvalRegistry } from './index.js';
+import type { LimitsInput } from './limits.js';
 import type { EvalMatrixDefinition } from './matrix.js';
 
 export type EvalkitConfig = {
@@ -16,6 +17,12 @@ export type EvalkitConfig = {
   /** Applied to every discovered eval. Values are forwarded, never provider-interpreted. */
   matrix?: Omit<EvalMatrixDefinition, 'evals' | 'id'> & { id?: string };
   execution?: { concurrency?: number; repeat?: number; maxCells?: number };
+  /**
+   * What each run may use before EvalKit stops it: `{ steps: 40, tokens:
+   * 2_000_000, time: '20m' }`. A scenario's `limits`, a matrix cell's and
+   * `--limit` override these, kind by kind.
+   */
+  limits?: LimitsInput;
   reportDir?: string;
   /** The candidate files saved with each run's results. */
   artifacts?: {

@@ -16,7 +16,6 @@ import {
   assertJudgesIndependent,
   type AutAdapter,
   DEFAULT_ARTIFACT_EXCLUDE,
-  normalizeAutEvent,
   recordError,
   resourceUri,
   authoringId,
@@ -25,11 +24,13 @@ import {
   type JsonObject,
   type ArtifactEntry,
   type AutContext,
-  type AutEvent,
-  type AutEventInput,
+  type EntryRecord,
   type JsonValue,
+  type LimitReached,
+  type Limits,
   type EvalDefinition,
   type ReportStore,
+  type RunEvent,
   type RunnerEvent,
   type RunResult,
   type RunStatus,
@@ -44,8 +45,15 @@ import {
   type ScoreResult,
   type RunScoring,
   type Uuid,
-  type TrajectoryEvent,
 } from '@evalkit/core';
+import {
+  formatLimit,
+  limitsFromParameters,
+  parseLimits,
+  resolveLimits,
+} from '@evalkit/core/limits';
+import { uncachedTokens } from '@evalkit/core/usage';
+import { RunTranscript } from './run-transcript.js';
 import { snapshotCandidateWorkspace } from './snapshot.js';
 import { createRunWorkspace, type RunWorkspace } from './workspace.js';
 import {
@@ -64,6 +72,7 @@ import {
   AutExecutionError,
   CancelledError,
   DatasetError,
+  LimitReachedError,
   ReportError,
   cancelled,
 } from './errors.js';
@@ -121,12 +130,22 @@ export type RunEvalOptions = {
    */
   signal?: AbortSignal;
   /**
-   * Observes every trajectory event after it is recorded, for live progress.
-   * It must not throw; an error it throws is ignored.
+   * What each run may use before EvalKit stops it. `base` is the project's
+   * limits; the scenario's own come after it, then a matrix cell's
+   * `limits.<kind>` parameters, then `override` (`--limit`), kind by kind.
    */
-  onEvent?: (run: RunRef, event: TrajectoryEvent) => void;
+  limits?: { base?: Limits; override?: Limits };
+  /**
+   * Observes every transcript record and run event once recorded, for live
+   * progress. It must not throw; an error it throws is ignored.
+   */
+  onUpdate?: (run: RunRef, update: RunUpdate) => void;
   now?: () => Date;
 };
+
+/** A record appended to a run's transcript, or one of EvalKit's events. */
+export type RunUpdate =
+  { kind: 'record'; record: EntryRecord } | { kind: 'event'; event: RunEvent };
 
 /** Identifies the run an observed event belongs to. */
 export type RunRef = {
@@ -194,10 +213,10 @@ function runMetadata(
   options: RunOnceOptions,
   runId: string,
   startedAt: string,
-  extra: Pick<RunMetadata, 'workspaceIgnore' | 'datasets'>,
+  extra: Pick<RunMetadata, 'workspaceIgnore' | 'datasets' | 'limits'>,
 ): RunMetadata {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     runId,
     runUri: canonicalId('run', runId),
     evalId: definition.id,
@@ -333,11 +352,17 @@ async function runOnce(
     ...(options.artifactExclude ?? DEFAULT_ARTIFACT_EXCLUDE),
     ...(definition.workspace?.ignore ?? []),
   ];
-  const events: TrajectoryEvent[] = [];
+  const limits = resolveLimits(
+    options.limits?.base ?? {},
+    parseLimits(definition.limits, `Eval ${definition.id}`),
+    limitsFromParameters(options.parameters),
+    options.limits?.override ?? {},
+  );
   const runWriter = await options.report.startRun(
     runMetadata(definition, options, runId, startedAt, {
       workspaceIgnore,
       ...(prepared.length ? { datasets: runDatasets(prepared) } : {}),
+      ...(Object.keys(limits).length ? { limits } : {}),
     }),
     { catalog: options.catalog },
   );
@@ -352,19 +377,83 @@ async function runOnce(
     ...(options.suiteId ? { suiteId: options.suiteId } : {}),
     ...(options.parameters ? { parameters: options.parameters } : {}),
   };
-  const observe = (event: TrajectoryEvent) => {
+  const observe = (update: RunUpdate) => {
     try {
-      options.onEvent?.(runRef, event);
+      options.onUpdate?.(runRef, update);
     } catch {
       // Progress display must never affect a run.
     }
   };
-  const append = async (event: TrajectoryEvent): Promise<void> => {
-    events.push(event);
+
+  // Limits: counted as records are appended; time from the session's start.
+  const limitController = new AbortController();
+  const runSignal = AbortSignal.any([signal, limitController.signal]);
+  let reached: LimitReached | undefined;
+  let steps = 0;
+  let tokens = 0;
+  const reach = (limit: LimitReached) => {
+    if (reached || signal.aborted) return;
+    reached = limit;
+    void emitRunner({
+      kind: 'limit-reached',
+      ...limit,
+      timestamp: now().toISOString(),
+    }).catch(() => {
+      // The limit still stops the run when its event cannot be written.
+    });
+    limitController.abort(
+      new LimitReachedError({
+        message: `Stopped at its ${limit.limit} limit (${formatLimit(limit.limit, limit.value)})`,
+        limit,
+      }),
+    );
+  };
+  const countRecord = (record: EntryRecord) => {
+    if (record.type === 'message' && record.role === 'assistant') {
+      steps += 1;
+      if (record.usage) tokens += uncachedTokens(record.usage);
+    } else if (
+      (record.type === 'usage' && !record.cumulative) ||
+      record.type === 'compaction' ||
+      record.type === 'branch_summary'
+    )
+      tokens += record.usage ? uncachedTokens(record.usage) : 0;
+    if (limits.steps !== undefined && steps > limits.steps)
+      reach({ limit: 'steps', value: limits.steps, used: steps });
+    else if (limits.tokens !== undefined && tokens > limits.tokens)
+      reach({ limit: 'tokens', value: limits.tokens, used: tokens });
+  };
+  let timeLimit: ReturnType<typeof setTimeout> | undefined;
+  let sessionStarted: number | undefined;
+
+  const transcript = new RunTranscript({
+    id: runId,
+    agent: {
+      id: definition.agent.identity?.id ?? 'agent',
+      ...(definition.agent.identity?.version
+        ? { version: definition.agent.identity.version }
+        : {}),
+    },
+    runId,
+    scenarioId: definition.id,
+    now,
+    persist: (line) => runWriter.appendTranscript(line),
+    persistSubagent: (id, text) => runWriter.writeSubagent(id, text),
+    onRecord: (record) => {
+      countRecord(record);
+      observe({ kind: 'record', record });
+    },
+    // Sub-agents' steps and tokens count toward the run's limits.
+    onSubagentRecord: countRecord,
+  });
+  const runEvents: RunEvent[] = [];
+  const emitRunner = async (input: RunnerEvent): Promise<void> => {
+    const event = { ...input, at: transcript.leafId } as RunEvent;
+    runEvents.push(event);
     writeChain = writeChain.then(() => runWriter.appendEvent(event));
     try {
       await writeChain;
-      observe(event);
+      observe({ kind: 'event', event });
     } catch (cause) {
       reportingFailed = true;
       throw new ReportError({
@@ -373,11 +462,6 @@ async function runOnce(
       });
     }
   };
-  const emitRunner = (event: RunnerEvent) =>
-    append({ ...event, source: 'runner' });
-  const emitAut = (event: AutEvent) => append({ ...event, source: 'aut' });
-  const onAutEvent = (event: AutEventInput) =>
-    emitAut(normalizeAutEvent(event, now));
 
   let workspace: RunWorkspace | undefined;
   let context: AutContext | undefined;
@@ -438,11 +522,27 @@ async function runOnce(
     const runWorkspace = workspace;
     const runContext: AutContext = {
       ...baseContext,
+      signal: runSignal,
+      limits,
       data: candidateData,
       workspace: runWorkspace.artifacts.candidate,
       evaluatorWorkspace: runWorkspace.artifacts.evaluator,
     };
     context = runContext;
+    sessionStarted = Date.now();
+    if (limits.time !== undefined) {
+      const time = limits.time;
+      timeLimit = setTimeout(
+        () =>
+          reach({
+            limit: 'time',
+            value: time,
+            used: Date.now() - (sessionStarted ?? Date.now()),
+          }),
+        time,
+      );
+      timeLimit.unref?.();
+    }
     // The Effect bracket closes the AUT even when a step or report append fails.
     await runBoundary(
       Effect.acquireUseRelease(
@@ -451,7 +551,7 @@ async function runOnce(
             definition.agent.start({
               context: runContext,
               ...(runtime ? { runtime } : {}),
-              onEvent: onAutEvent,
+              transcript: transcript.writer(),
               attach: attachments.attach,
             }),
           catch: (cause) =>
@@ -466,13 +566,13 @@ async function runOnce(
               executeTranscript(definition, session, {
                 context: runContext,
                 artifacts: runWorkspace.artifacts,
-                events,
+                transcript,
+                runEvents,
                 now,
                 randomSeed,
                 emitRunner,
-                emitAut,
                 data: scoringData,
-                signal,
+                signal: runSignal,
                 progress,
                 attach: attachments.attach,
                 defaultJudge: options.judge,
@@ -500,14 +600,34 @@ async function runOnce(
     );
   } catch (error) {
     primaryError = error;
-    await tryEmitError(error, emitRunner, now);
+    // A limit is recorded by its own limit-reached event, not as an error.
+    if (!(error instanceof LimitReachedError))
+      await tryEmitError(error, emitRunner, now);
   }
 
+  if (timeLimit) clearTimeout(timeLimit);
   if (closeError) {
     if (!primaryError) primaryError = closeError;
     await tryEmitError(closeError, emitRunner, now);
   }
 
+  // The session is over: what the agent did is final, sealed and checked.
+  transcript.seal();
+  const problems = transcript.problems();
+  if (problems.length) {
+    const invalid = new AutExecutionError({
+      cause: problems,
+      message: `The agent's transcript is not valid ATXF: ${problems.slice(0, 3).join('; ')}${problems.length > 3 ? ` (${problems.length - 3} more)` : ''}`,
+    });
+    if (!primaryError) primaryError = invalid;
+    await tryEmitError(invalid, emitRunner, now);
+  }
+
+  // A turn that settled within its grace still ends the run limited.
+  if (reached && primaryError === undefined)
+    primaryError = limitController.signal.reason;
+  const limited = primaryError instanceof LimitReachedError;
+  if (limited) primaryError = undefined;
   const wasCancelled = primaryError instanceof CancelledError;
   const { checkpoints, stoppedEarly, lastTurn } = progress;
   const scoreResults: ScoreResult[] = [];
@@ -517,9 +637,11 @@ async function runOnce(
     await evaluateFinalScorers(definition, {
       context,
       workspace,
-      events,
+      agentTranscript: transcript,
+      runEvents,
       lastTurn,
       primaryError,
+      limited,
       stoppedEarly,
       cancelled: wasCancelled,
       reportingFailed,
@@ -533,7 +655,14 @@ async function runOnce(
       emitRunner,
     });
 
-    metrics.push(...builtInMetrics(events, [...scoreResults, ...checkpoints]));
+    metrics.push(
+      ...builtInMetrics(
+        transcript.transcript,
+        runEvents,
+        [...scoreResults, ...checkpoints],
+        Object.values(transcript.subagents),
+      ),
+    );
     if (context && workspace && !wasCancelled)
       metrics.push(
         ...(await evaluateMetrics(
@@ -541,7 +670,8 @@ async function runOnce(
           scoringContext({
             context,
             workspace,
-            events,
+            agentTranscript: transcript,
+            runEvents,
             lastTurn,
             data: scoringData,
             checkpoints,
@@ -589,13 +719,23 @@ async function runOnce(
       primaryError = error;
     }
   }
+  try {
+    await transcript.settled();
+  } catch (cause) {
+    primaryError ??= new ReportError({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
   status = wasCancelled
     ? 'cancelled'
     : primaryError
       ? 'errored'
-      : scoring.passed
-        ? 'passed'
-        : 'failed';
+      : limited
+        ? 'limited'
+        : scoring.passed
+          ? 'passed'
+          : 'failed';
 
   const error = primaryError ? recordError(primaryError) : undefined;
   const attached = await attachments.close();
@@ -610,6 +750,7 @@ async function runOnce(
     ...(artifacts ? { artifacts } : {}),
     ...(attached.length ? { attachments: attached } : {}),
     ...(error ? { error } : {}),
+    ...(limited && reached ? { limit: reached } : {}),
   });
   return {
     runId,
@@ -621,6 +762,7 @@ async function runOnce(
     durationMs,
     scoring,
     ...(error ? { error } : {}),
+    ...(limited && reached ? { limit: reached } : {}),
   };
 }
 

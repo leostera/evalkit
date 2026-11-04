@@ -13,7 +13,7 @@ import {
   type ScoringContext,
   type TranscriptStep,
   type ScoreResult,
-  type TrajectoryEvent,
+  type RunEvent,
   type RunScoring,
   type TurnView,
 } from '@evalkit/core';
@@ -21,6 +21,7 @@ import { runBoundary } from './effect-boundary.js';
 import { ScoringError } from './errors.js';
 import { evaluateRule } from './evaluate-rule.js';
 import type { RunWorkspace } from './workspace.js';
+import type { RunTranscript } from './run-transcript.js';
 import { turnOutput } from './transcript.js';
 
 export function scoreSummary(
@@ -60,9 +61,13 @@ type FinalScoringInput = {
   defaultJudge?: AutAdapter;
   context?: AutContext;
   workspace?: RunWorkspace;
-  events: TrajectoryEvent[];
+  /** What the agent did. */
+  agentTranscript: RunTranscript;
+  runEvents: readonly RunEvent[];
   lastTurn?: TurnView;
   primaryError?: unknown;
+  /** The run hit a limit: only scorers that support partial work run. */
+  limited?: boolean;
   stoppedEarly: boolean;
   /** No scorer runs for a cancelled run. */
   cancelled: boolean;
@@ -80,7 +85,9 @@ type FinalScoringInput = {
 export function scoringContext(input: {
   context: AutContext;
   workspace: RunWorkspace;
-  events: TrajectoryEvent[];
+  /** What the agent did. */
+  agentTranscript: RunTranscript;
+  runEvents: readonly RunEvent[];
   lastTurn?: TurnView;
   data: JsonObject;
   checkpoints: readonly CheckpointResult[];
@@ -91,7 +98,9 @@ export function scoringContext(input: {
   return {
     context: input.context,
     artifacts: input.workspace.artifacts,
-    trajectory: { events: input.events },
+    transcript: input.agentTranscript.transcript,
+    subagents: input.agentTranscript.subagents,
+    runEvents: [...input.runEvents],
     ...(input.lastTurn ? { turn: input.lastTurn } : {}),
     ...turnOutput(input.lastTurn),
     data: input.data,
@@ -114,7 +123,7 @@ export async function evaluateFinalScorers(
       input.reportingFailed ||
       !context ||
       !workspace ||
-      ((input.primaryError || input.stoppedEarly) &&
+      ((input.primaryError || input.stoppedEarly || input.limited) &&
         (!('supportsPartial' in scorer) || !scorer.supportsPartial))
     ) {
       skippedScorers.push(scorer.name);

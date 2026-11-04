@@ -87,6 +87,9 @@ const MIGRATIONS = [
 ];
 
 /** Newest first; commits without a commit time order by first upload. */
+/** Statuses a commit counts as failed: a limited run is a failure too. */
+const FAILED = new Set<string>(['failed', 'errored', 'limited']);
+
 const BY_TIME = `ORDER BY COALESCE(committed_at, first_seen_at) DESC, first_seen_at DESC`;
 
 export class ShareIndexDb {
@@ -151,7 +154,7 @@ export class ShareIndexDb {
              passed = passed + ?, failed = failed + ?
            WHERE repo = ? AND sha = ?`,
           run.status === 'passed' ? 1 : 0,
-          run.status === 'failed' || run.status === 'errored' ? 1 : 0,
+          FAILED.has(run.status) ? 1 : 0,
           run.repoKey,
           run.source.commit,
         );
@@ -174,7 +177,7 @@ export class ShareIndexDb {
              passed = passed - ?, failed = failed - ?
            WHERE repo = ? AND sha = ?`,
           row.status === 'passed' ? 1 : 0,
-          row.status === 'failed' || row.status === 'errored' ? 1 : 0,
+          FAILED.has(row.status) ? 1 : 0,
           row.repo,
           row.sha,
         );

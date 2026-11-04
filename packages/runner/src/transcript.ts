@@ -3,17 +3,15 @@ import { checkpointLookup } from './checkpoint-lookup.js';
 import { Effect } from 'effect';
 import {
   recordError,
-  turnResultEvents,
   type AutAdapter,
   type AutContext,
-  type AutEvent,
   type JsonObject,
   type AutSession,
   type CheckpointResult,
   type EvalDefinition,
+  type RunEvent,
   type RunnerEvent,
   type ScoringContext,
-  type TrajectoryEvent,
   type TurnView,
   type UserStep,
 } from '@evalkit/core';
@@ -22,10 +20,13 @@ import { runBoundary } from './effect-boundary.js';
 import {
   AutExecutionError,
   CancelledError,
+  LIMIT_GRACE_MS,
+  LimitReachedError,
   ReportError,
-  cancelled,
+  abortError,
   unlessAborted,
 } from './errors.js';
+import type { RunTranscript } from './run-transcript.js';
 import { turnView } from './turn.js';
 import type { RunWorkspace } from './workspace.js';
 
@@ -39,11 +40,13 @@ export type TranscriptProgress = {
 type TranscriptExecution = {
   context: AutContext;
   artifacts: RunWorkspace['artifacts'];
-  events: TrajectoryEvent[];
+  /** The agent's transcript, as it is written. */
+  transcript: RunTranscript;
+  /** EvalKit's events so far. */
+  runEvents: readonly RunEvent[];
   now: () => Date;
   randomSeed: number;
   emitRunner: (event: RunnerEvent) => Promise<void>;
-  emitAut: (event: AutEvent) => Promise<void>;
   /** Values of every dataset, for scorers. */
   data: JsonObject;
   signal: AbortSignal;
@@ -61,7 +64,7 @@ export async function executeTranscript(
   const { now, emitRunner, progress } = input;
   let turn = 0;
   for (const [index, step] of definition.transcript.entries()) {
-    if (input.signal.aborted) throw cancelled();
+    if (input.signal.aborted) throw abortError(input.signal);
     const message =
       step.kind === 'user' ? userMessage(step, index, input) : undefined;
     await emitRunner({
@@ -71,18 +74,13 @@ export async function executeTranscript(
       timestamp: now().toISOString(),
     });
     if (message !== undefined) {
-      const cursor = input.events.length;
+      const cursor = input.transcript.length;
       turn++;
+      input.transcript.scriptUser(message);
       const result = await sendUserTurn(session, message, input.signal);
-      if (result !== undefined)
-        for (const event of turnResultEvents(result, turn, now))
-          await input.emitAut(event);
-      progress.lastTurn = turnView(
-        input.events,
-        cursor,
-        input.events.length,
-        index,
-      );
+      if (result !== undefined) input.transcript.writeTurnResult(result, turn);
+      input.transcript.endTurn();
+      progress.lastTurn = turnView(input.transcript.since(cursor), index);
     } else if (
       step.kind === 'predicate' ||
       step.kind === 'judge' ||
@@ -147,9 +145,12 @@ async function sendUserTurn(
 ) {
   return runBoundary(
     Effect.tryPromise({
-      try: () => unlessAborted(() => session.send(message), signal),
+      try: () =>
+        unlessAborted(() => session.send(message), signal, LIMIT_GRACE_MS),
       catch: (cause) =>
-        cause instanceof ReportError || cause instanceof CancelledError
+        cause instanceof ReportError ||
+        cause instanceof CancelledError ||
+        cause instanceof LimitReachedError
           ? cause
           : new AutExecutionError({
               cause,
@@ -188,7 +189,9 @@ async function runCheckpoint(
       {
         context: input.context,
         artifacts: input.artifacts,
-        trajectory: { events: input.events },
+        transcript: input.transcript.transcript,
+        subagents: input.transcript.subagents,
+        runEvents: [...input.runEvents],
         turn: progress.lastTurn,
         ...turnOutput(progress.lastTurn),
         data: input.data,
@@ -254,8 +257,9 @@ async function skipRemainingSteps(
   }
 }
 
-/** The scorer-facing `output`: the content of the turn's last assistant message. */
+/** The scorer-facing `output`: the text of the turn's last assistant message. */
 export function turnOutput(turn: TurnView | undefined) {
-  const last = turn?.assistantMessages.at(-1);
-  return last === undefined ? {} : { output: last.content };
+  return turn?.lastAssistantText === undefined
+    ? {}
+    : { output: turn.lastAssistantText };
 }

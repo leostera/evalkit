@@ -1,24 +1,17 @@
-import { predicate } from '@evalkit/core';
+import { messages, predicate, type ScoringContext } from '@evalkit/core';
 
-function randomNumberFrom(trajectory: {
-  events: readonly { source: string; kind: string; content?: unknown }[];
-}): number | undefined {
-  const message = trajectory.events.find(
-    (event) =>
-      event.source === 'aut' &&
-      event.kind === 'message' &&
-      typeof event.content === 'string',
-  );
-  if (!message || typeof message.content !== 'string') return undefined;
-  const match = message.content.match(/-?\d+(?:\.\d+)?/);
+/** The first number in the agent's first reply. */
+function randomNumberFrom(context: ScoringContext): number | undefined {
+  const reply = messages(context, 'assistant')[0]?.text;
+  const match = reply?.match(/-?\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : undefined;
 }
 
 /** Scores how close Pi's chosen number is to seven. */
 export const piNumberCloseToSevenJudge = predicate(
   'number is close to 7',
-  async ({ trajectory }) => {
-    const number = randomNumberFrom(trajectory);
+  async (context) => {
+    const number = randomNumberFrom(context);
     if (number === undefined)
       return {
         value: 0,
@@ -38,8 +31,8 @@ export const piNumberCloseToSevenJudge = predicate(
 /** Treats numbers from zero to ten as a coolness scale. */
 export const piNumberCoolnessJudge = predicate(
   'number is cool',
-  async ({ trajectory }) => {
-    const number = randomNumberFrom(trajectory);
+  async (context) => {
+    const number = randomNumberFrom(context);
     if (number === undefined)
       return {
         value: 0,

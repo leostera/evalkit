@@ -32,6 +32,7 @@ test('discovers a configured matrix and records both selected parameter cells', 
       runs: 2,
       passed: 2,
       failed: 0,
+      limited: 0,
       cancelled: 0,
     });
     const styles: string[] = [];

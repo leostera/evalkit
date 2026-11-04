@@ -1,19 +1,28 @@
 import { Button, Tabs, cn } from '@cloudflare/kumo';
 import {
+  ArrowsInIcon,
+  BrainIcon,
   CaretRightIcon,
   FlagIcon,
   GearSixIcon,
+  GitBranchIcon,
+  HourglassHighIcon,
   QuestionIcon,
   RobotIcon,
-  SignOutIcon,
   SkipForwardIcon,
   TerminalWindowIcon,
+  TreeStructureIcon,
   UserIcon,
   WarningOctagonIcon,
   WrenchIcon,
 } from '@phosphor-icons/react';
+import type { EntryRecord } from '@evalkit/core';
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import type { CatalogEval, CheckpointResult, TrajectoryEvent } from '../api.js';
+import type {
+  CatalogEval,
+  CheckpointResult,
+  RunTranscriptView,
+} from '../api.js';
 import { checkpointScorer } from './library-entities.js';
 import { checkpointKey, useVerdictFocus } from './RunVerdicts.js';
 import { Markdown, looksLikeMarkdown } from './Markdown.js';
@@ -27,6 +36,7 @@ import {
   type ScorerRun,
   type TrajectoryItem,
   type TrajectoryTurn,
+  type TrajectoryView,
 } from './trajectory-view.js';
 
 type Mode = 'conversation' | 'events';
@@ -37,19 +47,28 @@ const CheckpointResults = createContext<{
   scenario?: CatalogEval;
 }>({});
 
-/** A run's trajectory: the conversation by default, every raw event on demand. */
+/**
+ * A run's trajectory: the conversation by default, with EvalKit's events
+ * placed in it; every ATXF record on demand.
+ */
 export function Trajectory({
-  events,
+  session,
   checkpoints,
   scenario,
 }: {
-  events: TrajectoryEvent[];
+  session: RunTranscriptView;
   /** The run's checkpoint results, so a checkpoint can show why. */
   checkpoints?: CheckpointResult[];
   scenario?: CatalogEval;
 }) {
   const [mode, setMode] = useState<Mode>('conversation');
-  const view = trajectoryView(events);
+  const view = trajectoryView(
+    session.transcript,
+    session.runEvents,
+    session.subagents,
+  );
+  const records = session.transcript?.records ?? [];
+  const empty = !records.length && !session.runEvents.length;
   return (
     <CheckpointResults.Provider value={{ checkpoints, scenario }}>
       <section className="trajectory flex min-w-0 flex-col gap-3">
@@ -62,21 +81,18 @@ export function Trajectory({
             onValueChange={(value) => setMode(value as Mode)}
             tabs={[
               { value: 'conversation', label: 'Conversation' },
-              { value: 'events', label: `All events (${events.length})` },
+              { value: 'events', label: `All records (${records.length})` },
             ]}
           />
         </header>
         {mode === 'events' ? (
-          <RawEvents events={events} />
+          <RawRecords records={records} />
         ) : (
           <div className="flex flex-col">
-            {view.preamble.length ? <Timeline items={view.preamble} /> : null}
-            {view.turns.map((turn, index) => (
-              <Turn key={index} turn={turn} index={index} />
-            ))}
-            {!events.length ? (
+            <Conversation view={view} />
+            {empty ? (
               <p className="text-[13px] text-kumo-subtle">
-                No events recorded.
+                Nothing recorded yet.
               </p>
             ) : (
               <Finish durationMs={view.durationMs} scorers={view.scorers} />
@@ -88,20 +104,31 @@ export function Trajectory({
   );
 }
 
+/** The preamble and turns of a transcript; sub-agents nest another. */
+function Conversation({ view }: { view: TrajectoryView }) {
+  return (
+    <>
+      {view.preamble.length ? <Timeline items={view.preamble} /> : null}
+      {view.turns.map((turn, index) => (
+        <Turn key={index} turn={turn} index={index} />
+      ))}
+    </>
+  );
+}
+
 function Turn({ turn, index }: { turn: TrajectoryTurn; index: number }) {
   const meta = [
     turn.latencyMs === undefined ? undefined : formatDuration(turn.latencyMs),
+    turn.steps ? `${turn.steps} ${turn.steps === 1 ? 'step' : 'steps'}` : '',
     turn.usage ? formatUsage(turn.usage) : undefined,
   ].filter(Boolean);
   return (
     <section
       className="turn border-t border-kumo-line pt-3 pb-4 first:border-t-0 first:pt-0"
-      aria-label={`Turn ${turn.turn ?? index + 1}`}
+      aria-label={`Turn ${index + 1}`}
     >
       <header className="mb-2 flex items-baseline justify-between gap-3 text-xs">
-        <h4 className="font-medium text-kumo-strong">
-          Turn {turn.turn ?? index + 1}
-        </h4>
+        <h4 className="font-medium text-kumo-strong">Turn {index + 1}</h4>
         {meta.length ? (
           <span className="text-kumo-subtle tabular-nums">
             {meta.join(' · ')}
@@ -134,7 +161,8 @@ function Row({
   children,
 }: {
   icon: ReactNode;
-  tone?: 'default' | 'danger' | 'muted';
+  /** `limit` is purple, as the limited status is everywhere. */
+  tone?: 'default' | 'danger' | 'limit' | 'muted';
   label: ReactNode;
   at?: number;
   children?: ReactNode;
@@ -145,6 +173,8 @@ function Row({
         className={cn(
           'relative z-10 flex size-6 items-center justify-center rounded-full border border-kumo-line bg-kumo-base text-[13px]',
           tone === 'danger' && 'border-kumo-danger text-kumo-danger',
+          tone === 'limit' &&
+            'border-kumo-badge-purple bg-kumo-badge-purple/15',
           tone === 'muted' ? 'text-kumo-subtle' : 'text-kumo-default',
         )}
         aria-hidden
@@ -172,7 +202,16 @@ function Item({ item }: { item: TrajectoryItem }) {
   switch (item.type) {
     case 'user':
       return (
-        <Row icon={<UserIcon />} label={<Label>User</Label>} at={item.at}>
+        <Row
+          icon={<UserIcon />}
+          label={
+            <>
+              <Label>User</Label>
+              {item.scripted ? <Meta>from the scenario</Meta> : null}
+            </>
+          }
+          at={item.at}
+        >
           <Prose className="rounded-lg bg-kumo-elevated px-3 py-2">
             {item.text}
           </Prose>
@@ -180,9 +219,50 @@ function Item({ item }: { item: TrajectoryItem }) {
       );
     case 'assistant':
       return (
-        <Row icon={<RobotIcon />} label={<Label>Assistant</Label>} at={item.at}>
-          <Content value={item.content} markdown />
+        <Row
+          icon={<RobotIcon />}
+          tone={item.error ? 'danger' : 'default'}
+          label={
+            <>
+              <Label>Assistant</Label>
+              {item.model ? <Meta>{item.model}</Meta> : null}
+            </>
+          }
+          at={item.at}
+        >
+          {item.text ? <Content value={item.text} markdown /> : null}
+          {item.error ? (
+            <p className="text-[13px] text-kumo-danger">{item.error}</p>
+          ) : null}
         </Row>
+      );
+    case 'reasoning':
+      return (
+        <details className="reasoning group">
+          <summary className="cursor-pointer list-none rounded-md select-none focus-visible:outline-2 focus-visible:outline-kumo-brand [&::-webkit-details-marker]:hidden">
+            <Row
+              icon={<BrainIcon />}
+              tone="muted"
+              label={
+                <>
+                  <CaretRightIcon
+                    aria-hidden
+                    className="self-center text-kumo-subtle transition-transform group-open:rotate-90"
+                  />
+                  <span className="text-kumo-subtle">
+                    {item.redacted ? 'Reasoning (redacted)' : 'Reasoning'}
+                  </span>
+                </>
+              }
+              at={item.at}
+            />
+          </summary>
+          {item.text ? (
+            <div className="mt-1 ml-9">
+              <Prose>{item.text}</Prose>
+            </div>
+          ) : null}
+        </details>
       );
     case 'message':
       return (
@@ -217,44 +297,135 @@ function Item({ item }: { item: TrajectoryItem }) {
         <Row
           icon={<WarningOctagonIcon />}
           tone="danger"
-          label={
-            <span className="font-semibold text-kumo-danger">
-              {item.source === 'aut' ? 'Agent error' : 'Runner error'}
-            </span>
-          }
+          label={<span className="font-semibold text-kumo-danger">Error</span>}
           at={item.at}
         >
           <ErrorText error={item.error} />
         </Row>
       );
-    case 'output':
+    case 'limit':
       return (
         <Row
-          icon={<SignOutIcon />}
-          label={<Label>Final output</Label>}
+          icon={<HourglassHighIcon />}
+          tone="limit"
+          label={
+            <span className="font-semibold text-kumo-default">
+              Stopped at its {item.limit} limit
+            </span>
+          }
           at={item.at}
         >
-          <Content value={item.output} />
+          <span className="text-xs text-kumo-subtle tabular-nums">
+            {limitText(item)}
+          </span>
         </Row>
       );
-    case 'unknown': {
-      const { source, kind, timestamp: _timestamp, ...rest } = item.event;
+    case 'compaction':
+      return (
+        <Row
+          icon={<ArrowsInIcon />}
+          tone="muted"
+          label={
+            <>
+              <Label>Context compacted</Label>
+              {item.tokensBefore === undefined ? null : (
+                <Meta>from {item.tokensBefore.toLocaleString()} tokens</Meta>
+              )}
+            </>
+          }
+          at={item.at}
+        >
+          {item.summary ? <Prose>{item.summary}</Prose> : null}
+        </Row>
+      );
+    case 'branch':
+      return (
+        <Row
+          icon={<GitBranchIcon />}
+          tone="muted"
+          label={<Label>Came back from another branch</Label>}
+          at={item.at}
+        >
+          <Prose>{item.summary}</Prose>
+        </Row>
+      );
+    case 'subagent':
+      return <Subagent item={item} />;
+    case 'unknown':
       return (
         <Row
           icon={<QuestionIcon />}
           tone="muted"
           label={
-            <span className="text-kumo-subtle">
-              {source} · <span className="font-mono">{kind}</span>
-            </span>
+            <span className="font-mono text-kumo-subtle">{item.label}</span>
           }
           at={item.at}
         >
-          {Object.keys(rest).length ? <Json value={rest} /> : null}
+          <Json value={item.record} />
         </Row>
       );
-    }
   }
+}
+
+/** `41 of 40 steps`, `20m 04s of 20m`. */
+function limitText(item: Extract<TrajectoryItem, { type: 'limit' }>): string {
+  if (item.limit === 'time')
+    return `${formatDuration(item.used)} of ${formatDuration(item.value)}`;
+  return `${item.used.toLocaleString()} of ${item.value.toLocaleString()} ${item.limit}`;
+}
+
+/** A sub-agent the agent started or talked to, its own transcript folded inside. */
+function Subagent({
+  item,
+}: {
+  item: Extract<TrajectoryItem, { type: 'subagent' }>;
+}) {
+  const verb =
+    item.relation === 'spawn'
+      ? 'Started'
+      : item.relation === 'result'
+        ? 'Heard back from'
+        : item.relation === 'close'
+          ? 'Closed'
+          : 'Messaged';
+  const label = (
+    <>
+      <Label>
+        {verb} sub-agent {item.name ?? ''}
+      </Label>
+      <span className="font-mono text-kumo-subtle">{item.transcriptId}</span>
+    </>
+  );
+  if (!item.view)
+    return (
+      <Row icon={<TreeStructureIcon />} label={label} at={item.at}>
+        {item.content ? <Prose>{item.content}</Prose> : null}
+      </Row>
+    );
+  return (
+    <details className="subagent group">
+      <summary className="cursor-pointer list-none rounded-md select-none focus-visible:outline-2 focus-visible:outline-kumo-brand [&::-webkit-details-marker]:hidden">
+        <Row
+          icon={<TreeStructureIcon />}
+          label={
+            <>
+              <CaretRightIcon
+                aria-hidden
+                className="self-center text-kumo-subtle transition-transform group-open:rotate-90"
+              />
+              {label}
+            </>
+          }
+          at={item.at}
+        >
+          {item.content ? <Prose>{item.content}</Prose> : null}
+        </Row>
+      </summary>
+      <div className="mt-2 ml-9 flex flex-col border-l border-kumo-line pl-3">
+        <Conversation view={item.view} />
+      </div>
+    </details>
+  );
 }
 
 function ToolCall({
@@ -282,6 +453,11 @@ function ToolCall({
               {args ? (
                 <span className="min-w-0 truncate font-mono text-kumo-subtle">
                   {args}
+                </span>
+              ) : null}
+              {item.result?.isError ? (
+                <span className="rounded bg-kumo-danger-tint px-1.5 text-xs text-kumo-danger">
+                  error
                 </span>
               ) : null}
               {item.result ? (
@@ -340,32 +516,42 @@ function Finish({
   );
 }
 
-function RawEvents({ events }: { events: TrajectoryEvent[] }) {
-  const start = Date.parse(events[0]?.timestamp ?? '');
+/** Every ATXF record, in file order, each opening to its JSON. */
+function RawRecords({ records }: { records: EntryRecord[] }) {
+  const start = Date.parse(records[0]?.time ?? '');
   return (
     <ol className="raw-events flex flex-col divide-y divide-kumo-line rounded-lg border border-kumo-line text-xs">
-      {events.map((event, index) => {
-        const { source, kind, timestamp, ...rest } = event;
-        const at = Date.parse(timestamp) - start;
-        const fields = Object.keys(rest).length ? JSON.stringify(rest) : '';
+      {records.map((record, index) => {
+        const at = Date.parse(record.time) - start;
+        const kind =
+          record.type === 'message' ? `message · ${record.role}` : record.type;
+        const {
+          type: _type,
+          time: _time,
+          hash: _hash,
+          native: _native,
+          ...rest
+        } = record as EntryRecord & { hash?: string; native?: unknown };
         return (
-          <li key={`${timestamp}-${index}`}>
+          <li key={record.id}>
             <details className="group">
-              <summary className="grid cursor-pointer list-none grid-cols-[2rem_4rem_3rem_13rem_minmax(0,1fr)] items-baseline gap-x-3 px-3 py-1.5 select-none hover:bg-kumo-elevated [&::-webkit-details-marker]:hidden">
+              <summary className="grid cursor-pointer list-none grid-cols-[2rem_4rem_5rem_11rem_minmax(0,1fr)] items-baseline gap-x-3 px-3 py-1.5 select-none hover:bg-kumo-elevated [&::-webkit-details-marker]:hidden">
                 <span className="text-right font-mono text-kumo-subtle tabular-nums">
                   {index + 1}
                 </span>
                 <span className="font-mono text-kumo-subtle tabular-nums">
                   {Number.isNaN(at) ? '' : `+${formatDuration(at)}`}
                 </span>
-                <span className="text-kumo-subtle">{source}</span>
+                <span className="truncate font-mono text-kumo-subtle">
+                  {record.id}
+                </span>
                 <span className="font-mono text-kumo-strong">{kind}</span>
                 <span className="truncate font-mono text-kumo-subtle">
-                  {fields}
+                  {JSON.stringify(rest)}
                 </span>
               </summary>
               <div className="px-3 pb-2">
-                <Json value={event} />
+                <Json value={record} />
               </div>
             </details>
           </li>

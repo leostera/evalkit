@@ -18,19 +18,20 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
 
 `EvalDefinition` fields:
 
-| Field        | Meaning                                                                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                   |
-| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                     |
-| `agent`      | `AutAdapter`: the agent under test.                                                                                                                      |
-| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                    |
-| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                 |
-| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                   |
-| `metrics`    | `Metric[]?`: numbers recorded per run with `metric()`. They never affect pass or fail.                                                                   |
-| `repeat`     | `number?`: how many runs to start each time the scenario runs, as one batch. Default 1.                                                                  |
-| `policy`     | `EvalPolicy?`: `{ timeoutMs?, failfast? }`. `failfast` stops later steps after a failed checkpoint.                                                      |
-| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                                                 |
-| `workspace`  | `EvalWorkspace?`: `{ ignore? }`. Gitignore-style globs left out of the run's snapshot, after the project's `artifacts.exclude`; `!pattern` keeps a path. |
+| Field        | Meaning                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | `string`: lowercase kebab-case, unique in the project.                                                                                                               |
+| `name`       | `string?`: shown in the dashboard instead of the ID.                                                                                                                 |
+| `agent`      | `AutAdapter`: the agent under test.                                                                                                                                  |
+| `datasets`   | `Dataset[]?`: data and files the scenario uses, from `defineDataset`.                                                                                                |
+| `transcript` | `TranscriptStep[]`: `user()` steps, with checkpoints (`predicate`, `judge`, `expectToolCall`) after the turn they check.                                             |
+| `scoring`    | `ScoringRule[]`: final scorers: `predicate()` and `judge()`, run after the transcript.                                                                               |
+| `metrics`    | `Metric[]?`: numbers recorded per run with `metric()`. They never affect pass or fail.                                                                               |
+| `repeat`     | `number?`: how many runs to start each time the scenario runs, as one batch. Default 1.                                                                              |
+| `policy`     | `EvalPolicy?`: `{ failfast? }`. `failfast` stops later steps after a failed checkpoint.                                                                              |
+| `limits`     | `LimitsInput?`: `{ steps?, tokens?, time? }`, enforced per run, over the project's. `time` takes milliseconds or `'20m'`. See [Limits](/docs/manual/agents/#limits). |
+| `metadata`   | `Record<string, any>?`: any JSON-convertible object, converted when the eval is defined.                                                                             |
+| `workspace`  | `EvalWorkspace?`: `{ ignore? }`. Gitignore-style globs left out of the run's snapshot, after the project's `artifacts.exclude`; `!pattern` keeps a path.             |
 
 ## Scoring
 
@@ -50,18 +51,31 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
   A number measured for every run. `unit: 'ms'` formats as a duration; `better: 'lower' | 'higher'` colours comparisons.
 - `skip(reason: string)`  
   Returned by a scorer that does not apply to this run; it neither passes nor fails and is left out of averages.
-- `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'tool calls', 'judge tokens']`  
-  Recorded for every run; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string.
-- `turnTokens(usage: Usage): number | undefined`  
-  What a turn counts toward `tokens`: `inputTokens + outputTokens` (cached input included), or `totalTokens` when neither is reported.
+- `BUILT_IN_METRICS`: `readonly ['agent time', 'tokens', 'cached tokens', 'output tokens', 'cache hit rate', 'steps', 'tool calls', 'judge tokens']`  
+  Recorded for every run; see [built-in metrics](/docs/manual/scoring-and-evals/#metrics). Their names are the type `BuiltInMetricName`; `metric()` rejects them as a type error. `MetricResult.name` is a `MetricName`: a built-in name, which editors suggest, or any other string. `tokens` is uncached input, cache writes and output; cache reads are `cached tokens`.
+
+Helpers that read the agent's transcript, for scorers and metrics. Each takes the `ScoringContext`, or any `{ transcript }`:
+
+- `messages(ctx, role?): Message[]`  
+  Messages on the active path, optionally of one role (`user`, `assistant`, `tool`): `{ id, role, text, time, record }`. `text` joins the text blocks; `record` is the ATXF message.
+- `toolCalls(ctx, name?): ToolCall[]`  
+  The agent's tool calls in order, optionally of one tool: `{ id, name, arguments, input?, result?, isError, messageId, resultId? }`. `result` is the recorded result, when there is one.
+- `lastReply(ctx): string`  
+  The text of the agent's last reply, or `''`.
+- `usage(ctx): Usage | undefined`  
+  The usage the transcript reported, summed in ATXF's buckets (`input`, `output`, `cacheRead`, `cacheWrite`, `reasoning`); undefined when nothing reported usage.
+- `modelContext(ctx): ModelContext`  
+  What the model saw at the end, rebuilt by ATXF with compactions applied: its instructions, tools and messages.
 
 `ScoringContext`, the argument of every scorer and metric:
 
 | Field         | Meaning                                                                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context`     | The run's `AutContext`: IDs, `parameters`, candidate `data`, and the workspaces.                                                            |
-| `trajectory`  | `{ events }`: everything recorded so far, agent and runner events.                                                                          |
-| `turn`        | The most recent turn: its `assistantMessages`, `toolCalls` (with results when observed) and `lastAssistantText`.                            |
+| `transcript`  | What the agent did, as an [ATXF](https://atxf.leostera.dev) `Transcript`: all of it for final scorers, up to this step for checkpoints.     |
+| `subagents`   | Sub-agent transcripts the agent kept, by transcript ID.                                                                                     |
+| `runEvents`   | EvalKit's own events so far: steps, checkpoints, scorers and a reached limit.                                                               |
+| `turn`        | The most recent turn: its `records`, `assistantMessages`, `toolCalls` (with results when observed) and `lastAssistantText`.                 |
 | `output`      | The content of the turn's last assistant message.                                                                                           |
 | `artifacts`   | `{ candidate: { root }, evaluator: { root } }`: absolute paths of the run's two workspaces.                                                 |
 | `data`        | Values of **all** the scenario's datasets, candidate and evaluator, by dataset ID.                                                          |
@@ -79,12 +93,20 @@ EvalKit has two entry points. Scenario, agent, judge and config files import fro
   The runtimes an adapter declares, or `DEFAULT_AGENT_RUNTIMES` when it declares none.
 - `DEFAULT_AGENT_RUNTIMES`: `{ local: { kind: 'in-process' } }`  
   Used when an adapter declares no runtimes.
-- `normalizeAutEvent(input: AutEventInput, now)`  
-  Converts an event an adapter emits into a recorded `AutEvent`. The runner calls this; adapters rarely need to.
-- `turnResultEvents(result: TurnResult, turn, now)`  
-  The events a `send()` return value stands for: tool calls and results, the reply, then `turn-completed` with usage.
+  An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, transcript, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage?, model? }`, instead of writing to the transcript. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files). `context.signal` aborts when the run hits a limit or is cancelled, and `context.limits` holds the limits in force.
 
-An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), optional `runtimes`, and `start({ context, runtime, onEvent, attach })`, which resolves to an `AutSession`: `send(message)` and an optional `close()`. `send` may return a `TurnResult`, either the reply as a string or `{ reply?, toolCalls?, usage? }`, instead of emitting events with `onEvent`. `attach(name, content)` saves a file such as the agent's log with the run's results; see [Attaching files](/docs/manual/agents/#attaching-files).
+`transcript` is a `TranscriptWriter`, which records what the agent did as an ATXF transcript. Each method appends one record and returns its ID:
+
+- `user(content, { origin? })`, `assistant({ content, model?, usage?, stop?, error? })`  
+  Messages. `content` is text or ATXF blocks (`text`, `reasoning`, `tool_call`, `image`); `model` is `provider/id`; `usage` is `UsageInput`: `{ input?, output?, cacheRead?, cacheWrite?, reasoning?, total? }`, with cached tokens kept out of `input`.
+- `toolResult(callId, result, { name?, isError? })`  
+  A tool call's result: a string is its text; any other JSON value is kept as is.
+- `turn('start' | 'end', { turnId?, outcome?, error? })`  
+  Marks a turn as the agent saw it; `turn('start')` returns the ID to end.
+- `append(record)`, `import(transcript)`  
+  Any other ATXF tree record; or the records of a transcript ATXF converted from your agent's own session format, not imported before.
+- `subagent(transcript)`  
+  Keeps a sub-agent's transcript with the run. Its steps and tokens count toward the limits.
 
 ## Datasets
 
@@ -105,8 +127,8 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
   The limits for `attach()` when `artifacts.attachments` does not set them.
 - `defineSuite({ id, name?, evals })`  
   Groups evals explicitly, for a registry.
-- `defineEvalMatrix({ id, evals, parameters, defaults?, cases?, exclude? })`  
-  Runs evals over parameter combinations. See [CLI and matrices](/docs/manual/cli-and-matrices/).
+- `defineEvalMatrix({ id, evals, parameters, limits?, defaults?, cases?, exclude? })`  
+  Runs evals over parameter combinations. `limits` (`{ steps: [40, 80] }`) adds axes named `limits.steps` and so on. See [CLI and matrices](/docs/manual/cli-and-matrices/).
 - `registerEvals([...evals, ...suites, ...matrices]): EvalRegistry`  
   An explicit registry instead of discovery.
 - `canonicalParameters(value: JsonValue): string`  
@@ -128,23 +150,23 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
   `{ name, message, stack? }` for saving an error in a report.
 - `resourceUri(kind, uuid)`, `parseResourceUri(uri, kind?)`, `resourceUuid(value, kind?)`, `resourceUriSchema(kind)`  
   Build and parse the `evalkit:run:<uuid>` URIs in manifests (kinds `run`, `artifact`).
-- `parseTrajectoryJsonl(contents): TrajectoryEvent[]`  
-  Parse and check a `trajectory.jsonl` file.
 
-Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `TrajectoryEventSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 6.
+Every report file has an [Effect Schema](https://effect.website/docs/schema/introduction/) for decoding it yourself: `RunManifestSchema`, `RunMetadataSchema`, `RunSummarySchema`, `RunScoringSchema`, `RunSourceSchema`, `RunStatusSchema`, `RunDatasetSchema`, `BatchSchema`, `ScoreResultSchema`, `CheckpointResultSchema`, `MetricResultSchema`, `JudgeRunInfoSchema`, `RunEventSchema`, `TranscriptSchema`, `LimitsSchema`, `LimitReachedSchema`, `ArtifactEntrySchema`, `AttachmentEntrySchema`, `UsageSchema`, `AutIdentitySchema`, `RecordedErrorSchema`, `JsonValueSchema`, `ApiErrorSchema`, `ResourceKindSchema`, `ResourceUriSchema` and `UuidSchema`. `REPORT_SCHEMA_VERSION` is the `schemaVersion` they accept, 7. `TranscriptSchema` checks a value with ATXF's validator.
 
 ## Running and reading results (`@leostera/evalkit/runner`)
 
 - `runEval(eval, options: RunEvalOptions): Effect<RunResult[]>`  
   Runs a scenario once, or `repeat` times as one batch, and saves each run. Resolves to one `RunResult` per run. `options.report` is required; see [Run from code](/docs/manual/results/#run-from-code) for the rest.
 - `runMatrix(matrix, options & { selection?, onResult? })`  
-  Runs every selected matrix cell (`repeat` times each) and resolves to `MatrixSummary`: `{ cells, runs, passed, failed, cancelled }`.
+  Runs every selected matrix cell (`repeat` times each) and resolves to `MatrixSummary`: `{ cells, runs, passed, failed, limited, cancelled }`.
 - `localReportStore(directory): ReportStore`  
   Saves results in the `_evalkit-results` layout.
 - `readRunManifest(root, runId)`, `readRunSummary(root, runId)`, `readRunScoring(root, runId)`, `readRunEvents(root, runId)`  
-  Read and check a run's `manifest.json` (what ran), `summary.json` (how it ended), **scores** (`scoring.json`) or trajectory.
+  Read and check a run's `manifest.json` (what ran), `summary.json` (how it ended), **scores** (`scoring.json`) or EvalKit's events (`run-events.jsonl`).
+- `readRunTranscript(root, runId): Promise<Transcript>`, `readRunSubagents(root, runId): Promise<Record<string, Transcript>>`  
+  Read a run's ATXF transcript (`transcript.atxf.jsonl`), and the sub-agent transcripts kept in `transcripts/`, by ID.
 - `upgradeReports(root, { dryRun? }): Promise<UpgradeReport>`  
-  Converts results saved before EvalKit 0.9, as `evalkit upgrade` does: `{ upgraded, runs, batches, running }`.
+  Converts results saved by older versions, as `evalkit upgrade` does: `{ upgraded, runs, batches, running, transcripts, failed }`. `transcripts` counts trajectories converted to ATXF; `failed` lists runs that could not be, left as they were, with why.
 - `ownerIsGone(process?): boolean`  
   True when a run's owning process ran on this host and no longer exists, meaning the run was interrupted.
 - `staticDatasetFiles(dataset, root)`, `staticDatasetFile(dataset, root, file)`  

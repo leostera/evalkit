@@ -10,6 +10,7 @@ import {
   defineEval,
   judge,
   predicate,
+  toolCalls,
   user,
   type AutContext,
   type JsonValue,
@@ -17,8 +18,8 @@ import {
 } from '@evalkit/core';
 import {
   localReportStore,
-  readRunEvents,
   readRunScoring,
+  readRunTranscript,
   runEval,
 } from './index.js';
 
@@ -42,23 +43,16 @@ const runOne = async (
   return result;
 };
 
-const stamp = () => new Date().toISOString();
-
 /** Replies "Hello there!" to each message and writes it to reply.txt. */
 function greeter() {
   let closed = 0;
   const agent = defineAgent({
     identity: { id: 'greeter', kind: 'in-process' },
-    async start({ context, onEvent }) {
+    async start({ context, transcript }) {
       return {
         async send(message: string) {
           await writeFile(join(context.workspace.root, 'reply.txt'), message);
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
-            content: 'Hello there!',
-            timestamp: stamp(),
-          });
+          await transcript.assistant({ content: 'Hello there!' });
         },
         async close() {
           closed++;
@@ -86,39 +80,34 @@ function fakeJudge(
   let closed = 0;
   const agent = defineAgent({
     identity: { id: 'fake-judge', kind: 'in-process' },
-    async start({ context, onEvent }) {
+    async start({ context, transcript }) {
       const sent: string[] = [];
       prompts.push(sent);
       return {
         async send(message: string) {
           sent.push(message);
           if (options.tools) {
-            await onEvent({
-              kind: 'tool-call',
-              id: 'judge-tool',
-              name: 'inspect',
-              arguments: {},
-              timestamp: stamp(),
+            await transcript.assistant({
+              content: [
+                {
+                  type: 'tool_call',
+                  id: 'judge-tool',
+                  name: 'inspect',
+                  arguments: {},
+                },
+              ],
             });
-            await onEvent({
-              kind: 'tool-result',
-              id: 'judge-tool',
-              result: { ok: true },
-              timestamp: stamp(),
-            });
+            await transcript.toolResult(
+              'judge-tool',
+              { ok: true },
+              { name: 'inspect' },
+            );
           }
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
-            content: answer(message, sent.length, context),
-            timestamp: stamp(),
-          });
-          await onEvent({
-            kind: 'turn-completed',
-            turn: sent.length,
-            usage: { inputTokens: 7, outputTokens: 3 },
+          const said = answer(message, sent.length, context);
+          await transcript.assistant({
+            content: typeof said === 'string' ? said : JSON.stringify(said),
+            usage: { input: 7, output: 3 },
             model: String(context.parameters?.judgeModel ?? 'judge-model'),
-            timestamp: stamp(),
           });
         },
         async close() {
@@ -158,6 +147,7 @@ test('a judge gets a prompt built from its rubric and inputs, and its verdict is
   const result = await runOne(
     runEval(evaluation, { report: localReportStore(dir) }),
   );
+  expect(result.error?.message).toBeUndefined();
   expect(result.status).toBe('passed');
   const [checkpointPrompt, finalPrompt] = reviewer.prompts.map(
     (sent) => sent[0]!,
@@ -182,20 +172,23 @@ test('a judge gets a prompt built from its rubric and inputs, and its verdict is
     judge: {
       agent: { id: 'fake-judge' },
       model: 'judge-model',
-      usage: { inputTokens: 7, outputTokens: 3 },
+      usage: { input: 7, output: 3 },
       prompt: finalPrompt,
     },
   });
-  expect(scoring.results[0]?.judge?.events).toContainEqual(
-    expect.objectContaining({ kind: 'tool-call', name: 'inspect' }),
-  );
+  // The judge's own session is kept as its own ATXF transcript.
+  expect(
+    toolCalls({ transcript: scoring.results[0]!.judge!.transcript! }).map(
+      (call) => call.name,
+    ),
+  ).toEqual(['inspect']);
   // Judging is reported apart from the agent's own tokens.
   const metric = (name: string) =>
     scoring.metrics?.find((entry) => entry.name === name)?.value;
   expect(metric('judge tokens')).toBe(20);
   expect(metric('tokens')).toBeUndefined();
-  const events = await readRunEvents(dir, result.runId);
-  expect(events.some((event) => event.kind === 'tool-call')).toBe(false);
+  const transcript = await readRunTranscript(dir, result.runId);
+  expect(toolCalls({ transcript })).toEqual([]);
   expect(reviewer.closed).toBe(2);
 });
 
@@ -482,7 +475,7 @@ test('an answer in the wrong format is asked for again once, then fails the judg
   expect(recovered.scoring?.results[0]).toMatchObject({
     value: 1,
     passed: true,
-    judge: { attempts: 2, usage: { inputTokens: 14, outputTokens: 6 } },
+    judge: { attempts: 2, usage: { input: 14, output: 6 } },
   });
 
   const never = fakeJudge(() => 'still not JSON');

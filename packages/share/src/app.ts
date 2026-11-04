@@ -6,7 +6,9 @@ import {
   isLegacyRun,
   upgradeCatalogFile,
   upgradeSnapshotRun,
+  type SnapshotFiles,
 } from './legacy.js';
+import { isV2Run, upgradeV2Run } from './transcripts.js';
 import type { ShareIndex } from './index-db.js';
 import { isSha, isUuid, safeSegment, validRepoKey } from './paths.js';
 import {
@@ -42,6 +44,8 @@ export type ShareEvent =
       event: 'share.upgrade';
       upgraded: number;
       runs: number;
+      transcripts: number;
+      failed: number;
       remaining: number;
     }
   | { event: 'share.error'; method: string; path: string; error: string };
@@ -98,7 +102,7 @@ const jsonLine = (event: ShareEvent) => console.log(JSON.stringify(event));
  *
  *   POST /api/v1/uploads                         one run bundle
  *   POST /api/v1/reindex                         rebuild the index from stored run.json files
- *   POST /api/v1/upgrade                         convert stored runs from before 0.9 (RFD0008)
+ *   POST /api/v1/upgrade                         convert stored runs from older EvalKit versions (RFD0008, RFD0009)
  *   GET  /api/v1/repos                           indexed repositories
  *   GET  /api/v1/repos/<repo>/-/commits          commits, newest first
  *   GET  /api/v1/repos/<repo>/-/<sha>/data/…     snapshot data
@@ -195,11 +199,15 @@ export function createShareApp(options: ShareAppOptions) {
   });
 
   /**
-   * Converts stored runs from before 0.9 (snapshot format version 1, a run of
-   * trials) into one run per trial, `limit` old runs per request (default
-   * 20), so it fits a Worker's limits. Call it until `remaining` is 0. New
-   * objects and index rows are written before old ones are removed, so an
-   * interrupted upgrade is finished by calling it again.
+   * Converts stored runs from older EvalKit versions, `limit` runs per
+   * request (default 20), so it fits a Worker's limits. Call it until
+   * `remaining` is 0. Runs from before 0.9 (snapshot format version 1, a
+   * run of trials) become one run per trial (RFD0008); runs from 0.9 and
+   * 0.10 (version 2) get an ATXF transcript in place of their trajectory
+   * (RFD0009). New objects and index rows are written before old ones are
+   * removed, and run.json last, so an interrupted upgrade is finished by
+   * calling it again. A run that cannot be converted is left as it was and
+   * listed in `failed`.
    */
   app.post('/api/v1/upgrade', async (context) => {
     const limit = Math.min(
@@ -207,6 +215,7 @@ export function createShareApp(options: ShareAppOptions) {
       200,
     );
     const legacy: string[] = [];
+    const v2: string[] = [];
     for await (const key of files.list('repos/')) {
       if (!RUN_FILE.test(key)) continue;
       const data = await readBytes(await files.get(key));
@@ -218,18 +227,64 @@ export function createShareApp(options: ShareAppOptions) {
         continue;
       }
       if (isLegacyRun(value)) legacy.push(key);
+      else if (isV2Run(value)) v2.push(key);
     }
     let runs = 0;
+    let transcripts = 0;
+    const failed: Array<{ run: string; reason: string }> = [];
+    // Version 1 first: each becomes version 2 runs, converted on a later call.
     const batch = legacy.slice(0, limit);
     for (const key of batch) runs += await upgradeStoredRun(key);
+    for (const key of v2.slice(0, limit - batch.length))
+      try {
+        await upgradeV2StoredRun(key);
+        transcripts += 1;
+      } catch (error) {
+        failed.push({
+          run: key,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    const done = batch.length + transcripts + failed.length;
     const result = {
       upgraded: batch.length,
       runs,
-      remaining: legacy.length - batch.length,
+      transcripts,
+      failed: failed.length,
+      // Runs that failed are not retried by this count; they stay version 2.
+      remaining: legacy.length + v2.length - done,
     };
     log({ event: 'share.upgrade', ...result });
-    return context.json(result);
+    return context.json({ ...result, failures: failed });
   });
+
+  /** A stored version 2 run, converted to version 3 in place. */
+  async function upgradeV2StoredRun(runJsonKey: string): Promise<void> {
+    const runBase = runJsonKey.slice(0, -'/run.json'.length);
+    const stored = await v2Files(runBase);
+    const upgraded = upgradeV2Run(stored);
+    for (const name of ['transcript.json', 'detail.json'])
+      await files.put(`${runBase}/${name}`, upgraded.get(name)!);
+    const runJson = upgraded.get('run.json')!;
+    const run = storedRun(runJson);
+    if (run) {
+      await index.forgetRun(run.id);
+      await index.recordRun(run);
+    }
+    await files.delete(`${runBase}/events.json`);
+    // run.json last: until it changes, the next call retries this run.
+    await files.put(runJsonKey, runJson);
+  }
+
+  /** The files `upgradeV2Run` reads, from a stored run. */
+  async function v2Files(runBase: string): Promise<SnapshotFiles> {
+    const stored: SnapshotFiles = new Map();
+    for (const name of ['run.json', 'detail.json', 'events.json']) {
+      const data = await readBytes(await files.get(`${runBase}/${name}`));
+      if (data) stored.set(name, data);
+    }
+    return stored;
+  }
 
   /** One stored version 1 run → version 2 runs; returns how many. */
   async function upgradeStoredRun(runJsonKey: string): Promise<number> {
@@ -247,6 +302,12 @@ export function createShareApp(options: ShareAppOptions) {
     const written = new Set<string>();
     let newRunJson: Uint8Array | undefined;
     for (const upgraded of upgradeSnapshotRun(stored)) {
+      // Straight to version 3; a trial that cannot be converted stays version 2.
+      try {
+        upgraded.files = upgradeV2Run(upgraded.files);
+      } catch {
+        // Shown as it is; a later upgrade lists it in `failed`.
+      }
       const runJson = upgraded.files.get('run.json')!;
       const run = storedRun(runJson);
       if (!run) continue; // cancelled or unfinished: not a shareable run
@@ -482,11 +543,14 @@ export function createShareApp(options: ShareAppOptions) {
       );
     }
     const runFile =
-      /^runs\/([^/]+)\/((?:detail|events|artifacts|workspace)\.json|(?:workspace|attachments)\/.+)$/.exec(
+      /^runs\/([^/]+)\/((?:detail|transcript|artifacts|workspace)\.json|(?:workspace|attachments)\/.+)$/.exec(
         path,
       );
     if (!runFile || !isUuid(runFile[1]!)) return context.notFound();
-    const body = await files.get(`${commitBase}/${path}`);
+    const body =
+      runFile[2] === 'transcript.json' || runFile[2] === 'detail.json'
+        ? await currentFile(`${commitBase}/runs/${runFile[1]}`, runFile[2])
+        : await files.get(`${commitBase}/${path}`);
     if (!body) return context.notFound();
     // Workspace files and attachments are untrusted, whatever their name.
     const json =
@@ -506,15 +570,51 @@ export function createShareApp(options: ShareAppOptions) {
     });
   }
 
+  /**
+   * A run's detail or transcript as version 3 has it: a version 2 run not
+   * upgraded yet is converted as it is read, the same way the upgrade does,
+   * so its cached files do not change when it is upgraded.
+   */
+  async function currentFile(
+    runBase: string,
+    name: 'detail.json' | 'transcript.json',
+  ) {
+    const runJson = await readBytes(await files.get(`${runBase}/run.json`));
+    let value: unknown;
+    try {
+      value = runJson
+        ? JSON.parse(new TextDecoder().decode(runJson))
+        : undefined;
+    } catch {
+      value = undefined;
+    }
+    if (!isV2Run(value)) return files.get(`${runBase}/${name}`);
+    try {
+      return upgradeV2Run(await v2Files(runBase)).get(name) ?? null;
+    } catch {
+      // Not convertible: show its detail as it is, and no transcript.
+      return name === 'detail.json' ? files.get(`${runBase}/${name}`) : null;
+    }
+  }
+
   return app;
 }
 
-/** A stored run.json, or undefined if it is not a shareable run. */
+/** A stored run.json (version 3, or 2 until upgraded), or undefined if it is not a shareable run. */
 function storedRun(data: Uint8Array | null): SharedRun | undefined {
   if (!data) return undefined;
   try {
-    return parseRun(data);
+    const version =
+      (
+        JSON.parse(new TextDecoder().decode(data)) as {
+          snapshotVersion?: unknown;
+        }
+      ).snapshotVersion === 2
+        ? 2
+        : 3;
+    return parseRun(data, { version });
   } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
     if (error instanceof Rejected) return undefined;
     throw error;
   }

@@ -4,6 +4,7 @@ import {
   upgradeCatalogFile,
   upgradeSnapshotRun,
 } from './legacy.js';
+import { isV2Run, upgradeV2Run } from './transcripts.js';
 import {
   allowedLegacyRunPath,
   allowedRunPath,
@@ -17,7 +18,7 @@ import {
 export class Rejected extends Error {}
 
 /** Finished runs only: a shared run's files are immutable once stored. */
-export type SharedRunStatus = 'passed' | 'failed' | 'errored';
+export type SharedRunStatus = 'passed' | 'failed' | 'errored' | 'limited';
 
 export type SharedSource = {
   repo: string;
@@ -73,8 +74,12 @@ export function parseUpload(bundle: readonly BundleFile[]): RunUpload[] {
   }
   const runJson = byPath.get('run.json');
   if (!runJson) throw new Rejected('Bundle has no run.json');
-  const legacy = isLegacyRun(parseJson(runJson, 'run.json'));
-  const allowed = legacy ? allowedLegacyRunPath : allowedRunPath;
+  const runValue = parseJson(runJson, 'run.json');
+  const legacy = isLegacyRun(runValue);
+  const v2 = isV2Run(runValue);
+  const allowed = legacy
+    ? allowedLegacyRunPath
+    : (path: string) => allowedRunPath(path, v2 ? 2 : 3);
   for (const path of byPath.keys())
     if (!allowed(path))
       throw new Rejected(`File not allowed in a run bundle: ${path}`);
@@ -82,6 +87,7 @@ export function parseUpload(bundle: readonly BundleFile[]): RunUpload[] {
   if (storedCatalog) parseCatalog(storedCatalog);
   const catalog =
     storedCatalog && legacy ? upgradeCatalogFile(storedCatalog) : storedCatalog;
+  if (v2) return [runUpload(toV3(byPath), catalog)];
   if (!legacy) return [runUpload(byPath, catalog)];
   // Every trial of the old run is checked before any is stored.
   parseRun(runJson, { legacy: true });
@@ -95,7 +101,19 @@ export function parseUpload(bundle: readonly BundleFile[]): RunUpload[] {
       ).status;
       return status === 'passed' || status === 'failed' || status === 'errored';
     })
-    .map(({ files }) => runUpload(files, catalog));
+    .map(({ files }) => runUpload(toV3(files), catalog));
+}
+
+/** A version 2 run as version 3; an upload that cannot be converted is refused. */
+function toV3(files: Map<string, Uint8Array>): Map<string, Uint8Array> {
+  parseRun(files.get('run.json')!, { version: 2 });
+  try {
+    return upgradeV2Run(files);
+  } catch (error) {
+    throw new Rejected(
+      `This run, from EvalKit 0.10 or older, could not be converted: ${error instanceof Error ? error.message : String(error)}. Upgrade the CLI and run \`evalkit upgrade\`, then share again.`,
+    );
+  }
 }
 
 function runUpload(
@@ -115,11 +133,12 @@ function runUpload(
 
 export function parseRun(
   data: Uint8Array,
-  options: { legacy?: boolean } = {},
+  options: { legacy?: boolean; version?: 2 | 3 } = {},
 ): SharedRun {
   const value = record(parseJson(data, 'run.json'), 'run.json');
-  if (!options.legacy && value.snapshotVersion !== 2)
-    throw new Rejected('run.json must be snapshot format version 2');
+  const version = options.version ?? 3;
+  if (!options.legacy && value.snapshotVersion !== version)
+    throw new Rejected(`run.json must be snapshot format version ${version}`);
   const source = record(value.source, 'run.json source');
   const id = text(value.id, 'id');
   if (!isUuid(id)) throw new Rejected('run.json id must be a UUID');
@@ -129,7 +148,12 @@ export function parseRun(
   if (typeof source.dirty !== 'boolean')
     throw new Rejected('source.dirty must be a boolean');
   const status = value.status;
-  if (status !== 'passed' && status !== 'failed' && status !== 'errored')
+  if (
+    status !== 'passed' &&
+    status !== 'failed' &&
+    status !== 'errored' &&
+    status !== 'limited'
+  )
     throw new Rejected(
       `Only finished runs can be shared (status ${JSON.stringify(status)})`,
     );

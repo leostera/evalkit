@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import type { CatalogEval, DashboardApi, RunSummary } from '../api.js';
+import type {
+  CatalogEval,
+  DashboardApi,
+  RunSummary,
+  RunTranscriptView,
+} from '../api.js';
 import { AttachmentsDetail } from './AttachmentsDetail.js';
 import { Empty } from './Empty.js';
 import { ErrorBanner } from './ErrorBanner.js';
@@ -20,7 +25,7 @@ import {
   RunSectionBody,
   runDatasets,
   TrajectoryAndScoring,
-  useRunEvents,
+  useRunTranscript,
 } from './RunDetail.js';
 import { StatusBadge } from './StatusBadge.js';
 import { useRunDetail } from './use-run-table-state.js';
@@ -51,7 +56,7 @@ export function RunPage({
   const navigate = useNavigate();
   const run = runs.find((entry) => entry.id === runId);
   const { detail, error } = useRunDetail(api, run);
-  const { events, error: eventsError } = useRunEvents(api, run);
+  const { session, error: sessionError } = useRunTranscript(api, run);
   const scenario = run
     ? catalog.find((entry) => entry.id === run.evalId)
     : undefined;
@@ -194,8 +199,8 @@ export function RunPage({
             view={view}
             detail={detail}
             scenario={scenario}
-            events={events}
-            eventsError={eventsError}
+            session={session}
+            sessionError={sessionError}
             error={error}
           />
         </div>
@@ -210,8 +215,8 @@ function RunBody({
   view,
   detail,
   scenario,
-  events,
-  eventsError,
+  session,
+  sessionError,
   error,
 }: {
   api: DashboardApi;
@@ -219,8 +224,8 @@ function RunBody({
   view: RunSection;
   detail: ReturnType<typeof useRunDetail>['detail'];
   scenario?: CatalogEval;
-  events: Parameters<typeof TrajectoryAndScoring>[0]['events'];
-  eventsError?: string;
+  session: RunTranscriptView;
+  sessionError?: string;
   error?: string;
 }) {
   if (view === 'run')
@@ -229,8 +234,8 @@ function RunBody({
         run={run}
         detail={detail}
         scenario={scenario}
-        events={events}
-        eventsError={eventsError}
+        session={session}
+        sessionError={sessionError}
       />
     );
   if (view === 'workspace')
@@ -259,7 +264,7 @@ function RunBody({
     case 'metrics':
       return (
         <RunSectionBody title="Metrics">
-          <MetricsList detail={detail} />
+          <MetricsList detail={detail} limits={run.limits} />
         </RunSectionBody>
       );
     case 'logs':

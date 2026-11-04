@@ -31,16 +31,11 @@ const evaluation = defineEval({
   name: 'Snapshot greeting',
   agent: {
     identity: { kind: 'in-process', id: 'snapshot-agent' },
-    async start({ context, onEvent }) {
+    async start({ context, transcript }) {
       return {
         async send(message: string) {
           await writeFile(join(context.workspace.root, 'reply.txt'), message);
-          await onEvent({
-            kind: 'message',
-            role: 'assistant',
-            content: `Hello, ${message}`,
-            timestamp: new Date().toISOString(),
-          });
+          transcript.assistant({ content: `Hello, ${message}` });
         },
         async close() {},
       };

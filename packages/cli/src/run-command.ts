@@ -11,6 +11,11 @@ import {
   type EvalRegistry,
   type MatrixSelection,
 } from '@evalkit/core';
+import {
+  parseLimitFlag,
+  parseLimits,
+  resolveLimits,
+} from '@evalkit/core/limits';
 import { localReportStore, runMatrix } from '@evalkit/runner';
 import {
   banner,
@@ -45,9 +50,7 @@ export function normalizeRunOptions(
     mode?: string[];
     select?: string[];
     param?: string[];
-    'max-tokens'?: string;
-    'chat-timeout-ms'?: string;
-    'turn-budget'?: string;
+    limit?: string[];
     concurrency?: string;
     repeat?: string;
     json?: boolean;
@@ -69,14 +72,11 @@ export function normalizeRunOptions(
       throw new Error(`--${name} must be a positive integer`);
     return number;
   }
-  for (const [flag, key] of [
-    ['max-tokens', 'maxTokens'],
-    ['chat-timeout-ms', 'chatTimeoutMs'],
-    ['turn-budget', 'turnBudget'],
-  ] as const) {
-    const value = integer(flag);
-    if (value !== undefined) parameters[key] = value;
-  }
+  const limits = resolveLimits(
+    ...(values.limit ?? [])
+      .flatMap((value) => value.split(','))
+      .map(parseLimitFlag),
+  );
   const selection: Record<string, JsonValue[]> = {};
   for (const key of ['model', 'mode'] as const) {
     if (values[key]?.length)
@@ -107,6 +107,7 @@ export function normalizeRunOptions(
     positionals,
     parameters,
     selection,
+    limits,
     concurrency: integer('concurrency'),
     repeat: integer('repeat'),
   };
@@ -248,6 +249,7 @@ export async function runProjectCommand(
       'Selection contains no eligible cells; check cases and exclusions',
     );
   const repeat = parsed.repeat ?? project.config.execution?.repeat;
+  const configLimits = parseLimits(project.config.limits, 'The config');
   // Each cell starts its scenario's `repeat` runs unless --repeat overrides it.
   let runs = 0;
   for (const cell of matrix.cells(selection))
@@ -263,6 +265,8 @@ export async function runProjectCommand(
     parameters: selection.parameters,
     overrides: selection.overrides,
     repeat: repeat ?? 'scenario',
+    // The project's limits and --limit; a scenario's and a cell's come between.
+    limits: { config: configLimits, cli: parsed.limits },
     // What each scenario checks, before anything runs.
     scoring: Object.fromEntries(
       registry
@@ -364,7 +368,11 @@ export async function runProjectCommand(
           attachmentLimits: project.config.artifacts?.attachments,
           judge: project.config.judge,
           signal: controller.signal,
-          onEvent: (run, event) => reporter.onEvent(run, event),
+          limits: {
+            base: configLimits,
+            override: parsed.limits,
+          },
+          onUpdate: (run, update) => reporter.onUpdate(run, update),
           onResult: (cell, results) => {
             for (const result of results) {
               const report = runReport(
@@ -413,7 +421,8 @@ export async function runProjectCommand(
     console.log('');
   }
   if (controller.signal.aborted) process.exitCode = 130;
-  else if (summary.failed || broken.length) process.exitCode = 1;
+  else if (summary.failed || summary.limited || broken.length)
+    process.exitCode = 1;
 }
 
 /** A scenario's checkpoints and final scorers, as `--dry-run` lists them. */

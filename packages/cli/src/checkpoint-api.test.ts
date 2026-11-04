@@ -14,8 +14,8 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
     `
     export default {
       id: 'steps',
-      agent: { async start({ onEvent }) { return {
-        async send() { await onEvent({ kind: 'message', role: 'assistant', content: 'short', timestamp: new Date().toISOString() }); },
+      agent: { async start({ transcript }) { return {
+        async send() { transcript.assistant({ content: 'short' }); },
         async close() {},
       }; } },
       transcript: [
@@ -74,8 +74,8 @@ test('dashboard exposes checkpoint failure and skipped steps for a launched eval
       summary: { status: 'failed', scoring: { passed: false } },
     });
     const events = (
-      await (await fetch(`${base}/v1/runs/${runId}/events`)).json()
-    ).events;
+      await (await fetch(`${base}/v1/runs/${runId}/transcript`)).json()
+    ).runEvents;
     expect(
       events.some(
         (event: { kind: string }) => event.kind === 'transcript-step-skipped',
