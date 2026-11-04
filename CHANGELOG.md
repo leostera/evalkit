@@ -406,7 +406,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[Unreleased]: https://github.com/leostera/evalkit/compare/67f69f8...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/41937f8...main
+[0.13.0]: https://github.com/leostera/evalkit/compare/67f69f8...41937f8
 [0.12.0]: https://github.com/leostera/evalkit/compare/baff38b...67f69f8
 [0.11.3]: https://github.com/leostera/evalkit/compare/0b45465...baff38b
 [0.11.2]: https://github.com/leostera/evalkit/compare/7e1202f...0b45465
