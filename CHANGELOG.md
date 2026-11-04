@@ -4,9 +4,17 @@ All notable changes to `@leostera/evalkit`. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-04
+
 ### Added
 
 - **Sandboxes ([RFD0010](docs/rfds/RFD0010-sandboxes.md)).** `defineSandbox({ id, kind: 'host' | 'container' | 'remote', ... })` says where runs happen. A scenario names its own with `sandbox`, a matrix sweeps them with an axis named `sandbox`, and `sandboxes` and `sandbox` in the config name them and set the default; the host is used when nothing names one. A container sandbox takes a `dockerfile` or an `image` and `containerOpts: { network, env, mounts, runtime }`. A remote sandbox implements `prepare`, `start` (returning its shell, `mount`, `unmount` and `stop`) and `teardown`, for a VM, a cloud sandbox or a Durable Object; the workspace is mounted into it before the agent starts and brought back after scoring, and the evaluator workspace never leaves this machine. Each sandbox is prepared once per invocation, and `concurrency` caps its runs at once.
+
+- **Highlighted code in the dashboard.** Workspace files, tool arguments and results, the raw report, verdict evidence, judge prompts and Markdown code blocks are highlighted by their language, through one component.
+
+### Fixed
+
+- **Snapshots and share pages served under a sub-path** (such as `/share/`) load every script the dashboard requests on demand, instead of asking for it at the server's root.
 
 ### Changed
 
@@ -382,7 +390,8 @@ Commit provenance and team sharing ([RFD0006](docs/rfds/RFD0006-commit-provenanc
 - **Breaking:** the npm package moved to `@leostera/evalkit`. Replace the `@leostera-js/evalkit` dependency and update imports, including `/runner`. Eval definitions and local reports are unchanged.
 - Dashboard workflow refinements.
 
-[Unreleased]: https://github.com/leostera/evalkit/compare/0b45465...main
+[Unreleased]: https://github.com/leostera/evalkit/compare/baff38b...main
+[0.11.3]: https://github.com/leostera/evalkit/compare/0b45465...baff38b
 [0.11.2]: https://github.com/leostera/evalkit/compare/7e1202f...0b45465
 [0.11.1]: https://github.com/leostera/evalkit/compare/82206de...7e1202f
 [0.11.0]: https://github.com/leostera/evalkit/compare/498c5a5...82206de
