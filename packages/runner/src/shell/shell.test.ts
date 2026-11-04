@@ -179,6 +179,53 @@ describe.if(process.platform === 'darwin')('sandbox-exec shell', () => {
   });
 });
 
+describe.if(process.platform === 'darwin')('sandbox-exec options', () => {
+  test('deny more paths, open read-only holes, and scrub the environment', async () => {
+    const project = path.join(root, 'project');
+    const state = path.join(root, 'fixture-state');
+    const toolchain = path.join(state, 'toolchain');
+    await mkdir(project);
+    await mkdir(toolchain, { recursive: true });
+    await writeFile(path.join(state, 'db.json'), 'secret state');
+    await writeFile(path.join(toolchain, 'tool.txt'), 'tool');
+    process.env.EVALKIT_TEST_SECRET = 'leaked';
+    process.env.EVALKIT_TEST_KEY = 'passed';
+    const shell = await sandboxShell({
+      isolation: sandboxExec({
+        deny: [state],
+        read: [toolchain],
+        env: ['EVALKIT_TEST_KEY'],
+      }),
+      root: workspace,
+      projectRoot: project,
+      signal: new AbortController().signal,
+    });
+    try {
+      expect(
+        (await shell.exec(`cat ${path.join(state, 'db.json')}`)).exitCode,
+      ).not.toBe(0);
+      expect(
+        (await shell.exec(`cat ${path.join(toolchain, 'tool.txt')}`)).stdout,
+      ).toBe('tool');
+      expect(
+        (await shell.exec(`echo x > ${path.join(toolchain, 'new.txt')}`))
+          .exitCode,
+      ).not.toBe(0);
+      const env = await shell.exec(
+        'echo "$EVALKIT_TEST_KEY:${EVALKIT_TEST_SECRET:-none}:$FENCE"',
+        {
+          env: { FENCE: 'on' },
+        },
+      );
+      expect(env.stdout.trim()).toBe('passed:none:on');
+    } finally {
+      await shell.close();
+      delete process.env.EVALKIT_TEST_SECRET;
+      delete process.env.EVALKIT_TEST_KEY;
+    }
+  });
+});
+
 const hasDocker =
   spawnSync('docker', ['version', '--format', '{{.Server.Version}}']).status ===
   0;

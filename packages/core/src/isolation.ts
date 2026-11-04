@@ -32,8 +32,25 @@ export type ContainerIsolation = {
 /** macOS only: each run's processes run under a generated `sandbox-exec` profile. */
 export type SandboxExecIsolation = {
   kind: 'sandbox-exec';
-  /** Host paths the run may read and write besides its workspace, such as an agent CLI's install. */
+  /** Host paths the run may read and write besides its workspace, such as a cache (`~/.npm`). */
   allow: readonly string[];
+  /** Host paths the run may only read, such as a toolchain or an agent CLI's install. */
+  read: readonly string[];
+  /** More host paths the run may not touch, such as a fixture's state; `allow` and `read` still win inside them. */
+  deny: readonly string[];
+  /**
+   * Names of host environment variables the run gets, besides `PATH`,
+   * `HOME`, `TMPDIR`, `USER`, `LANG` and `TERM`; undefined passes the whole
+   * environment. A command's own `env` is added on top.
+   */
+  env?: readonly string[];
+};
+
+export type SandboxExecOptions = {
+  allow?: readonly string[];
+  read?: readonly string[];
+  deny?: readonly string[];
+  env?: readonly string[];
 };
 
 export type Isolation = NoIsolation | ContainerIsolation | SandboxExecIsolation;
@@ -117,9 +134,20 @@ function parseMount(mount: ContainerMount | string): ContainerMount {
  * only processes it started.
  */
 export function sandboxExec(
-  options: { allow?: readonly string[] } = {},
+  options: SandboxExecOptions = {},
 ): SandboxExecIsolation {
-  return { kind: 'sandbox-exec', allow: [...(options.allow ?? [])] };
+  for (const name of options.env ?? [])
+    if (!ENV_NAME.test(name))
+      throw new Error(
+        `sandboxExec() env takes variable names, such as API_KEY; received ${JSON.stringify(name)}`,
+      );
+  return {
+    kind: 'sandbox-exec',
+    allow: [...(options.allow ?? [])],
+    read: [...(options.read ?? [])],
+    deny: [...(options.deny ?? [])],
+    ...(options.env ? { env: [...options.env] } : {}),
+  };
 }
 
 /**

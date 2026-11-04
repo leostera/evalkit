@@ -111,7 +111,7 @@ An `AutAdapter` has an optional `identity` (`{ kind, id, name?, version? }`), op
 
 ## Isolation and fixtures
 
-- `none()`, `container({ image, network?, runtime?, env?, mounts? })`, `sandboxExec({ allow? })`  
+- `none()`, `container({ image, network?, runtime?, env?, mounts? })`, `sandboxExec({ allow?, read?, deny?, env? })`  
   Where each run's processes run, for `isolation` in `evalkit.config.ts`: the host (the default), a container per run (`network`: `'none'`, `'fixtures'` or `'full'`; `image` an image name or a Dockerfile path), or macOS `sandbox-exec`. See [Isolation](/docs/manual/agents/#isolation).
 
 `context.shell`, a `Shell`, runs commands there, for adapters and scorers alike:

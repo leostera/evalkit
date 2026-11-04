@@ -188,7 +188,7 @@ export default defineConfig({
 
 **Containers** use the `docker` CLI, so Docker Desktop, OrbStack, Colima, Rancher Desktop or podman all work; `runtime: 'podman'` names another compatible command. The image needs `sh`. A Dockerfile path is built once per invocation, tagged by a hash of its directory, and reused while it is unchanged. `mounts: ['/host/path:/container/path']` adds read-only paths. On Linux, commands run as your user so the files they write stay yours. A run whose container cannot start errors, saying why.
 
-**`sandboxExec({ allow })`** keeps the agent out of the project and your home directory, so an agent installed there (in `~/.bun` or `~/.local`) needs its directory in `allow`.
+**`sandboxExec({ allow, read, deny, env })`** keeps the agent out of the project, your home directory and other runs. `read` opens read-only holes, for an agent or toolchain installed there (`~/.bun`, `~/.local`, `node_modules`); `allow` opens read-write ones, for caches (`~/.npm`); `deny` closes more paths, such as a fixture's state. Paths starting with `~/` are in your home directory, others relative to the project. `env` scrubs the environment: runs get only `PATH`, `HOME`, `TMPDIR`, `USER`, `LANG`, `TERM` and the variables it names, so pass a run's proxy settings or Git identity in each command's `env`. All of a run's commands share one sandbox: a later command can stop a server an earlier one started, but nothing outside the run.
 
 The manifest records each run's isolation, and its page shows it, so runs from different setups are not compared by mistake. `evalkit tidy` removes kept containers with their workspaces.
 

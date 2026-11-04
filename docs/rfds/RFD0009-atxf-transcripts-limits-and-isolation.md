@@ -248,7 +248,7 @@ This changes what `tokens` means: before 0.11 it included cache reads. `evalkit 
   - The candidate workspace is bind-mounted at `/workspace`, read-write. `mounts` adds read-only host paths. The evaluator workspace is never mounted.
   - `network`: `none` (no network), `fixtures` (an internal network shared with the fixtures only), `full` (the runtime's default).
   - `env` passes named host variables into the container; nothing else is passed.
-- `sandboxExec({ allow })` runs each run's processes under a generated `sandbox-exec` profile: reads and writes inside the run's workspace and `allow`, signals only within the sandbox, and one long-lived sandboxed shell per run. It exists for macOS projects that cannot use containers and has the same `context.shell` interface.
+- `sandboxExec({ allow, read, deny, env })` runs each run's processes under a generated `sandbox-exec` profile: reads and writes inside the run's workspace and `allow`, signals only within the sandbox, and one long-lived sandboxed shell per run. It exists for macOS projects that cannot use containers and has the same `context.shell` interface.
 - `context.shell`:
   - `exec(command: string | string[], { cwd?, env?, signal?, timeoutMs? }) → { stdout, stderr, exitCode }`.
   - `spawn(command, options) → { pid, stdout(), stderr(), onOutput(listener), wait(), kill(signal?) }`. Output is always read and the last megabyte kept, so a server nobody reads never blocks on a full pipe.

@@ -90,20 +90,25 @@ export function sandboxProfile(options: {
   workspace: string;
   projectRoot: string;
   allow: readonly string[];
+  /** Read-only holes in the denied trees. */
+  read?: readonly string[];
+  /** More trees to deny. */
+  deny?: readonly string[];
   /** Files the supervisor needs: its runtime and its script. */
   readable: readonly string[];
 }): string {
   // <sandboxDir>/<run>/candidate: every run's workspaces, and this run's evaluator one.
   const runs = path.dirname(path.dirname(options.workspace));
-  const denied = [options.projectRoot, homedir(), runs]
+  const denied = [options.projectRoot, homedir(), runs, ...(options.deny ?? [])]
     .map((file) => `(subpath ${quote(file)})`)
     .join(' ');
   const usable = [options.workspace, ...options.allow]
     .map((file) => `(subpath ${quote(file)})`)
     .join(' ');
-  const readable = options.readable
-    .map((file) => `(literal ${quote(file)})`)
-    .join(' ');
+  const readable = [
+    ...options.readable.map((file) => `(literal ${quote(file)})`),
+    ...(options.read ?? []).map((file) => `(subpath ${quote(file)})`),
+  ].join(' ');
   return [
     '(version 1)',
     '(allow default)',
@@ -116,6 +121,27 @@ export function sandboxProfile(options: {
     '(allow signal (target same-sandbox))',
   ].join('\n');
 }
+
+/** Variables every run gets when the environment is scrubbed: what programs expect to find. */
+const ESSENTIAL_ENV = ['PATH', 'HOME', 'TMPDIR', 'USER', 'LANG', 'TERM'];
+
+/** The environment a sandboxed run starts from: the host's, or only the named variables. */
+export function sandboxEnv(
+  names: readonly string[] | undefined,
+  host: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (!names) return { ...host };
+  const env: NodeJS.ProcessEnv = {};
+  for (const name of [...ESSENTIAL_ENV, ...names])
+    if (host[name] !== undefined) env[name] = host[name];
+  return env;
+}
+
+const resolveFrom = (root: string) => (file: string) =>
+  path.resolve(
+    root,
+    file.startsWith('~/') ? path.join(homedir(), file.slice(2)) : file,
+  );
 
 /** Writes the supervisor script once, where the sandbox can read it. */
 async function supervisorScript(): Promise<string> {
@@ -148,18 +174,19 @@ export async function sandboxShell(options: {
       'sandboxExec() isolation needs macOS sandbox-exec; use container() on other systems',
     );
   const script = await supervisorScript();
+  const baseEnv = sandboxEnv(options.isolation.env);
   const profile = sandboxProfile({
     workspace: real(options.root),
     projectRoot: real(options.projectRoot),
-    allow: options.isolation.allow.map((file) =>
-      path.resolve(options.projectRoot, file),
-    ),
+    allow: options.isolation.allow.map(resolveFrom(options.projectRoot)),
+    read: options.isolation.read.map(resolveFrom(options.projectRoot)),
+    deny: options.isolation.deny.map(resolveFrom(options.projectRoot)),
     readable: [process.execPath, script],
   });
   const supervisor = spawn(
     'sandbox-exec',
     ['-p', profile, process.execPath, script],
-    { cwd: options.root, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
+    { cwd: options.root, env: baseEnv, stdio: ['pipe', 'pipe', 'pipe'] },
   );
   let supervisorError = '';
   supervisor.stderr.setEncoding('utf8').on('data', (chunk: string) => {
@@ -256,7 +283,7 @@ export async function sandboxShell(options: {
       id,
       argv: argv(command),
       cwd: insideWorkspace(options.root, commandOptions.cwd),
-      env: { ...process.env, ...commandOptions.env },
+      env: { ...baseEnv, ...commandOptions.env },
       ...(commandOptions.input !== undefined
         ? { input: commandOptions.input }
         : {}),
