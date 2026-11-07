@@ -7,6 +7,6 @@ export default defineConfig({
     compatibilityDate: '2026-09-24',
     domains: ['evalkit.leostera.dev'],
     assets: { notFoundHandling: '404-page' },
-    observability: { enabled: true, traces: { enabled: true } },
+    observability: { enabled: true, headSamplingRate: 0.01, logs: { enabled: true, headSamplingRate: 0.01 }, traces: { enabled: true, headSamplingRate: 0.01 } },
   },
 });
